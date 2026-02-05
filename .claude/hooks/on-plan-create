@@ -1,0 +1,22 @@
+#!/bin/bash
+# Триггерится когда Claude создает план в plan mode
+
+PLAN_FILE=$1
+
+echo "📋 Plan created: $PLAN_FILE"
+
+# 1. Валидация плана
+if ! grep -q "## Verification" "$PLAN_FILE"; then
+    echo "⚠️  Warning: Plan missing verification section"
+fi
+
+# 2. Сохранить копию плана в docs/plans/
+mkdir -p docs/plans
+PLAN_NAME=$(basename "$PLAN_FILE")
+DATE=$(date +%Y-%m-%d)
+cp "$PLAN_FILE" "docs/plans/${DATE}-${PLAN_NAME}" 2>/dev/null || true
+
+# 3. Обновить .claude.md с ссылкой на план
+if [ -f ".claude.md" ]; then
+    echo "📎 Plan: docs/plans/${DATE}-${PLAN_NAME}" >> .claude.md
+fi

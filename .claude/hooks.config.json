@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "onFileEdit": {
+      "enabled": true,
+      "script": ".claude/hooks/on-file-edit",
+      "async": false
+    },
+    "onToolUse": {
+      "enabled": true,
+      "script": ".claude/hooks/on-tool-use",
+      "async": true
+    },
+    "onTaskStart": {
+      "enabled": true,
+      "script": ".claude/hooks/on-task-start",
+      "async": false
+    },
+    "onTaskComplete": {
+      "enabled": true,
+      "script": ".claude/hooks/on-task-complete",
+      "async": false
+    },
+    "onPlanCreate": {
+      "enabled": true,
+      "script": ".claude/hooks/on-plan-create",
+      "async": true
+    },
+    "onError": {
+      "enabled": true,
+      "script": ".claude/hooks/on-error",
+      "async": true
+    },
+    "onReviewRequest": {
+      "enabled": true,
+      "script": ".claude/hooks/on-review-request",
+      "async": false
+    }
+  },
+  "settings": {
+    "autoFormatOnEdit": true,
+    "autoLintOnEdit": true,
+    "updateDocsOnChange": true,
+    "createBackupBeforeEdit": true
+  }
+}

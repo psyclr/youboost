@@ -1,0 +1,22 @@
+#!/bin/bash
+# Триггерится когда Claude редактирует файл через Edit tool
+
+EDITED_FILE=$1
+
+echo "📝 File edited: $EDITED_FILE"
+
+# 1. Проверить, нужно ли обновить claude.md
+if [[ $EDITED_FILE == services/* ]]; then
+    echo "⚠️  Service file changed, consider updating .claude.md"
+fi
+
+# 2. Запустить линтер для измененного файла
+if [[ $EDITED_FILE == *.ts || $EDITED_FILE == *.tsx ]]; then
+    npx eslint $EDITED_FILE --fix
+fi
+
+# 3. Автоформатирование
+npx prettier --write $EDITED_FILE
+
+# 4. Проверка типов (быстрая)
+npx tsc --noEmit $EDITED_FILE 2>/dev/null || true

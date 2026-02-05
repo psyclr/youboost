@@ -1,0 +1,21 @@
+#!/bin/bash
+# Триггерится когда Claude сталкивается с ошибкой
+
+ERROR_MESSAGE=$1
+ERROR_CONTEXT=$2
+
+echo "❌ Error occurred: $ERROR_MESSAGE"
+
+# 1. Логирование в файл
+LOG_FILE=".claude/error.log"
+echo "[$(date)] $ERROR_MESSAGE" >> "$LOG_FILE"
+echo "Context: $ERROR_CONTEXT" >> "$LOG_FILE"
+
+# 2. Уведомление (опционально)
+# Можно отправить в Slack/Telegram
+# curl -X POST webhook_url -d "Error in Claude Code: $ERROR_MESSAGE"
+
+# 3. Сохранить context для последующего анализа
+mkdir -p .claude/errors
+ERROR_ID=$(date +%s)
+echo "$ERROR_CONTEXT" > ".claude/errors/error-${ERROR_ID}.txt"

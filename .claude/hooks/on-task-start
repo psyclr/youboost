@@ -1,0 +1,22 @@
+#!/bin/bash
+# Триггерится когда Claude начинает работу над новой задачей
+
+TASK_DESCRIPTION=$1
+
+echo "🚀 Starting task: $TASK_DESCRIPTION"
+
+# 1. Создать TODO в Notion (через MCP)
+# claude mcp notion create-task "$TASK_DESCRIPTION"
+
+# 2. Создать feature branch если еще нет
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ $CURRENT_BRANCH == "main" || $CURRENT_BRANCH == "master" ]]; then
+    BRANCH_NAME=$(echo "$TASK_DESCRIPTION" | sed 's/ /-/g' | tr '[:upper:]' '[:lower:]' | head -c 50)
+    git checkout -b "feat/$BRANCH_NAME"
+    echo "✓ Created branch: feat/$BRANCH_NAME"
+fi
+
+# 3. Обновить .claude.md секцию "🎯 Текущий фокус"
+if [ -f ".claude.md" ]; then
+    sed -i '' "s/## 🎯 Текущий фокус.*/## 🎯 Текущий фокус\\n$TASK_DESCRIPTION/" .claude.md
+fi

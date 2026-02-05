@@ -11,4 +11,8 @@ npm run lint-staged
 echo "🔧 Type checking..."
 npm run typecheck
 
+# Обновление документации
+echo "📚 Checking documentation..."
+./scripts/update-claude-docs.sh pre-commit
+
 echo "✅ All pre-commit checks passed!"

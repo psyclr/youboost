@@ -1,0 +1,21 @@
+#!/bin/bash
+# Триггерится при использовании критических инструментов
+
+TOOL_NAME=$1
+TOOL_PARAMS=$2
+
+case "$TOOL_NAME" in
+    "Bash(npm install:*)")
+        echo "📦 Dependencies changed, updating package-lock.json"
+        # Проверить, нужно ли обновить security audit
+        npm audit
+        ;;
+    "Write")
+        echo "📄 New file created, checking if .gitignore needs update"
+        # Логика для проверки .gitignore
+        ;;
+    "Bash(git commit:*)")
+        echo "💾 Commit created, triggering post-commit hooks"
+        ./.claude/hooks/post-commit.sh 2>/dev/null || true
+        ;;
+esac

@@ -1,0 +1,33 @@
+#!/bin/bash
+# Триггерится когда используется /codex-review
+
+FILES_TO_REVIEW=$@
+
+echo "🔍 Starting code review for: $FILES_TO_REVIEW"
+
+# 1. Запуск статических анализаторов
+echo "📝 Running ESLint..."
+npx eslint $FILES_TO_REVIEW 2>/dev/null || echo "⚠️  Lint check failed"
+
+echo "🔧 Type checking..."
+npx tsc --noEmit 2>/dev/null || echo "⚠️  Type check failed"
+
+# 2. Проверка test coverage для измененных файлов
+echo "🧪 Checking test coverage..."
+for file in $FILES_TO_REVIEW; do
+    TEST_FILE="${file%.ts}.test.ts"
+    if [[ ! -f $TEST_FILE ]]; then
+        echo "⚠️  Missing test file: $TEST_FILE"
+    fi
+done
+
+# 3. Security scan
+echo "🔒 Security audit..."
+npm audit 2>/dev/null || echo "⚠️  Security audit failed"
+
+# 4. Complexity analysis
+echo "📊 Complexity analysis..."
+npx eslint $FILES_TO_REVIEW --format json 2>/dev/null | jq '.[] | select(.messages[].ruleId == "complexity")' 2>/dev/null || true
+
+echo ""
+echo "✅ Code review checks completed"

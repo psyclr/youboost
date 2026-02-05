@@ -1,0 +1,31 @@
+#!/bin/bash
+# Триггерится когда Claude завершает задачу
+
+TASK_DESCRIPTION=$1
+SUCCESS=$2  # true/false
+
+echo "✅ Task completed: $TASK_DESCRIPTION (success: $SUCCESS)"
+
+if [[ $SUCCESS == "true" ]]; then
+    # 1. Запустить финальные проверки
+    npm run validate 2>/dev/null || echo "⚠️  Validation failed or not configured yet"
+
+    # 2. Обновить .claude.md секцию "📝 Недавние изменения"
+    if [ -f ".claude.md" ]; then
+        DATE=$(date +%Y-%m-%d)
+        COMMIT_HASH=$(git log -1 --pretty=%h 2>/dev/null || echo "no-commit")
+        echo "- [$DATE] ($COMMIT_HASH) $TASK_DESCRIPTION" >> .claude.md.tmp
+        cat .claude.md >> .claude.md.tmp
+        mv .claude.md.tmp .claude.md
+    fi
+
+    # 3. Обновить задачу в Notion (опционально)
+    # claude mcp notion update-task "$TASK_DESCRIPTION" --status "Done"
+
+    # 4. Предложить создать commit
+    echo ""
+    echo "🎉 Task completed successfully!"
+    echo "📝 Ready to commit? Use: /codex-commit or git commit manually"
+else
+    echo "❌ Task failed. Review errors and try again."
+fi
