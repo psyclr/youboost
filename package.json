@@ -1,0 +1,53 @@
+{
+  "name": "youboost-panel",
+  "version": "0.1.0-alpha",
+  "description": "youboost SMM Marketplace Platform",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:all": "jest --coverage --verbose",
+    "test:changed": "jest --onlyChanged",
+    "test:unit": "jest --testPathPattern=\\.test\\.ts$",
+    "test:integration": "jest --testPathPattern=\\.integration\\.ts$",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint-staged": "lint-staged",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,md}\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "validate": "npm run lint && npm run typecheck && npm run test",
+    "prepare": "husky"
+  },
+  "keywords": [
+    "smm",
+    "youtube",
+    "marketplace",
+    "api"
+  ],
+  "author": "Alexander",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-no-secrets": "^2.2.1",
+    "eslint-plugin-security": "^3.0.1",
+    "eslint-plugin-sonarjs": "^3.0.6",
+    "eslint-plugin-unicorn": "^62.0.0",
+    "husky": "^9.1.7",
+    "jest": "^30.2.0",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
