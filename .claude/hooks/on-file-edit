@@ -1,6 +1,12 @@
 #!/bin/bash
 # Триггерится когда Claude редактирует файл через Edit tool
 
+# Load configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    source "$SCRIPT_DIR/config.sh"
+fi
+
 EDITED_FILE=$1
 
 echo "📝 File edited: $EDITED_FILE"
@@ -10,13 +16,38 @@ if [[ $EDITED_FILE == services/* ]]; then
     echo "⚠️  Service file changed, consider updating .claude.md"
 fi
 
-# 2. Запустить линтер для измененного файла
-if [[ $EDITED_FILE == *.ts || $EDITED_FILE == *.tsx ]]; then
-    npx eslint $EDITED_FILE --fix
+# 2. Запустить линтер для измененного файла (если Node.js проект)
+if [[ -f "package.json" && ($EDITED_FILE == *.ts || $EDITED_FILE == *.tsx || $EDITED_FILE == *.js || $EDITED_FILE == *.jsx) ]]; then
+    echo "🔍 Running ESLint..."
+    npx eslint "$EDITED_FILE" --fix 2>/dev/null || echo "⚠️  ESLint not configured"
 fi
 
-# 3. Автоформатирование
-npx prettier --write $EDITED_FILE
+# 3. Автоформатирование (если Node.js проект)
+if [[ -f "package.json" ]]; then
+    echo "✨ Running Prettier..."
+    npx prettier --write "$EDITED_FILE" 2>/dev/null || echo "⚠️  Prettier not configured"
+fi
 
-# 4. Проверка типов (быстрая)
-npx tsc --noEmit $EDITED_FILE 2>/dev/null || true
+# 4. Проверка типов для TypeScript файлов
+if [[ -f "tsconfig.json" && ($EDITED_FILE == *.ts || $EDITED_FILE == *.tsx) ]]; then
+    echo "🔎 Type checking..."
+    npx tsc --noEmit 2>/dev/null || echo "⚠️  Type check failed or TypeScript not configured"
+fi
+
+# 5. Получить документацию через Context7 для импортированных библиотек
+if [ "$ENABLE_CONTEXT7" = true ] && [ "$AUTO_FETCH_DOCS" = true ]; then
+    if [[ $EDITED_FILE == *.ts || $EDITED_FILE == *.tsx || $EDITED_FILE == *.js || $EDITED_FILE == *.jsx ]]; then
+        # Извлечь импорты из файла
+        IMPORTS=$(grep -E "^import.*from ['\"](.*)['\"]" "$EDITED_FILE" 2>/dev/null | sed -E "s/.*from ['\"]([^'\"]*)['\"].*/\1/" | grep -v "^\./" | head -5)
+
+        if [ -n "$IMPORTS" ]; then
+            echo "📚 Fetching documentation for imports..."
+            for lib in $IMPORTS; do
+                echo "  → $lib"
+                # Context7 работает через MCP, документация автоматически доступна Claude
+            done
+        fi
+    fi
+fi
+
+echo "✓ File processing complete"

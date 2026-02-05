@@ -9,3 +9,5 @@ build/
 .idea/
 coverage/
 .cache/
+
+/src/generated/prisma

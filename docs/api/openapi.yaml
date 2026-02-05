@@ -1,0 +1,227 @@
+openapi: 3.0.3
+info:
+  title: youboost API
+  description: |
+    SMM Marketplace API для продвижения YouTube контента.
+
+    ## Аутентификация
+    Все эндпоинты (кроме /auth/register и /auth/login) требуют JWT токен в header:
+    ```
+    Authorization: Bearer {access_token}
+    ```
+
+    ## Rate Limiting
+    - 100 запросов в минуту для аутентифицированных пользователей
+    - 10 запросов в минуту для неаутентифицированных
+
+    ## Errors
+    Все ошибки возвращаются в формате:
+    ```json
+    {
+      "error": {
+        "code": "ERROR_CODE",
+        "message": "Human readable error message",
+        "details": {}
+      }
+    }
+    ```
+  version: 0.1.0-alpha
+  contact:
+    name: youboost Support
+    email: support@youboost.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.youboost.com/v1
+    description: Production server
+  - url: https://api-staging.youboost.com/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Аутентификация и авторизация
+  - name: Orders
+    description: Управление заказами
+  - name: Billing
+    description: Баланс и транзакции
+  - name: Services
+    description: Доступные услуги
+  - name: Webhooks
+    description: Webhook уведомления
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT токен полученный через /auth/login
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input parameters
+            details:
+              type: object
+              additionalProperties: true
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - limit
+        - total
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          example: 150
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Номер страницы (1-based)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Количество элементов на странице
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    BadRequest:
+      description: Некорректные параметры запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid input parameters
+              details:
+                field: quantity
+                reason: must be greater than 0
+
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+
+    Forbidden:
+      description: Недостаточно прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Resource not found
+
+    TooManyRequests:
+      description: Превышен rate limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              message: Too many requests
+
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: Internal server error
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Проверка работоспособности API
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: API работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 0.1.0-alpha
+                  timestamp:
+                    type: string
+                    format: date-time
+
+# Подключение спецификаций отдельных сервисов будет добавлено позже
+# через $ref на отдельные файлы для каждого сервиса

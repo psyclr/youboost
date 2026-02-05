@@ -1,22 +1,46 @@
 #!/bin/bash
 # Триггерится когда Claude начинает работу над новой задачей
 
+# Load configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    source "$SCRIPT_DIR/config.sh"
+fi
+
 TASK_DESCRIPTION=$1
 
 echo "🚀 Starting task: $TASK_DESCRIPTION"
 
-# 1. Создать TODO в Notion (через MCP)
-# claude mcp notion create-task "$TASK_DESCRIPTION"
+# 1. Создать задачу в Linear (через MCP)
+if [ "$ENABLE_LINEAR" = true ] && [ "$AUTO_CREATE_LINEAR_TASKS" = true ]; then
+    if [ -n "$LINEAR_TEAM_ID" ]; then
+        echo "📋 Creating Linear issue..."
+        claude mcp linear create-issue \
+            --team-id "$LINEAR_TEAM_ID" \
+            --title "$TASK_DESCRIPTION" \
+            --state "In Progress" 2>/dev/null && echo "✓ Linear task created" || echo "⚠️  Failed to create Linear task"
+    else
+        echo "ℹ️  Linear Team ID not configured. Edit .claude/hooks/config.sh"
+    fi
+fi
 
 # 2. Создать feature branch если еще нет
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ $CURRENT_BRANCH == "main" || $CURRENT_BRANCH == "master" ]]; then
-    BRANCH_NAME=$(echo "$TASK_DESCRIPTION" | sed 's/ /-/g' | tr '[:upper:]' '[:lower:]' | head -c 50)
-    git checkout -b "feat/$BRANCH_NAME"
-    echo "✓ Created branch: feat/$BRANCH_NAME"
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [[ $? -eq 0 ]]; then
+    if [[ $CURRENT_BRANCH == "main" || $CURRENT_BRANCH == "master" ]]; then
+        BRANCH_NAME=$(echo "$TASK_DESCRIPTION" | sed 's/ /-/g' | tr '[:upper:]' '[:lower:]' | head -c 50)
+        git checkout -b "feat/$BRANCH_NAME" 2>/dev/null && echo "✓ Created branch: feat/$BRANCH_NAME"
+    fi
+else
+    echo "ℹ️  Not in a git repository, skipping branch creation"
 fi
 
 # 3. Обновить .claude.md секцию "🎯 Текущий фокус"
 if [ -f ".claude.md" ]; then
-    sed -i '' "s/## 🎯 Текущий фокус.*/## 🎯 Текущий фокус\\n$TASK_DESCRIPTION/" .claude.md
+    # macOS sed
+    sed -i '' "s|## 🎯 Текущий фокус.*|## 🎯 Текущий фокус\\n\\n$TASK_DESCRIPTION|" .claude.md 2>/dev/null || \
+    # Linux sed
+    sed -i "s|## 🎯 Текущий фокус.*|## 🎯 Текущий фокус\\n\\n$TASK_DESCRIPTION|" .claude.md 2>/dev/null
 fi
+
+echo "✓ Task started successfully"

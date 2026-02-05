@@ -1,0 +1,219 @@
+openapi: 3.0.3
+info:
+  title: youboost Billing Service API
+  description: API сервиса управления балансом и транзакциями
+  version: 0.0.0
+
+paths:
+  /billing/balance:
+    get:
+      summary: Получение текущего баланса
+      tags:
+        - Billing
+      responses:
+        '200':
+          description: Баланс пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    format: uuid
+                  balance:
+                    type: number
+                    format: float
+                    example: 100.50
+                    description: Общий баланс
+                  frozen:
+                    type: number
+                    format: float
+                    example: 25.00
+                    description: Замороженные средства (для активных заказов)
+                  available:
+                    type: number
+                    format: float
+                    example: 75.50
+                    description: Доступный баланс
+                  currency:
+                    type: string
+                    example: USD
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+
+  /billing/deposit:
+    post:
+      summary: Создание запроса на пополнение счета
+      tags:
+        - Billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+                - paymentMethod
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  minimum: 10
+                  example: 100.00
+                currency:
+                  type: string
+                  enum: [USD]
+                  example: USD
+                paymentMethod:
+                  type: string
+                  enum: [crypto]
+                  example: crypto
+                cryptoCurrency:
+                  type: string
+                  enum: [USDT, BTC, ETH]
+                  example: USDT
+                  description: Криптовалюта для оплаты (только для paymentMethod=crypto)
+      responses:
+        '201':
+          description: Запрос на пополнение создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  depositId:
+                    type: string
+                    format: uuid
+                  paymentAddress:
+                    type: string
+                    example: TRx1234567890abcdef
+                    description: Адрес для перевода криптовалюты
+                  amount:
+                    type: number
+                    format: float
+                    example: 100.00
+                  cryptoAmount:
+                    type: number
+                    format: float
+                    example: 100.15
+                    description: Сумма в криптовалюте
+                  cryptoCurrency:
+                    type: string
+                    example: USDT
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    description: Время истечения платежа
+                  status:
+                    type: string
+                    example: pending
+                  qrCode:
+                    type: string
+                    format: uri
+                    description: URL QR-кода для оплаты
+        '400':
+          $ref: '../openapi.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+
+  /billing/transactions:
+    get:
+      summary: История транзакций
+      tags:
+        - Billing
+      parameters:
+        - $ref: '../openapi.yaml#/components/parameters/PageParam'
+        - $ref: '../openapi.yaml#/components/parameters/LimitParam'
+        - name: type
+          in: query
+          description: Фильтр по типу транзакции
+          schema:
+            type: string
+            enum: [deposit, charge, freeze, unfreeze, refund]
+      responses:
+        '200':
+          description: Список транзакций
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  pagination:
+                    $ref: '../openapi.yaml#/components/schemas/Pagination'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+
+  /billing/transactions/{transactionId}:
+    get:
+      summary: Детали транзакции
+      tags:
+        - Billing
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Детали транзакции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetailed'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi.yaml#/components/responses/NotFound'
+
+components:
+  schemas:
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [deposit, charge, freeze, unfreeze, refund]
+        amount:
+          type: number
+          format: float
+          example: 100.00
+        status:
+          type: string
+          enum: [pending, completed, failed, cancelled]
+        createdAt:
+          type: string
+          format: date-time
+
+    TransactionDetailed:
+      allOf:
+        - $ref: '#/components/schemas/Transaction'
+        - type: object
+          properties:
+            description:
+              type: string
+              example: Deposit via USDT
+            metadata:
+              type: object
+              additionalProperties: true
+              description: Дополнительные данные (orderId, paymentAddress, etc)
+            balanceBefore:
+              type: number
+              format: float
+            balanceAfter:
+              type: number
+              format: float
+            completedAt:
+              type: string
+              format: date-time

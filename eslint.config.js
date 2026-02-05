@@ -70,6 +70,14 @@ module.exports = [
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', 'coverage/', '*.config.js'],
+    ignores: [
+      'node_modules/',
+      'dist/',
+      'coverage/',
+      '*.config.js',
+      'prisma.config.ts',
+      '.claude/',
+      'docs/',
+    ],
   },
 ];

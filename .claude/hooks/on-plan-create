@@ -1,22 +1,61 @@
 #!/bin/bash
 # Триггерится когда Claude создает план в plan mode
 
+# Load configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    source "$SCRIPT_DIR/config.sh"
+fi
+
 PLAN_FILE=$1
 
 echo "📋 Plan created: $PLAN_FILE"
 
 # 1. Валидация плана
-if ! grep -q "## Verification" "$PLAN_FILE"; then
-    echo "⚠️  Warning: Plan missing verification section"
+if [ -f "$PLAN_FILE" ]; then
+    if ! grep -q "## Verification" "$PLAN_FILE" 2>/dev/null; then
+        echo "⚠️  Warning: Plan missing verification section"
+    fi
+else
+    echo "⚠️  Plan file not found: $PLAN_FILE"
+    exit 1
 fi
 
 # 2. Сохранить копию плана в docs/plans/
 mkdir -p docs/plans
 PLAN_NAME=$(basename "$PLAN_FILE")
 DATE=$(date +%Y-%m-%d)
-cp "$PLAN_FILE" "docs/plans/${DATE}-${PLAN_NAME}" 2>/dev/null || true
+SAVED_PLAN="docs/plans/${DATE}-${PLAN_NAME}"
+cp "$PLAN_FILE" "$SAVED_PLAN" 2>/dev/null && echo "✓ Plan saved to: $SAVED_PLAN"
 
 # 3. Обновить .claude.md с ссылкой на план
 if [ -f ".claude.md" ]; then
-    echo "📎 Plan: docs/plans/${DATE}-${PLAN_NAME}" >> .claude.md
+    echo "- [Plan: ${DATE}]($SAVED_PLAN)" >> .claude.md
 fi
+
+# 4. Создать GitHub issue с планом
+if [ "$ENABLE_GITHUB" = true ] && [ -n "$GITHUB_REPO" ]; then
+    PLAN_TITLE=$(head -n 1 "$PLAN_FILE" 2>/dev/null | sed 's/^# //' || echo "Implementation Plan")
+    PLAN_CONTENT=$(cat "$PLAN_FILE")
+
+    echo "📝 Creating GitHub issue with plan..."
+    claude mcp github create-issue \
+        --repo "$GITHUB_REPO" \
+        --title "📋 Plan: $PLAN_TITLE" \
+        --body "$PLAN_CONTENT" \
+        --labels "planning,documentation" 2>/dev/null && echo "✓ GitHub issue created" || echo "ℹ️  GitHub repo not configured"
+fi
+
+# 5. Создать Linear issue из плана
+if [ "$ENABLE_LINEAR" = true ] && [ -n "$LINEAR_TEAM_ID" ]; then
+    PLAN_TITLE=$(head -n 1 "$PLAN_FILE" 2>/dev/null | sed 's/^# //' || echo "Implementation Plan")
+
+    echo "📋 Creating Linear issue from plan..."
+    claude mcp linear create-issue \
+        --team-id "$LINEAR_TEAM_ID" \
+        --title "$PLAN_TITLE" \
+        --description "See plan: $SAVED_PLAN" \
+        --state "Planned" 2>/dev/null && echo "✓ Linear issue created" || echo "ℹ️  Linear not configured"
+fi
+
+echo "✓ Plan processing complete"

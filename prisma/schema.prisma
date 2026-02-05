@@ -1,0 +1,265 @@
+// Prisma schema для youboost SMM Platform
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole @default(USER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  wallets  Wallet[]
+  ledger   Ledger[]
+  orders   Order[]
+  apiKeys  ApiKey[]
+  webhooks Webhook[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  RESELLER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+// ============================================
+// BILLING
+// ============================================
+
+model Wallet {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  balance    Decimal  @default(0.00) @db.Decimal(15, 2)
+  currency   String   @default("USD") @db.VarChar(10)
+  holdAmount Decimal  @default(0.00) @map("hold_amount") @db.Decimal(15, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger Ledger[]
+
+  @@unique([userId, currency])
+  @@index([userId])
+  @@map("wallets")
+}
+
+model Ledger {
+  id            String          @id @default(uuid()) @db.Uuid
+  userId        String          @map("user_id") @db.Uuid
+  walletId      String          @map("wallet_id") @db.Uuid
+  type          LedgerType
+  amount        Decimal         @db.Decimal(15, 2)
+  balanceBefore Decimal         @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter  Decimal         @map("balance_after") @db.Decimal(15, 2)
+  referenceType String?         @map("reference_type") @db.VarChar(50)
+  referenceId   String?         @map("reference_id") @db.Uuid
+  description   String?         @db.Text
+  metadata      Json?
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id])
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([userId])
+  @@index([walletId])
+  @@index([createdAt(sort: Desc)])
+  @@index([referenceType, referenceId])
+  @@map("ledger")
+}
+
+enum LedgerType {
+  DEPOSIT
+  WITHDRAW
+  HOLD
+  RELEASE
+  REFUND
+  FEE
+}
+
+// ============================================
+// SERVICES & ORDERS
+// ============================================
+
+model Service {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(255)
+  description  String?  @db.Text
+  platform     Platform
+  type         ServiceType
+  pricePer1000 Decimal  @map("price_per_1000") @db.Decimal(10, 2)
+  minQuantity  Int      @map("min_quantity")
+  maxQuantity  Int      @map("max_quantity")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  orders Order[]
+
+  @@index([platform])
+  @@index([type])
+  @@index([isActive])
+  @@map("services")
+}
+
+enum Platform {
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
+  TWITTER
+  FACEBOOK
+}
+
+enum ServiceType {
+  VIEWS
+  SUBSCRIBERS
+  LIKES
+  COMMENTS
+  SHARES
+}
+
+model Order {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  serviceId       String      @map("service_id") @db.Uuid
+  providerId      String?     @map("provider_id") @db.Uuid
+  externalOrderId String?     @map("external_order_id") @db.VarChar(255)
+
+  // Детали заказа
+  link     String  @db.Text
+  quantity Int
+  price    Decimal @db.Decimal(10, 2)
+
+  // Статусы
+  status      OrderStatus @default(PENDING)
+  startCount  Int?        @map("start_count")
+  remains     Int?
+
+  // Timestamps
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id])
+  service  Service   @relation(fields: [serviceId], references: [id])
+  provider Provider? @relation(fields: [providerId], references: [id])
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  CANCELLED
+  FAILED
+  REFUNDED
+}
+
+// ============================================
+// PROVIDERS
+// ============================================
+
+model Provider {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  apiEndpoint     String   @map("api_endpoint") @db.Text
+  apiKeyEncrypted String   @map("api_key_encrypted") @db.Text
+  isActive        Boolean  @default(true) @map("is_active")
+  priority        Int      @default(0)
+  balance         Decimal? @db.Decimal(15, 2)
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  orders Order[]
+
+  @@index([isActive])
+  @@index([priority(sort: Desc)])
+  @@map("providers")
+}
+
+// ============================================
+// API & WEBHOOKS
+// ============================================
+
+model ApiKey {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  keyHash       String        @unique @map("key_hash") @db.VarChar(255)
+  name          String        @db.VarChar(255)
+  permissions   Json?
+  rateLimitTier RateLimitTier @default(BASIC) @map("rate_limit_tier")
+  isActive      Boolean       @default(true) @map("is_active")
+  lastUsedAt    DateTime?     @map("last_used_at") @db.Timestamptz(6)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt     DateTime?     @map("expires_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+  @@index([isActive])
+  @@map("api_keys")
+}
+
+enum RateLimitTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+model Webhook {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  url             String    @db.Text
+  events          String[]
+  secret          String    @db.VarChar(255)
+  isActive        Boolean   @default(true) @map("is_active")
+  lastTriggeredAt DateTime? @map("last_triggered_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("webhooks")
+}

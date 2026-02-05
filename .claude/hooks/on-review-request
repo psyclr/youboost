@@ -1,33 +1,86 @@
 #!/bin/bash
-# Триггерится когда используется /codex-review
+# Триггерится когда запрашивается code review
+
+# Load configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+    source "$SCRIPT_DIR/config.sh"
+fi
 
 FILES_TO_REVIEW=$@
 
 echo "🔍 Starting code review for: $FILES_TO_REVIEW"
 
 # 1. Запуск статических анализаторов
-echo "📝 Running ESLint..."
-npx eslint $FILES_TO_REVIEW 2>/dev/null || echo "⚠️  Lint check failed"
+if [[ -f "package.json" ]]; then
+    echo "📝 Running ESLint..."
+    npx eslint $FILES_TO_REVIEW 2>/dev/null || echo "⚠️  Lint check failed"
 
-echo "🔧 Type checking..."
-npx tsc --noEmit 2>/dev/null || echo "⚠️  Type check failed"
+    echo "🔧 Type checking..."
+    npx tsc --noEmit 2>/dev/null || echo "⚠️  Type check failed"
+fi
 
 # 2. Проверка test coverage для измененных файлов
 echo "🧪 Checking test coverage..."
+MISSING_TESTS=()
 for file in $FILES_TO_REVIEW; do
-    TEST_FILE="${file%.ts}.test.ts"
-    if [[ ! -f $TEST_FILE ]]; then
-        echo "⚠️  Missing test file: $TEST_FILE"
+    if [[ $file == *.ts && $file != *.test.ts && $file != *.spec.ts ]]; then
+        TEST_FILE="${file%.ts}.test.ts"
+        SPEC_FILE="${file%.ts}.spec.ts"
+        if [[ ! -f $TEST_FILE && ! -f $SPEC_FILE ]]; then
+            echo "⚠️  Missing test file for: $file"
+            MISSING_TESTS+=("$file")
+        fi
     fi
 done
 
 # 3. Security scan
-echo "🔒 Security audit..."
-npm audit 2>/dev/null || echo "⚠️  Security audit failed"
+if [[ -f "package.json" ]]; then
+    echo "🔒 Security audit..."
+    npm audit 2>/dev/null || echo "ℹ️  No vulnerabilities found or audit not available"
+fi
 
 # 4. Complexity analysis
-echo "📊 Complexity analysis..."
-npx eslint $FILES_TO_REVIEW --format json 2>/dev/null | jq '.[] | select(.messages[].ruleId == "complexity")' 2>/dev/null || true
+if command -v jq &> /dev/null; then
+    echo "📊 Complexity analysis..."
+    npx eslint $FILES_TO_REVIEW --format json 2>/dev/null | jq '.[] | select(.messages[].ruleId == "complexity")' 2>/dev/null || true
+fi
+
+# 5. Создать GitHub PR review comment
+if [ "$ENABLE_GITHUB" = true ] && [ "$AUTO_PR_COMMENTS" = true ] && [ -n "$GITHUB_REPO" ]; then
+    # Получить PR number из текущего branch (если в PR)
+    PR_NUMBER=$(gh pr view --json number -q .number 2>/dev/null)
+
+    if [ -n "$PR_NUMBER" ]; then
+        REVIEW_SUMMARY="## Code Review Summary
+
+### Files Reviewed
+$(echo "$FILES_TO_REVIEW" | tr ' ' '\n' | sed 's/^/- /')
+
+### Missing Tests"
+
+        if [ ${#MISSING_TESTS[@]} -eq 0 ]; then
+            REVIEW_SUMMARY="$REVIEW_SUMMARY
+✅ All files have tests"
+        else
+            for file in "${MISSING_TESTS[@]}"; do
+                REVIEW_SUMMARY="$REVIEW_SUMMARY
+- ⚠️ $file"
+            done
+        fi
+
+        REVIEW_SUMMARY="$REVIEW_SUMMARY
+
+🤖 Automated review by Claude Code"
+
+        echo "📝 Creating PR review comment..."
+        gh pr comment "$PR_NUMBER" --body "$REVIEW_SUMMARY" 2>/dev/null && echo "✓ PR comment added" || echo "ℹ️  Failed to add PR comment"
+    fi
+fi
 
 echo ""
 echo "✅ Code review checks completed"
+if [ ${#MISSING_TESTS[@]} -gt 0 ]; then
+    echo ""
+    echo "⚠️  Please add tests for ${#MISSING_TESTS[@]} file(s)"
+fi

@@ -1,0 +1,212 @@
+openapi: 3.0.3
+info:
+  title: youboost Order Service API
+  description: API сервиса управления заказами
+  version: 0.0.0
+
+paths:
+  /orders:
+    get:
+      summary: Список заказов пользователя
+      tags:
+        - Orders
+      parameters:
+        - $ref: '../openapi.yaml#/components/parameters/PageParam'
+        - $ref: '../openapi.yaml#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Фильтр по статусу
+          schema:
+            type: string
+            enum: [pending, processing, in_progress, completed, partial, cancelled, refunded]
+        - name: serviceId
+          in: query
+          description: Фильтр по типу услуги
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Список заказов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  pagination:
+                    $ref: '../openapi.yaml#/components/schemas/Pagination'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+
+    post:
+      summary: Создание нового заказа
+      tags:
+        - Orders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - serviceId
+                - link
+                - quantity
+              properties:
+                serviceId:
+                  type: string
+                  example: youtube_views
+                link:
+                  type: string
+                  format: uri
+                  example: https://youtube.com/watch?v=dQw4w9WgXcQ
+                quantity:
+                  type: integer
+                  minimum: 1
+                  example: 1000
+                comments:
+                  type: string
+                  maxLength: 500
+                  example: Optional comments for provider
+      responses:
+        '201':
+          description: Заказ успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '../openapi.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+        '402':
+          description: Недостаточно средств
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Error'
+
+  /orders/{orderId}:
+    get:
+      summary: Получение информации о заказе
+      tags:
+        - Orders
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Информация о заказе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailed'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi.yaml#/components/responses/NotFound'
+
+    delete:
+      summary: Отмена заказа
+      tags:
+        - Orders
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Заказ успешно отменен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    example: cancelled
+                  refundAmount:
+                    type: number
+                    format: float
+                    example: 2.50
+                  cancelledAt:
+                    type: string
+                    format: date-time
+        '400':
+          description: Заказ не может быть отменен
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/Error'
+        '401':
+          $ref: '../openapi.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi.yaml#/components/responses/NotFound'
+
+components:
+  schemas:
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          example: youtube_views
+        status:
+          type: string
+          enum: [pending, processing, in_progress, completed, partial, cancelled, refunded]
+        quantity:
+          type: integer
+          example: 1000
+        completed:
+          type: integer
+          example: 450
+          description: Количество выполненных единиц
+        price:
+          type: number
+          format: float
+          example: 5.00
+        createdAt:
+          type: string
+          format: date-time
+
+    OrderDetailed:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          properties:
+            link:
+              type: string
+              format: uri
+            startCount:
+              type: integer
+              example: 5432
+              description: Начальное количество (до заказа)
+            remains:
+              type: integer
+              example: 550
+              description: Осталось выполнить
+            updatedAt:
+              type: string
+              format: date-time
+            estimatedCompletion:
+              type: string
+              format: date-time
+              description: Ожидаемое время завершения
+            comments:
+              type: string
