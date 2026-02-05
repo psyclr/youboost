@@ -6,8 +6,7 @@
 # GitHub Integration
 # ============================================
 # Формат: owner/repository
-# Пример: "username/youboost"
-export GITHUB_REPO=""  # НАСТРОЙТЕ: укажите ваш репозиторий
+export GITHUB_REPO="psyclr/youboost"  # ✓ Configured
 
 # ============================================
 # Linear Integration
