@@ -17,7 +17,7 @@ export GITHUB_REPO="psyclr/youboost"  # ✓ Configured
 # 3. URL будет вида: linear.app/TEAM_NAME/issue/...
 # 4. Team ID = TEAM_NAME
 # Или используйте Linear API для получения списка teams
-export LINEAR_TEAM_ID=""  # НАСТРОЙТЕ: укажите ваш Team ID
+export LINEAR_TEAM_ID="SMM"  # ✓ Configured
 
 # ============================================
 # Context7 Integration

@@ -13,13 +13,22 @@
 - ✅ Сохранение планов в виде issues
 - ✅ PR review comments (опционально)
 
-### 2. Context7 Documentation ✓
+### 2. Linear Integration ✓
+
+**Team**: SMM
+
+- ✅ Автоматическое создание задач при начале работы
+- ✅ Обновление статусов задач
+- ✅ Feature branch для каждой задачи
+- ✅ Интеграция через Linear API
+
+### 3. Context7 Documentation ✓
 
 - ✅ Автоматически получает документацию для библиотек
 - ✅ Работает через MCP без настройки
 - ✅ Доступно через Claude Code
 
-### 3. Claude Code Hooks ✓
+### 4. Claude Code Hooks ✓
 
 Все hooks активированы и настроены:
 
@@ -30,51 +39,7 @@
 - ✅ `on-plan-create` - сохранение планов
 - ✅ `on-review-request` - code review automation
 
-## ⚙️ Что нужно настроить
-
-### Linear Integration (опционально)
-
-Если хотите использовать Linear для управления задачами:
-
-1. **Найдите ваш Linear Team ID:**
-
-   **Способ 1: Через URL**
-
-   ```
-   1. Откройте любую issue в Linear
-   2. URL будет вида: linear.app/TEAM_NAME/issue/...
-   3. TEAM_NAME - это ваш Team ID
-   ```
-
-   **Способ 2: Через Linear API** (если доступен MCP)
-
-   ```bash
-   # Используйте Claude для получения списка teams
-   claude mcp linear list-teams
-   ```
-
-2. **Настройте конфигурацию:**
-
-   ```bash
-   # Откройте файл
-   nano .claude/hooks/config.sh
-
-   # Найдите строку
-   export LINEAR_TEAM_ID=""
-
-   # Замените на ваш Team ID
-   export LINEAR_TEAM_ID="your-team-id-here"
-   ```
-
-3. **Сохраните и закройте** (Ctrl+O, Enter, Ctrl+X)
-
-4. **Протестируйте:**
-   ```bash
-   source .claude/hooks/config.sh
-   echo $LINEAR_TEAM_ID
-   ```
-
-### Управление интеграциями
+## ⚙️ Управление интеграциями
 
 Все настройки в файле `.claude/hooks/config.sh`:
 
