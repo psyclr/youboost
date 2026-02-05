@@ -1,6 +1,13 @@
 # youboost SMM Marketplace Platform
 
-Автоматизированный SMM-маркетплейс для YouTube и других платформ.
+🚀 Автоматизированный SMM-маркетплейс для YouTube и других платформ.
+
+[![GitHub](https://img.shields.io/badge/GitHub-psyclr%2Fyouboost-blue)](https://github.com/psyclr/youboost)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](package.json)
+[![TypeScript](https://img.shields.io/badge/typescript-5.x-blue)](package.json)
+
+> **Статус**: 🏗️ В разработке (Phase 0 завершена, Phase 1 в процессе)
 
 ## Структура проекта
 
@@ -59,6 +66,57 @@ npm run validate   # Полная валидация (lint + typecheck + test)
 
 ## Документация
 
+### Архитектура и план
+
 - [План архитектуры](<./План%20архитектуры%20платформы%20youboost%20для%20SMM-маркетплейса%20(1).pdf>)
 - [Исследование рынка](<./Глубокое%20исследование%20рынка%20SMM-панелей%20(фокус%20на%20YouTube).pdf>)
-- [Claude контекст](./.claude.md) (будет создан)
+
+### API документация
+
+- [OpenAPI Specification](./docs/api/openapi.yaml) - Основная спецификация API
+- [Auth Service API](./docs/api/auth-service.yaml) - Аутентификация
+- [Orders Service API](./docs/api/orders-service.yaml) - Управление заказами
+- [Billing Service API](./docs/api/billing-service.yaml) - Биллинг и транзакции
+
+### Микросервисы
+
+- [Auth Service](./services/auth-service/README.md) - Документация сервиса аутентификации
+- [Billing Service](./services/billing-service/README.md) - Документация биллинг-сервиса
+- [Order Service](./services/order-service/README.md) - Документация сервиса заказов
+- [Provider Adapter](./services/provider-adapter/README.md) - Документация адаптера провайдеров
+- [Notification Service](./services/notification-service/README.md) - Документация сервиса уведомлений
+
+### Разработка
+
+- [Claude Code Context](./.claude.md) - Контекст проекта для Claude
+- [MCP Integrations Setup](./MCP_SETUP.md) - 🔌 Настройка MCP интеграций (GitHub, Linear, Context7)
+- [Claude Code Hooks](./.claude/hooks/README.md) - Автоматизация через hooks
+
+## 🔌 MCP Интеграции
+
+Проект использует MCP (Model Context Protocol) для автоматизации:
+
+- ✅ **GitHub** - Автоматические issues, PR reviews
+- ✅ **Context7** - Документация библиотек
+- ⚙️ **Linear** - Управление задачами (требует настройки Team ID)
+
+**Подробнее**: [MCP_SETUP.md](./MCP_SETUP.md)
+
+## 🤝 Contributing
+
+1. Клонируйте репозиторий
+2. Создайте feature branch (`git checkout -b feat/amazing-feature`)
+3. Commit изменения (`git commit -m 'feat: add amazing feature'`)
+4. Push в branch (`git push origin feat/amazing-feature`)
+5. Откройте Pull Request
+
+Все commits должны следовать [Conventional Commits](https://www.conventionalcommits.org/) формату.
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file for details
+
+## 🔗 Links
+
+- **GitHub**: [psyclr/youboost](https://github.com/psyclr/youboost)
+- **Issues**: [Report a bug](https://github.com/psyclr/youboost/issues/new)
