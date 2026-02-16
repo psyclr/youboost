@@ -5,6 +5,7 @@ import { holdFunds, releaseFunds } from '../billing';
 import { selectProvider } from '../providers';
 import * as serviceRepo from './service.repository';
 import * as ordersRepo from './orders.repository';
+import { enqueueWebhookDelivery } from '../webhooks';
 import type {
   CreateOrderInput,
   OrdersQuery,
@@ -83,6 +84,14 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
 
   log.info({ userId, orderId: order.id, price }, 'Order created');
 
+  enqueueWebhookDelivery(userId, 'order.created', {
+    orderId: order.id,
+    status: updated.status,
+    price,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
+
   return mapOrderToDetailed(updated);
 }
 
@@ -140,6 +149,14 @@ export async function cancelOrder(userId: string, orderId: string): Promise<Canc
   });
 
   log.info({ userId, orderId, refundAmount }, 'Order cancelled');
+
+  enqueueWebhookDelivery(userId, 'order.cancelled', {
+    orderId: updated.id,
+    status: updated.status,
+    refundAmount,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
 
   return {
     orderId: updated.id,

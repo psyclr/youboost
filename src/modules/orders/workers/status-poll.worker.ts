@@ -8,6 +8,7 @@ import { providerClient as stubClient } from '../utils/stub-provider-client';
 import { isCircuitOpen, recordFailure, recordSuccess } from '../utils/circuit-breaker';
 import { mapProviderStatus, isTerminalStatus } from '../utils/status-mapper';
 import { settleFunds } from '../utils/fund-settlement';
+import { enqueueWebhookDelivery } from '../../webhooks';
 import type { ProviderClient } from '../utils/provider-client';
 import type { OrderRecord, UpdateOrderData } from '../orders.types';
 
@@ -98,6 +99,22 @@ async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Prom
   if (isTerminalStatus(newStatus)) {
     const updatedOrder = { ...order, remains: result.remains ?? order.remains };
     await settleFunds(updatedOrder, newStatus);
+
+    const eventMap: Record<string, string> = {
+      COMPLETED: 'order.completed',
+      FAILED: 'order.failed',
+      PARTIAL: 'order.partial',
+    };
+    const webhookEvent = eventMap[newStatus];
+    if (webhookEvent) {
+      enqueueWebhookDelivery(order.userId, webhookEvent, {
+        orderId: order.id,
+        status: newStatus,
+        remains: updatedOrder.remains,
+      }).catch(() => {
+        /* fire-and-forget */
+      });
+    }
   }
 
   log.info({ orderId: order.id, oldStatus: order.status, newStatus }, 'Order status updated');

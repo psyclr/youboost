@@ -165,6 +165,48 @@ describe('Environment Config', () => {
     });
   });
 
+  describe('apiKeys config', () => {
+    it('should apply apiKeys defaults', () => {
+      const config = loadConfig(validEnv);
+      expect(config.apiKeys.rateBasic).toBe(100);
+      expect(config.apiKeys.ratePro).toBe(500);
+      expect(config.apiKeys.rateEnterprise).toBe(2000);
+    });
+
+    it('should accept custom API_KEY_RATE_BASIC', () => {
+      const config = loadConfig({ ...validEnv, API_KEY_RATE_BASIC: '200' });
+      expect(config.apiKeys.rateBasic).toBe(200);
+    });
+
+    it('should accept custom API_KEY_RATE_PRO', () => {
+      const config = loadConfig({ ...validEnv, API_KEY_RATE_PRO: '1000' });
+      expect(config.apiKeys.ratePro).toBe(1000);
+    });
+
+    it('should accept custom API_KEY_RATE_ENTERPRISE', () => {
+      const config = loadConfig({ ...validEnv, API_KEY_RATE_ENTERPRISE: '5000' });
+      expect(config.apiKeys.rateEnterprise).toBe(5000);
+    });
+
+    it('should include apiKeys in frozen config', () => {
+      const config = loadConfig(validEnv);
+      expect(config.apiKeys).toBeDefined();
+      expect(Object.isFrozen(config)).toBe(true);
+    });
+
+    it('should coerce string rate limits to numbers', () => {
+      const config = loadConfig({
+        ...validEnv,
+        API_KEY_RATE_BASIC: '50',
+        API_KEY_RATE_PRO: '250',
+        API_KEY_RATE_ENTERPRISE: '1500',
+      });
+      expect(typeof config.apiKeys.rateBasic).toBe('number');
+      expect(typeof config.apiKeys.ratePro).toBe('number');
+      expect(typeof config.apiKeys.rateEnterprise).toBe('number');
+    });
+  });
+
   describe('getConfig / resetConfig', () => {
     const originalEnv = process.env;
 

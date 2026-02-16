@@ -44,6 +44,11 @@ jest.mock('../../utils/circuit-breaker', () => ({
   recordFailure: jest.fn(),
   recordSuccess: jest.fn(),
 }));
+const mockEnqueueWebhookDelivery = jest.fn();
+
+jest.mock('../../../webhooks', () => ({
+  enqueueWebhookDelivery: (...args: unknown[]): unknown => mockEnqueueWebhookDelivery(...args),
+}));
 jest.mock('../../utils/fund-settlement', () => ({
   settleFunds: (...args: unknown[]): unknown => mockSettleFunds(...args),
 }));
@@ -82,6 +87,7 @@ describe('Status Poll Worker', () => {
     mockFindProcessingOrders.mockResolvedValue([]);
     mockUpdateOrderStatus.mockResolvedValue({});
     mockSettleFunds.mockResolvedValue(undefined);
+    mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
     (isCircuitOpen as jest.Mock).mockReturnValue(false);
   });
 
@@ -251,5 +257,45 @@ describe('Status Poll Worker', () => {
   it('should use batchSize from config', async () => {
     await pollOrderStatuses();
     expect(mockFindProcessingOrders).toHaveBeenCalledWith(100);
+  });
+
+  it('should dispatch order.completed webhook on COMPLETED status', async () => {
+    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
+    await pollOrderStatuses();
+    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
+      'user-1',
+      'order.completed',
+      expect.objectContaining({ orderId: 'order-1', status: 'COMPLETED' }),
+    );
+  });
+
+  it('should dispatch order.failed webhook on FAILED status', async () => {
+    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'error' }));
+    await pollOrderStatuses();
+    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
+      'user-1',
+      'order.failed',
+      expect.objectContaining({ orderId: 'order-1', status: 'FAILED' }),
+    );
+  });
+
+  it('should dispatch order.partial webhook on PARTIAL status', async () => {
+    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 300 }));
+    await pollOrderStatuses();
+    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
+      'user-1',
+      'order.partial',
+      expect.objectContaining({ orderId: 'order-1', status: 'PARTIAL', remains: 300 }),
+    );
+  });
+
+  it('should not dispatch webhook for non-terminal statuses', async () => {
+    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await pollOrderStatuses();
+    expect(mockEnqueueWebhookDelivery).not.toHaveBeenCalled();
   });
 });

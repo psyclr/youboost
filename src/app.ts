@@ -10,6 +10,8 @@ import { authRoutes } from './modules/auth';
 import { billingRoutes } from './modules/billing';
 import { orderRoutes } from './modules/orders';
 import { providerRoutes } from './modules/providers';
+import { apiKeyRoutes } from './modules/api-keys';
+import { webhookRoutes } from './modules/webhooks';
 
 const log = createServiceLogger('http');
 
@@ -91,6 +93,8 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(orderRoutes, { prefix: '/orders' });
   await app.register(providerRoutes, { prefix: '/providers' });
+  await app.register(apiKeyRoutes, { prefix: '/api-keys' });
+  await app.register(webhookRoutes, { prefix: '/webhooks' });
 
   return app;
 }

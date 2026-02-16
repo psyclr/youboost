@@ -55,6 +55,18 @@ const envSchema = z.object({
     .string()
     .default('60000')
     .transform((val) => Number.parseInt(val, 10)),
+  API_KEY_RATE_BASIC: z
+    .string()
+    .default('100')
+    .transform((val) => Number.parseInt(val, 10)),
+  API_KEY_RATE_PRO: z
+    .string()
+    .default('500')
+    .transform((val) => Number.parseInt(val, 10)),
+  API_KEY_RATE_ENTERPRISE: z
+    .string()
+    .default('2000')
+    .transform((val) => Number.parseInt(val, 10)),
 });
 
 export interface AppConfig {
@@ -86,6 +98,11 @@ export interface AppConfig {
     batchSize: number;
     circuitBreakerThreshold: number;
     circuitBreakerCooldownMs: number;
+  };
+  apiKeys: {
+    rateBasic: number;
+    ratePro: number;
+    rateEnterprise: number;
   };
 }
 
@@ -121,6 +138,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       batchSize: parsed.ORDER_POLL_BATCH_SIZE,
       circuitBreakerThreshold: parsed.CIRCUIT_BREAKER_THRESHOLD,
       circuitBreakerCooldownMs: parsed.CIRCUIT_BREAKER_COOLDOWN_MS,
+    },
+    apiKeys: {
+      rateBasic: parsed.API_KEY_RATE_BASIC,
+      ratePro: parsed.API_KEY_RATE_PRO,
+      rateEnterprise: parsed.API_KEY_RATE_ENTERPRISE,
     },
   };
 
