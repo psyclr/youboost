@@ -129,6 +129,42 @@ describe('Environment Config', () => {
     expect(() => loadConfig({ ...validEnv, PROVIDER_MODE: 'invalid' })).toThrow();
   });
 
+  describe('polling config', () => {
+    it('should apply polling defaults', () => {
+      const config = loadConfig(validEnv);
+      expect(config.polling.intervalMs).toBe(30_000);
+      expect(config.polling.batchSize).toBe(100);
+      expect(config.polling.circuitBreakerThreshold).toBe(5);
+      expect(config.polling.circuitBreakerCooldownMs).toBe(60_000);
+    });
+
+    it('should accept custom ORDER_POLL_INTERVAL_MS', () => {
+      const config = loadConfig({ ...validEnv, ORDER_POLL_INTERVAL_MS: '15000' });
+      expect(config.polling.intervalMs).toBe(15_000);
+    });
+
+    it('should accept custom ORDER_POLL_BATCH_SIZE', () => {
+      const config = loadConfig({ ...validEnv, ORDER_POLL_BATCH_SIZE: '50' });
+      expect(config.polling.batchSize).toBe(50);
+    });
+
+    it('should accept custom CIRCUIT_BREAKER_THRESHOLD', () => {
+      const config = loadConfig({ ...validEnv, CIRCUIT_BREAKER_THRESHOLD: '10' });
+      expect(config.polling.circuitBreakerThreshold).toBe(10);
+    });
+
+    it('should accept custom CIRCUIT_BREAKER_COOLDOWN_MS', () => {
+      const config = loadConfig({ ...validEnv, CIRCUIT_BREAKER_COOLDOWN_MS: '120000' });
+      expect(config.polling.circuitBreakerCooldownMs).toBe(120_000);
+    });
+
+    it('should include polling in frozen config', () => {
+      const config = loadConfig(validEnv);
+      expect(config.polling).toBeDefined();
+      expect(Object.isFrozen(config)).toBe(true);
+    });
+  });
+
   describe('getConfig / resetConfig', () => {
     const originalEnv = process.env;
 

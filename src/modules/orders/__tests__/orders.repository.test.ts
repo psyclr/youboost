@@ -1,4 +1,10 @@
-import { createOrder, findOrderById, findOrders, updateOrderStatus } from '../orders.repository';
+import {
+  createOrder,
+  findOrderById,
+  findOrders,
+  findProcessingOrders,
+  updateOrderStatus,
+} from '../orders.repository';
 
 const mockCreate = jest.fn();
 const mockFindFirst = jest.fn();
@@ -141,6 +147,38 @@ describe('Orders Repository', () => {
       expect(mockFindMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { createdAt: 'desc' } }),
       );
+    });
+  });
+
+  describe('findProcessingOrders', () => {
+    it('should query orders with PROCESSING status and non-null externalOrderId', async () => {
+      const processingOrder = { ...mockOrder, status: 'PROCESSING', externalOrderId: 'ext-1' };
+      mockFindMany.mockResolvedValue([processingOrder]);
+
+      const result = await findProcessingOrders(100);
+
+      expect(result).toEqual([processingOrder]);
+      expect(mockFindMany).toHaveBeenCalledWith({
+        where: { status: 'PROCESSING', externalOrderId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        take: 100,
+      });
+    });
+
+    it('should return empty array when no processing orders exist', async () => {
+      mockFindMany.mockResolvedValue([]);
+
+      const result = await findProcessingOrders(50);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should respect batchSize parameter', async () => {
+      mockFindMany.mockResolvedValue([]);
+
+      await findProcessingOrders(25);
+
+      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 25 }));
     });
   });
 

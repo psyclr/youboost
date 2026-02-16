@@ -55,6 +55,15 @@ export async function findOrders(
   return { orders, total };
 }
 
+export async function findProcessingOrders(batchSize: number): Promise<OrderRecord[]> {
+  const prisma = getPrisma();
+  return prisma.order.findMany({
+    where: { status: 'PROCESSING' as OrderStatus, externalOrderId: { not: null } },
+    orderBy: { createdAt: 'asc' },
+    take: batchSize,
+  });
+}
+
 export async function updateOrderStatus(
   orderId: string,
   data: UpdateOrderData,

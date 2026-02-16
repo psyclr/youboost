@@ -1,0 +1,104 @@
+import { getConfig } from '../../../shared/config';
+import { createServiceLogger } from '../../../shared/utils/logger';
+import * as ordersRepo from '../orders.repository';
+import { findProviderById } from '../../providers/providers.repository';
+import { decryptApiKey } from '../../providers/utils/encryption';
+import { createSmmApiClient } from '../../providers/utils/smm-api-client';
+import { providerClient as stubClient } from '../utils/stub-provider-client';
+import { isCircuitOpen, recordFailure, recordSuccess } from '../utils/circuit-breaker';
+import { mapProviderStatus, isTerminalStatus } from '../utils/status-mapper';
+import { settleFunds } from '../utils/fund-settlement';
+import type { ProviderClient } from '../utils/provider-client';
+import type { OrderRecord, UpdateOrderData } from '../orders.types';
+
+const log = createServiceLogger('status-poll');
+
+export async function pollOrderStatuses(): Promise<void> {
+  const config = getConfig();
+  const { batchSize, circuitBreakerThreshold, circuitBreakerCooldownMs } = config.polling;
+
+  const orders = await ordersRepo.findProcessingOrders(batchSize);
+  if (orders.length === 0) {
+    log.debug('No processing orders to poll');
+    return;
+  }
+
+  log.info({ count: orders.length }, 'Polling order statuses');
+
+  const grouped = groupByProvider(orders);
+
+  for (const [providerId, providerOrders] of grouped) {
+    if (isCircuitOpen(providerId, circuitBreakerThreshold, circuitBreakerCooldownMs)) {
+      log.warn({ providerId }, 'Circuit breaker open, skipping provider');
+      continue;
+    }
+
+    let client: ProviderClient;
+    try {
+      client = await resolveClient(providerId);
+    } catch (err) {
+      log.error({ providerId, err }, 'Failed to resolve provider client');
+      recordFailure(providerId);
+      continue;
+    }
+
+    for (const order of providerOrders) {
+      try {
+        await pollSingleOrder(client, order);
+        recordSuccess(providerId);
+      } catch (err) {
+        log.error({ orderId: order.id, providerId, err }, 'Failed to poll order status');
+        recordFailure(providerId);
+      }
+    }
+  }
+}
+
+function groupByProvider(orders: OrderRecord[]): Map<string, OrderRecord[]> {
+  const map = new Map<string, OrderRecord[]>();
+  for (const order of orders) {
+    const pid = order.providerId ?? 'stub';
+    const list = map.get(pid) ?? [];
+    list.push(order);
+    map.set(pid, list);
+  }
+  return map;
+}
+
+async function resolveClient(providerId: string): Promise<ProviderClient> {
+  if (providerId === 'stub') {
+    return stubClient;
+  }
+
+  const provider = await findProviderById(providerId);
+  if (!provider) {
+    throw new Error(`Provider not found: ${providerId}`);
+  }
+
+  const apiKey = decryptApiKey(provider.apiKeyEncrypted);
+  return createSmmApiClient({ apiEndpoint: provider.apiEndpoint, apiKey });
+}
+
+async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Promise<void> {
+  const externalOrderId = order.externalOrderId ?? '';
+  const result = await client.checkStatus(externalOrderId);
+  const newStatus = mapProviderStatus(result.status);
+
+  if (newStatus === order.status && !isTerminalStatus(newStatus)) {
+    return;
+  }
+
+  const updateData: UpdateOrderData = { status: newStatus };
+  if (result.startCount !== undefined) updateData.startCount = result.startCount;
+  if (result.remains !== undefined) updateData.remains = result.remains;
+  if (isTerminalStatus(newStatus)) updateData.completedAt = new Date();
+
+  await ordersRepo.updateOrderStatus(order.id, updateData);
+
+  if (isTerminalStatus(newStatus)) {
+    const updatedOrder = { ...order, remains: result.remains ?? order.remains };
+    await settleFunds(updatedOrder, newStatus);
+  }
+
+  log.info({ orderId: order.id, oldStatus: order.status, newStatus }, 'Order status updated');
+}

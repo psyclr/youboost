@@ -38,6 +38,23 @@ const envSchema = z.object({
 
   PROVIDER_ENCRYPTION_KEY: z.string().min(32),
   PROVIDER_MODE: z.enum(['stub', 'real']).default('stub'),
+
+  ORDER_POLL_INTERVAL_MS: z
+    .string()
+    .default('30000')
+    .transform((val) => Number.parseInt(val, 10)),
+  ORDER_POLL_BATCH_SIZE: z
+    .string()
+    .default('100')
+    .transform((val) => Number.parseInt(val, 10)),
+  CIRCUIT_BREAKER_THRESHOLD: z
+    .string()
+    .default('5')
+    .transform((val) => Number.parseInt(val, 10)),
+  CIRCUIT_BREAKER_COOLDOWN_MS: z
+    .string()
+    .default('60000')
+    .transform((val) => Number.parseInt(val, 10)),
 });
 
 export interface AppConfig {
@@ -63,6 +80,12 @@ export interface AppConfig {
   provider: {
     encryptionKey: string;
     mode: 'stub' | 'real';
+  };
+  polling: {
+    intervalMs: number;
+    batchSize: number;
+    circuitBreakerThreshold: number;
+    circuitBreakerCooldownMs: number;
   };
 }
 
@@ -92,6 +115,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     provider: {
       encryptionKey: parsed.PROVIDER_ENCRYPTION_KEY,
       mode: parsed.PROVIDER_MODE,
+    },
+    polling: {
+      intervalMs: parsed.ORDER_POLL_INTERVAL_MS,
+      batchSize: parsed.ORDER_POLL_BATCH_SIZE,
+      circuitBreakerThreshold: parsed.CIRCUIT_BREAKER_THRESHOLD,
+      circuitBreakerCooldownMs: parsed.CIRCUIT_BREAKER_COOLDOWN_MS,
     },
   };
 

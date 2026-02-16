@@ -3,6 +3,7 @@ import { loadConfig } from './shared/config/env';
 import { createServiceLogger } from './shared/utils/logger';
 import { connectDatabase, disconnectDatabase } from './shared/database/prisma';
 import { connectRedis, disconnectRedis } from './shared/redis/redis';
+import { startOrderPolling, stopOrderPolling } from './modules/orders/workers';
 import { createApp } from './app';
 
 const log = createServiceLogger('main');
@@ -18,9 +19,12 @@ async function main(): Promise<void> {
   await app.listen({ port: config.app.port, host: '0.0.0.0' });
   log.info({ port: config.app.port }, 'Server listening');
 
+  await startOrderPolling();
+
   const shutdown = async (signal: string): Promise<void> => {
     log.info({ signal }, 'Graceful shutdown initiated');
     await app.close();
+    await stopOrderPolling();
     await disconnectRedis();
     await disconnectDatabase();
     log.info('Shutdown complete');
