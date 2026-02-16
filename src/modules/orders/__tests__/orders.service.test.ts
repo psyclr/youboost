@@ -27,11 +27,10 @@ jest.mock('../../billing', () => ({
 }));
 
 const mockSubmitOrder = jest.fn();
+const mockSelectProvider = jest.fn();
 
-jest.mock('../utils/stub-provider-client', () => ({
-  providerClient: {
-    submitOrder: (...args: unknown[]): unknown => mockSubmitOrder(...args),
-  },
+jest.mock('../../providers', () => ({
+  selectProvider: (...args: unknown[]): unknown => mockSelectProvider(...args),
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({
@@ -76,6 +75,10 @@ const mockOrder = {
 describe('Orders Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSelectProvider.mockResolvedValue({
+      providerId: 'stub',
+      client: { submitOrder: mockSubmitOrder, checkStatus: jest.fn() },
+    });
   });
 
   describe('createOrder', () => {
@@ -167,6 +170,7 @@ describe('Orders Service', () => {
       expect(mockUpdateOrderStatus).toHaveBeenCalledWith('o3', {
         status: 'PROCESSING',
         externalOrderId: 'ext-99',
+        providerId: 'stub',
         remains: 1000,
       });
     });

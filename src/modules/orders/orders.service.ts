@@ -2,7 +2,7 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { toNumber } from '../billing/utils/decimal';
 import { holdFunds, releaseFunds } from '../billing';
-import { providerClient } from './utils/stub-provider-client';
+import { selectProvider } from '../providers';
 import * as serviceRepo from './service.repository';
 import * as ordersRepo from './orders.repository';
 import type {
@@ -67,7 +67,8 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
 
   await holdFunds(userId, price, order.id);
 
-  const submitResult = await providerClient.submitOrder({
+  const { providerId, client } = await selectProvider();
+  const submitResult = await client.submitOrder({
     serviceId: input.serviceId,
     link: input.link,
     quantity: input.quantity,
@@ -76,6 +77,7 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
   const updated = await ordersRepo.updateOrderStatus(order.id, {
     status: 'PROCESSING',
     externalOrderId: submitResult.externalOrderId,
+    providerId,
     remains: input.quantity,
   });
 

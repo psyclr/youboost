@@ -15,6 +15,8 @@ describe('Environment Config', () => {
     RATE_LIMIT_MAX: '100',
     RATE_LIMIT_WINDOW_MS: '60000',
     CORS_ORIGIN: 'http://localhost:3000',
+    PROVIDER_ENCRYPTION_KEY: 'test-encryption-key-at-least-32-chars!',
+    PROVIDER_MODE: 'stub',
   };
 
   it('should parse valid environment variables', () => {
@@ -33,6 +35,8 @@ describe('Environment Config', () => {
     expect(config.security.rateLimitMax).toBe(100);
     expect(config.security.rateLimitWindowMs).toBe(60000);
     expect(config.security.corsOrigin).toBe('http://localhost:3000');
+    expect(config.provider.encryptionKey).toBe(validEnv.PROVIDER_ENCRYPTION_KEY);
+    expect(config.provider.mode).toBe('stub');
   });
 
   it('should coerce string PORT to number', () => {
@@ -46,6 +50,7 @@ describe('Environment Config', () => {
       REDIS_URL: validEnv.REDIS_URL,
       JWT_SECRET: validEnv.JWT_SECRET,
       JWT_REFRESH_SECRET: validEnv.JWT_REFRESH_SECRET,
+      PROVIDER_ENCRYPTION_KEY: validEnv.PROVIDER_ENCRYPTION_KEY,
     };
 
     const config = loadConfig(minimal);
@@ -59,6 +64,7 @@ describe('Environment Config', () => {
     expect(config.security.rateLimitMax).toBe(100);
     expect(config.security.rateLimitWindowMs).toBe(60000);
     expect(config.security.corsOrigin).toBe('*');
+    expect(config.provider.mode).toBe('stub');
   });
 
   it('should throw on missing DATABASE_URL', () => {
@@ -97,6 +103,30 @@ describe('Environment Config', () => {
     expect(config.app).toBeDefined();
     expect(config.jwt).toBeDefined();
     expect(config.security).toBeDefined();
+  });
+
+  it('should throw on missing PROVIDER_ENCRYPTION_KEY', () => {
+    const { PROVIDER_ENCRYPTION_KEY: _, ...env } = validEnv;
+    expect(() => loadConfig(env)).toThrow();
+  });
+
+  it('should throw on PROVIDER_ENCRYPTION_KEY shorter than 32 chars', () => {
+    expect(() => loadConfig({ ...validEnv, PROVIDER_ENCRYPTION_KEY: 'short-key' })).toThrow();
+  });
+
+  it('should default PROVIDER_MODE to stub', () => {
+    const { PROVIDER_MODE: _, ...env } = validEnv;
+    const config = loadConfig(env);
+    expect(config.provider.mode).toBe('stub');
+  });
+
+  it('should accept PROVIDER_MODE real', () => {
+    const config = loadConfig({ ...validEnv, PROVIDER_MODE: 'real' });
+    expect(config.provider.mode).toBe('real');
+  });
+
+  it('should throw on invalid PROVIDER_MODE', () => {
+    expect(() => loadConfig({ ...validEnv, PROVIDER_MODE: 'invalid' })).toThrow();
   });
 
   describe('getConfig / resetConfig', () => {

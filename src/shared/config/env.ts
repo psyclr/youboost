@@ -35,6 +35,9 @@ const envSchema = z.object({
     .default('60000')
     .transform((val) => Number.parseInt(val, 10)),
   CORS_ORIGIN: z.string().default('*'),
+
+  PROVIDER_ENCRYPTION_KEY: z.string().min(32),
+  PROVIDER_MODE: z.enum(['stub', 'real']).default('stub'),
 });
 
 export interface AppConfig {
@@ -56,6 +59,10 @@ export interface AppConfig {
     rateLimitMax: number;
     rateLimitWindowMs: number;
     corsOrigin: string;
+  };
+  provider: {
+    encryptionKey: string;
+    mode: 'stub' | 'real';
   };
 }
 
@@ -81,6 +88,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       rateLimitMax: parsed.RATE_LIMIT_MAX,
       rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
       corsOrigin: parsed.CORS_ORIGIN,
+    },
+    provider: {
+      encryptionKey: parsed.PROVIDER_ENCRYPTION_KEY,
+      mode: parsed.PROVIDER_MODE,
     },
   };
 
