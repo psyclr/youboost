@@ -18,6 +18,9 @@ module.exports = {
     '!src/**/*.d.ts',
     '!src/**/*.spec.ts',
     '!src/**/*.test.ts',
+    '!src/generated/**',
+    '!src/index.ts',
+    '!src/**/index.ts',
   ],
 
   // Обязательные тесты

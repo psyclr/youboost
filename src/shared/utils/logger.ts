@@ -1,27 +1,50 @@
-import pino from 'pino';
+import pino, { type Logger } from 'pino';
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+const REDACT_PATHS = [
+  'password',
+  'passwordHash',
+  'token',
+  'secret',
+  'authorization',
+  'req.headers.authorization',
+  'req.headers.cookie',
+];
 
-const baseConfig = {
-  level: process.env.LOG_LEVEL || 'info',
+const isDevelopment =
+  process.env['NODE_ENV'] !== 'production' && process.env['NODE_ENV'] !== 'test';
+const isTest = process.env['NODE_ENV'] === 'test';
+
+const baseConfig: pino.LoggerOptions = {
+  level: isTest ? 'silent' : (process.env['LOG_LEVEL'] ?? 'info'),
+  redact: {
+    paths: REDACT_PATHS,
+    censor: '[REDACTED]',
+  },
   base: {
-    env: process.env.NODE_ENV || 'development',
+    env: process.env['NODE_ENV'] ?? 'development',
   },
-  timestamp: (): string => `,"time":"${new Date().toISOString()}"`,
+  timestamp: pino.stdTimeFunctions.isoTime,
 };
 
-const developmentConfig = {
-  ...baseConfig,
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:standard',
-      ignore: 'pid,hostname',
-    },
+const devTransport: pino.TransportSingleOptions = {
+  target: 'pino-pretty',
+  options: {
+    colorize: true,
+    translateTime: 'SYS:standard',
+    ignore: 'pid,hostname',
   },
 };
 
-export const logger = isDevelopment ? pino(developmentConfig) : pino(baseConfig);
+export const logger: Logger = isDevelopment
+  ? pino({ ...baseConfig, transport: devTransport })
+  : pino(baseConfig);
+
+export function createServiceLogger(serviceName: string): Logger {
+  return logger.child({ service: serviceName });
+}
+
+export function createRequestLogger(requestId: string): Logger {
+  return logger.child({ requestId });
+}
 
 export default logger;
