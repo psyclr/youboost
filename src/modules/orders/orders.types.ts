@@ -107,3 +107,24 @@ export interface UpdateOrderData {
   providerId?: string | null;
   externalOrderId?: string | null;
 }
+
+export interface CreateServiceData {
+  name: string;
+  description?: string | undefined;
+  platform: string;
+  type: string;
+  pricePer1000: number;
+  minQuantity: number;
+  maxQuantity: number;
+}
+
+export interface UpdateServiceData {
+  name?: string | undefined;
+  description?: string | undefined;
+  platform?: string | undefined;
+  type?: string | undefined;
+  pricePer1000?: number | undefined;
+  minQuantity?: number | undefined;
+  maxQuantity?: number | undefined;
+  isActive?: boolean | undefined;
+}

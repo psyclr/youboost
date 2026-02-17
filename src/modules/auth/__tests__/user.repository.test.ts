@@ -5,6 +5,9 @@ import {
   createUser,
   setEmailVerified,
   updatePassword,
+  findAllUsers,
+  updateUserRole,
+  updateUserStatus,
 } from '../user.repository';
 
 const mockUser = {
@@ -23,12 +26,17 @@ const mockFindUnique = jest.fn();
 const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 
+const mockFindMany = jest.fn();
+const mockCount = jest.fn();
+
 jest.mock('../../../shared/database', () => ({
   getPrisma: jest.fn().mockReturnValue({
     user: {
-      findUnique: (...args: unknown[]) => mockFindUnique(...args),
-      create: (...args: unknown[]) => mockCreate(...args),
-      update: (...args: unknown[]) => mockUpdate(...args),
+      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
+      create: (...args: unknown[]): unknown => mockCreate(...args),
+      update: (...args: unknown[]): unknown => mockUpdate(...args),
+      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
+      count: (...args: unknown[]): unknown => mockCount(...args),
     },
   }),
 }));
@@ -99,6 +107,53 @@ describe('User Repository', () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: '123' },
         data: { passwordHash: 'newhash' },
+      });
+    });
+  });
+
+  describe('findAllUsers', () => {
+    it('should return paginated users', async () => {
+      mockFindMany.mockResolvedValue([mockUser]);
+      mockCount.mockResolvedValue(1);
+      const result = await findAllUsers({ page: 1, limit: 20 });
+      expect(result.users).toHaveLength(1);
+      expect(result.total).toBe(1);
+    });
+
+    it('should filter by role and status', async () => {
+      mockFindMany.mockResolvedValue([]);
+      mockCount.mockResolvedValue(0);
+      await findAllUsers({ page: 1, limit: 20, role: 'ADMIN', status: 'ACTIVE' });
+      expect(mockFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { role: 'ADMIN', status: 'ACTIVE' } }),
+      );
+    });
+
+    it('should apply pagination offset', async () => {
+      mockFindMany.mockResolvedValue([]);
+      mockCount.mockResolvedValue(0);
+      await findAllUsers({ page: 2, limit: 10 });
+      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 10 }));
+    });
+  });
+
+  describe('updateUserRole', () => {
+    it('should update user role', async () => {
+      mockUpdate.mockResolvedValue({ ...mockUser, role: 'ADMIN' });
+      const result = await updateUserRole('123', 'ADMIN');
+      expect(result.role).toBe('ADMIN');
+      expect(mockUpdate).toHaveBeenCalledWith({ where: { id: '123' }, data: { role: 'ADMIN' } });
+    });
+  });
+
+  describe('updateUserStatus', () => {
+    it('should update user status', async () => {
+      mockUpdate.mockResolvedValue({ ...mockUser, status: 'SUSPENDED' });
+      const result = await updateUserStatus('123', 'SUSPENDED');
+      expect(result.status).toBe('SUSPENDED');
+      expect(mockUpdate).toHaveBeenCalledWith({
+        where: { id: '123' },
+        data: { status: 'SUSPENDED' },
       });
     });
   });

@@ -31,6 +31,8 @@ model User {
   apiKeys       ApiKey[]
   webhooks      Webhook[]
   refreshTokens RefreshToken[]
+  notifications Notification[]
+  deposits      Deposit[]
 
   @@index([email])
   @@index([username])
@@ -121,6 +123,7 @@ enum LedgerType {
   RELEASE
   REFUND
   FEE
+  ADMIN_ADJUSTMENT
 }
 
 // ============================================
@@ -281,4 +284,76 @@ model Webhook {
   @@index([userId])
   @@index([isActive])
   @@map("webhooks")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id            String             @id @default(uuid()) @db.Uuid
+  userId        String             @map("user_id") @db.Uuid
+  type          NotificationType
+  channel       String             @db.VarChar(255)
+  subject       String?            @db.VarChar(500)
+  body          String             @db.Text
+  status        NotificationStatus @default(PENDING)
+  eventType     String?            @map("event_type") @db.VarChar(100)
+  referenceType String?            @map("reference_type") @db.VarChar(50)
+  referenceId   String?            @map("reference_id") @db.Uuid
+  sentAt        DateTime?          @map("sent_at") @db.Timestamptz(6)
+  failureReason String?            @map("failure_reason") @db.Text
+  retryCount    Int                @default(0) @map("retry_count")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ============================================
+// DEPOSITS
+// ============================================
+
+model Deposit {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  amount         Decimal       @db.Decimal(15, 2)
+  cryptoAmount   Decimal       @map("crypto_amount") @db.Decimal(20, 8)
+  cryptoCurrency String        @map("crypto_currency") @db.VarChar(10)
+  paymentAddress String        @map("payment_address") @db.VarChar(255)
+  status         DepositStatus @default(PENDING)
+  txHash         String?       @map("tx_hash") @db.VarChar(255)
+  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
+  confirmedAt    DateTime?     @map("confirmed_at") @db.Timestamptz(6)
+  ledgerEntryId  String?       @map("ledger_entry_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([txHash])
+  @@map("deposits")
+}
+
+enum DepositStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+  FAILED
 }

@@ -1,4 +1,10 @@
-import { holdFunds, releaseFunds, chargeFunds, refundFunds } from '../billing-internal.service';
+import {
+  holdFunds,
+  releaseFunds,
+  chargeFunds,
+  refundFunds,
+  adjustBalance,
+} from '../billing-internal.service';
 
 const mockGetOrCreateWallet = jest.fn();
 const mockUpdateBalance = jest.fn();
@@ -194,13 +200,55 @@ describe('Billing Internal Service', () => {
 
     it('should not change hold amount on refund', async () => {
       await refundFunds('user-1', 10, 'order-1');
-
       expect(mockUpdateBalance).toHaveBeenCalledWith({
         walletId: 'wallet-1',
         newBalance: 110,
         newHold: 20,
         tx: 'tx-client',
       });
+    });
+  });
+
+  describe('adjustBalance', () => {
+    it('should increase balance with positive amount', async () => {
+      await adjustBalance('user-1', 50, 'Bonus');
+      expect(mockUpdateBalance).toHaveBeenCalledWith({
+        walletId: 'wallet-1',
+        newBalance: 150,
+        newHold: 20,
+        tx: 'tx-client',
+      });
+      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'ADMIN_ADJUSTMENT',
+          amount: 50,
+          balanceAfter: 150,
+          description: 'Bonus',
+        }),
+        'tx-client',
+      );
+    });
+
+    it('should decrease balance with negative amount', async () => {
+      await adjustBalance('user-1', -30, 'Penalty');
+      expect(mockUpdateBalance).toHaveBeenCalledWith({
+        walletId: 'wallet-1',
+        newBalance: 70,
+        newHold: 20,
+        tx: 'tx-client',
+      });
+    });
+
+    it('should throw when negative adjustment exceeds balance', async () => {
+      await expect(adjustBalance('user-1', -200, 'Too much')).rejects.toThrow('Insufficient funds');
+    });
+
+    it('should use referenceType admin', async () => {
+      await adjustBalance('user-1', 10, 'Test');
+      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ referenceType: 'admin' }),
+        'tx-client',
+      );
     });
   });
 });

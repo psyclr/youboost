@@ -5,6 +5,7 @@ import { authenticate } from '../auth/auth.middleware';
 import * as billingService from './billing.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { depositSchema, transactionsQuerySchema, transactionIdSchema } from './billing.types';
+import { confirmDepositSchema, depositIdSchema, depositsQuerySchema } from './deposit.types';
 
 function validateBody<T>(
   schema: {
@@ -80,6 +81,28 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const user = getAuthUser(request);
     const params = validateParams(transactionIdSchema, request.params);
     const result = await billingService.getTransactionById(user.userId, params.transactionId);
+    return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.get('/deposits', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const query = validateQuery(depositsQuerySchema, request.query);
+    const result = await billingService.listDeposits(user.userId, query);
+    return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.get('/deposits/:depositId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const params = validateParams(depositIdSchema, request.params);
+    const result = await billingService.getDeposit(params.depositId, user.userId);
+    return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.post('/deposits/:depositId/confirm', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const params = validateParams(depositIdSchema, request.params);
+    const body = validateBody(confirmDepositSchema, request.body);
+    const result = await billingService.confirmDeposit(params.depositId, body, user.userId);
     return reply.status(StatusCodes.OK).send(result);
   });
 }

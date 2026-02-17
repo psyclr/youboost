@@ -1,10 +1,11 @@
-import { NotFoundError } from '../../shared/errors';
+import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { toNumber } from './utils/decimal';
 import { paymentGateway } from './utils/stub-payment-gateway';
 import * as walletRepo from './wallet.repository';
 import * as ledgerRepo from './ledger.repository';
-import type { LedgerType } from '../../generated/prisma';
+import * as depositRepo from './deposit.repository';
+import type { LedgerType, DepositStatus } from '../../generated/prisma';
 import type {
   DepositInput,
   TransactionsQuery,
@@ -13,6 +14,14 @@ import type {
   PaginatedTransactions,
   TransactionDetailed,
 } from './billing.types';
+import type {
+  CreateDepositInput,
+  ConfirmDepositInput,
+  DepositsQuery,
+  DepositRecord,
+  DepositDetailResponse,
+  PaginatedDeposits,
+} from './deposit.types';
 
 const log = createServiceLogger('billing');
 
@@ -31,7 +40,7 @@ export async function getBalance(userId: string): Promise<BalanceResponse> {
 }
 
 export async function createDeposit(userId: string, input: DepositInput): Promise<DepositResponse> {
-  const wallet = await walletRepo.getOrCreateWallet(userId);
+  await walletRepo.getOrCreateWallet(userId);
 
   const payment = await paymentGateway.createPayment({
     amount: input.amount,
@@ -39,22 +48,19 @@ export async function createDeposit(userId: string, input: DepositInput): Promis
     cryptoCurrency: input.cryptoCurrency,
   });
 
-  const balanceBefore = toNumber(wallet.balance);
-  const entry = await ledgerRepo.createLedgerEntry({
+  const deposit = await depositRepo.createDeposit({
     userId,
-    walletId: wallet.id,
-    type: 'DEPOSIT',
     amount: input.amount,
-    balanceBefore,
-    balanceAfter: balanceBefore,
-    description: `Deposit ${input.amount} USD via ${input.cryptoCurrency}`,
-    metadata: { cryptoCurrency: input.cryptoCurrency, status: 'pending' },
+    cryptoAmount: payment.cryptoAmount,
+    cryptoCurrency: input.cryptoCurrency,
+    paymentAddress: payment.paymentAddress,
+    expiresAt: payment.expiresAt,
   });
 
-  log.info({ userId, depositId: entry.id }, 'Deposit created');
+  log.info({ userId, depositId: deposit.id }, 'Deposit created');
 
   return {
-    depositId: entry.id,
+    depositId: deposit.id,
     paymentAddress: payment.paymentAddress,
     amount: input.amount,
     cryptoAmount: payment.cryptoAmount,
@@ -63,6 +69,150 @@ export async function createDeposit(userId: string, input: DepositInput): Promis
     status: 'pending',
     qrCode: payment.qrCode,
   };
+}
+
+export async function initiateDeposit(
+  userId: string,
+  input: CreateDepositInput,
+): Promise<DepositDetailResponse> {
+  await walletRepo.getOrCreateWallet(userId);
+
+  const payment = await paymentGateway.createPayment({
+    amount: input.amount,
+    currency: 'USD',
+    cryptoCurrency: input.cryptoCurrency,
+  });
+
+  const deposit = await depositRepo.createDeposit({
+    userId,
+    amount: input.amount,
+    cryptoAmount: payment.cryptoAmount,
+    cryptoCurrency: input.cryptoCurrency,
+    paymentAddress: payment.paymentAddress,
+    expiresAt: payment.expiresAt,
+  });
+
+  log.info({ userId, depositId: deposit.id }, 'Deposit initiated');
+
+  return {
+    id: deposit.id,
+    amount: input.amount,
+    cryptoAmount: payment.cryptoAmount,
+    cryptoCurrency: input.cryptoCurrency,
+    paymentAddress: payment.paymentAddress,
+    status: 'PENDING',
+    txHash: null,
+    expiresAt: payment.expiresAt,
+    confirmedAt: null,
+    createdAt: deposit.createdAt,
+  };
+}
+
+export async function confirmDeposit(
+  depositId: string,
+  input: ConfirmDepositInput,
+  userId: string,
+): Promise<DepositDetailResponse> {
+  const deposit = await depositRepo.findDepositById(depositId, userId);
+  if (!deposit) {
+    throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+  }
+
+  if (deposit.status !== 'PENDING') {
+    throw new ValidationError('Deposit cannot be confirmed', 'DEPOSIT_NOT_PENDING');
+  }
+
+  const wallet = await walletRepo.getOrCreateWallet(userId);
+  const balanceBefore = toNumber(wallet.balance);
+  const amount = toNumber(deposit.amount);
+  const newBalance = balanceBefore + amount;
+
+  await walletRepo.updateBalance({
+    walletId: wallet.id,
+    newBalance,
+    newHold: toNumber(wallet.holdAmount),
+  });
+
+  const entry = await ledgerRepo.createLedgerEntry({
+    userId,
+    walletId: wallet.id,
+    type: 'DEPOSIT',
+    amount,
+    balanceBefore,
+    balanceAfter: newBalance,
+    referenceType: 'deposit',
+    referenceId: depositId,
+    description: `Deposit ${amount} USD via ${deposit.cryptoCurrency}`,
+  });
+
+  const updated = await depositRepo.updateDepositStatus(depositId, {
+    status: 'CONFIRMED',
+    txHash: input.txHash,
+    confirmedAt: new Date(),
+    ledgerEntryId: entry.id,
+  });
+
+  log.info({ userId, depositId, txHash: input.txHash }, 'Deposit confirmed');
+
+  return {
+    id: updated.id,
+    amount: toNumber(updated.amount),
+    cryptoAmount: toNumber(updated.cryptoAmount),
+    cryptoCurrency: updated.cryptoCurrency,
+    paymentAddress: updated.paymentAddress,
+    status: updated.status,
+    txHash: updated.txHash,
+    expiresAt: updated.expiresAt,
+    confirmedAt: updated.confirmedAt,
+    createdAt: updated.createdAt,
+  };
+}
+
+function mapDepositToResponse(d: DepositRecord): DepositDetailResponse {
+  return {
+    id: d.id,
+    amount: toNumber(d.amount),
+    cryptoAmount: toNumber(d.cryptoAmount),
+    cryptoCurrency: d.cryptoCurrency,
+    paymentAddress: d.paymentAddress,
+    status: d.status,
+    txHash: d.txHash,
+    expiresAt: d.expiresAt,
+    confirmedAt: d.confirmedAt,
+    createdAt: d.createdAt,
+  };
+}
+
+export async function listDeposits(
+  userId: string,
+  query: DepositsQuery,
+): Promise<PaginatedDeposits> {
+  const { deposits, total } = await depositRepo.findDepositsByUserId(userId, {
+    status: query.status as DepositStatus | undefined,
+    page: query.page,
+    limit: query.limit,
+  });
+
+  return {
+    deposits: deposits.map(mapDepositToResponse),
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.ceil(total / query.limit),
+    },
+  };
+}
+
+export async function getDeposit(
+  depositId: string,
+  userId: string,
+): Promise<DepositDetailResponse> {
+  const deposit = await depositRepo.findDepositById(depositId, userId);
+  if (!deposit) {
+    throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+  }
+  return mapDepositToResponse(deposit);
 }
 
 export async function getTransactions(

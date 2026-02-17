@@ -21,6 +21,15 @@ jest.mock('../ledger.repository', () => ({
 
 const mockCreatePayment = jest.fn();
 
+const mockDepositCreate = jest.fn();
+
+jest.mock('../deposit.repository', () => ({
+  createDeposit: (...args: unknown[]): unknown => mockDepositCreate(...args),
+  findDepositById: jest.fn(),
+  findDepositsByUserId: jest.fn(),
+  updateDepositStatus: jest.fn(),
+}));
+
 jest.mock('../utils/stub-payment-gateway', () => ({
   paymentGateway: {
     createPayment: (...args: unknown[]): unknown => mockCreatePayment(...args),
@@ -106,7 +115,7 @@ describe('Billing Service', () => {
         expiresAt: new Date('2030-01-01'),
         qrCode: 'https://qr.example.com',
       });
-      mockCreateLedgerEntry.mockResolvedValue({ ...mockLedger, id: 'deposit-1' });
+      mockDepositCreate.mockResolvedValue({ id: 'deposit-1', createdAt: new Date() });
 
       const result = await createDeposit('user-1', depositInput);
 
@@ -125,7 +134,7 @@ describe('Billing Service', () => {
         expiresAt: new Date(),
         qrCode: 'qr',
       });
-      mockCreateLedgerEntry.mockResolvedValue(mockLedger);
+      mockDepositCreate.mockResolvedValue({ id: 'dep-1', createdAt: new Date() });
 
       await createDeposit('user-1', depositInput);
 
@@ -136,7 +145,7 @@ describe('Billing Service', () => {
       });
     });
 
-    it('should create ledger entry with DEPOSIT type', async () => {
+    it('should create deposit record in repository', async () => {
       mockGetOrCreateWallet.mockResolvedValue(mockWallet);
       mockCreatePayment.mockResolvedValue({
         paymentAddress: '0x',
@@ -144,12 +153,12 @@ describe('Billing Service', () => {
         expiresAt: new Date(),
         qrCode: 'qr',
       });
-      mockCreateLedgerEntry.mockResolvedValue(mockLedger);
+      mockDepositCreate.mockResolvedValue({ id: 'dep-1', createdAt: new Date() });
 
       await createDeposit('user-1', depositInput);
 
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'DEPOSIT', amount: 50, userId: 'user-1' }),
+      expect(mockDepositCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', amount: 50, cryptoCurrency: 'USDT' }),
       );
     });
   });

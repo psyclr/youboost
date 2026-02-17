@@ -12,6 +12,9 @@ import { orderRoutes } from './modules/orders';
 import { providerRoutes } from './modules/providers';
 import { apiKeyRoutes } from './modules/api-keys';
 import { webhookRoutes } from './modules/webhooks';
+import { catalogRoutes } from './modules/catalog';
+import { adminRoutes } from './modules/admin';
+import { notificationRoutes } from './modules/notifications';
 
 const log = createServiceLogger('http');
 
@@ -95,6 +98,9 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(providerRoutes, { prefix: '/providers' });
   await app.register(apiKeyRoutes, { prefix: '/api-keys' });
   await app.register(webhookRoutes, { prefix: '/webhooks' });
+  await app.register(catalogRoutes, { prefix: '/catalog' });
+  await app.register(adminRoutes, { prefix: '/admin' });
+  await app.register(notificationRoutes, { prefix: '/notifications' });
 
   return app;
 }

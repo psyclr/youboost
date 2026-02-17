@@ -11,7 +11,9 @@ export const depositSchema = z.object({
 export const transactionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  type: z.enum(['DEPOSIT', 'WITHDRAW', 'HOLD', 'RELEASE', 'REFUND', 'FEE']).optional(),
+  type: z
+    .enum(['DEPOSIT', 'WITHDRAW', 'HOLD', 'RELEASE', 'REFUND', 'FEE', 'ADMIN_ADJUSTMENT'])
+    .optional(),
 });
 
 export const transactionIdSchema = z.object({

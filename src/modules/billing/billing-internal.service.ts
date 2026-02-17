@@ -156,3 +156,36 @@ export async function refundFunds(
 
   log.info({ userId, amount, referenceId }, 'Funds refunded');
 }
+
+export async function adjustBalance(userId: string, amount: number, reason: string): Promise<void> {
+  const prisma = getPrisma();
+
+  await prisma.$transaction(async (tx) => {
+    const wallet = await walletRepo.getOrCreateWallet(userId);
+    const balance = toNumber(wallet.balance);
+    const hold = toNumber(wallet.holdAmount);
+    const newBalance = balance + amount;
+
+    if (newBalance < 0) {
+      throw new ValidationError('Insufficient funds for adjustment', 'INSUFFICIENT_FUNDS');
+    }
+
+    await walletRepo.updateBalance({ walletId: wallet.id, newBalance, newHold: hold, tx });
+
+    await ledgerRepo.createLedgerEntry(
+      {
+        userId,
+        walletId: wallet.id,
+        type: 'ADMIN_ADJUSTMENT',
+        amount: Math.abs(amount),
+        balanceBefore: balance,
+        balanceAfter: newBalance,
+        referenceType: 'admin',
+        description: reason,
+      },
+      tx,
+    );
+  });
+
+  log.info({ userId, amount, reason }, 'Balance adjusted by admin');
+}

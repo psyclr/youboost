@@ -9,6 +9,7 @@ import { isCircuitOpen, recordFailure, recordSuccess } from '../utils/circuit-br
 import { mapProviderStatus, isTerminalStatus } from '../utils/status-mapper';
 import { settleFunds } from '../utils/fund-settlement';
 import { enqueueWebhookDelivery } from '../../webhooks';
+import { enqueueNotification } from '../../notifications';
 import type { ProviderClient } from '../utils/provider-client';
 import type { OrderRecord, UpdateOrderData } from '../orders.types';
 
@@ -80,6 +81,48 @@ async function resolveClient(providerId: string): Promise<ProviderClient> {
   return createSmmApiClient({ apiEndpoint: provider.apiEndpoint, apiKey });
 }
 
+const TERMINAL_EVENT_MAP: Record<string, string> = {
+  COMPLETED: 'order.completed',
+  FAILED: 'order.failed',
+  PARTIAL: 'order.partial',
+};
+
+const TERMINAL_SUBJECT_MAP: Record<string, string> = {
+  COMPLETED: 'Order Completed',
+  FAILED: 'Order Failed',
+  PARTIAL: 'Order Partially Completed',
+};
+
+function dispatchTerminalNotifications(
+  order: OrderRecord,
+  newStatus: string,
+  remains: number | null | undefined,
+): void {
+  const webhookEvent = TERMINAL_EVENT_MAP[newStatus];
+  if (!webhookEvent) return;
+
+  enqueueWebhookDelivery(order.userId, webhookEvent, {
+    orderId: order.id,
+    status: newStatus,
+    remains,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
+
+  enqueueNotification({
+    userId: order.userId,
+    type: 'EMAIL',
+    channel: 'user-email',
+    subject: TERMINAL_SUBJECT_MAP[newStatus] ?? 'Order Update',
+    body: `Your order ${order.id} status: ${newStatus}.`,
+    eventType: webhookEvent,
+    referenceType: 'order',
+    referenceId: order.id,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
+}
+
 async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Promise<void> {
   const externalOrderId = order.externalOrderId ?? '';
   const result = await client.checkStatus(externalOrderId);
@@ -99,22 +142,7 @@ async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Prom
   if (isTerminalStatus(newStatus)) {
     const updatedOrder = { ...order, remains: result.remains ?? order.remains };
     await settleFunds(updatedOrder, newStatus);
-
-    const eventMap: Record<string, string> = {
-      COMPLETED: 'order.completed',
-      FAILED: 'order.failed',
-      PARTIAL: 'order.partial',
-    };
-    const webhookEvent = eventMap[newStatus];
-    if (webhookEvent) {
-      enqueueWebhookDelivery(order.userId, webhookEvent, {
-        orderId: order.id,
-        status: newStatus,
-        remains: updatedOrder.remains,
-      }).catch(() => {
-        /* fire-and-forget */
-      });
-    }
+    dispatchTerminalNotifications(order, newStatus, updatedOrder.remains);
   }
 
   log.info({ orderId: order.id, oldStatus: order.status, newStatus }, 'Order status updated');

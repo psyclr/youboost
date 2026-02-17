@@ -82,3 +82,38 @@ export async function updateOrderStatus(
     data: updateData,
   });
 }
+
+export async function findAllOrders(filters: {
+  status?: string | undefined;
+  userId?: string | undefined;
+  page: number;
+  limit: number;
+}): Promise<{ orders: OrderRecord[]; total: number }> {
+  const prisma = getPrisma();
+  const where: Record<string, unknown> = {};
+  if (filters.status) {
+    where.status = filters.status as OrderStatus;
+  }
+  if (filters.userId) {
+    where.userId = filters.userId;
+  }
+
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (filters.page - 1) * filters.limit,
+      take: filters.limit,
+    }),
+    prisma.order.count({ where }),
+  ]);
+
+  return { orders, total };
+}
+
+export async function findOrderByIdAdmin(orderId: string): Promise<OrderRecord | null> {
+  const prisma = getPrisma();
+  return prisma.order.findUnique({
+    where: { id: orderId },
+  });
+}

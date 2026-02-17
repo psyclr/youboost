@@ -53,3 +53,47 @@ export async function updatePassword(userId: string, hash: string): Promise<void
     data: { passwordHash: hash },
   });
 }
+
+export async function findAllUsers(filters: {
+  role?: string | undefined;
+  status?: string | undefined;
+  page: number;
+  limit: number;
+}): Promise<{ users: UserRecord[]; total: number }> {
+  const prisma = getPrisma();
+  const where: Record<string, unknown> = {};
+  if (filters.role) {
+    where.role = filters.role;
+  }
+  if (filters.status) {
+    where.status = filters.status;
+  }
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (filters.page - 1) * filters.limit,
+      take: filters.limit,
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  return { users, total };
+}
+
+export async function updateUserRole(userId: string, role: string): Promise<UserRecord> {
+  const prisma = getPrisma();
+  return prisma.user.update({
+    where: { id: userId },
+    data: { role: role as 'USER' | 'RESELLER' | 'ADMIN' },
+  });
+}
+
+export async function updateUserStatus(userId: string, status: string): Promise<UserRecord> {
+  const prisma = getPrisma();
+  return prisma.user.update({
+    where: { id: userId },
+    data: { status: status as 'ACTIVE' | 'SUSPENDED' | 'BANNED' },
+  });
+}

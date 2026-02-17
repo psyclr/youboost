@@ -4,10 +4,13 @@ import {
   findOrders,
   findProcessingOrders,
   updateOrderStatus,
+  findAllOrders,
+  findOrderByIdAdmin,
 } from '../orders.repository';
 
 const mockCreate = jest.fn();
 const mockFindFirst = jest.fn();
+const mockFindUnique = jest.fn();
 const mockFindMany = jest.fn();
 const mockCount = jest.fn();
 const mockUpdate = jest.fn();
@@ -17,6 +20,7 @@ jest.mock('../../../shared/database', () => ({
     order: {
       create: (...args: unknown[]): unknown => mockCreate(...args),
       findFirst: (...args: unknown[]): unknown => mockFindFirst(...args),
+      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
       findMany: (...args: unknown[]): unknown => mockFindMany(...args),
       count: (...args: unknown[]): unknown => mockCount(...args),
       update: (...args: unknown[]): unknown => mockUpdate(...args),
@@ -198,13 +202,51 @@ describe('Orders Repository', () => {
     it('should update with completedAt', async () => {
       const completedAt = new Date();
       mockUpdate.mockResolvedValue({ ...mockOrder, status: 'COMPLETED', completedAt });
-
       await updateOrderStatus('order-1', { status: 'COMPLETED', completedAt });
-
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'order-1' },
         data: expect.objectContaining({ status: 'COMPLETED', completedAt }),
       });
+    });
+  });
+
+  describe('findAllOrders', () => {
+    it('should return paginated orders without userId filter', async () => {
+      mockFindMany.mockResolvedValue([mockOrder]);
+      mockCount.mockResolvedValue(1);
+      const result = await findAllOrders({ page: 1, limit: 20 });
+      expect(result.orders).toHaveLength(1);
+      expect(result.total).toBe(1);
+    });
+
+    it('should filter by status and userId', async () => {
+      mockFindMany.mockResolvedValue([]);
+      mockCount.mockResolvedValue(0);
+      await findAllOrders({ page: 1, limit: 20, status: 'COMPLETED', userId: 'user-1' });
+      expect(mockFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: 'COMPLETED', userId: 'user-1' } }),
+      );
+    });
+
+    it('should apply pagination offset', async () => {
+      mockFindMany.mockResolvedValue([]);
+      mockCount.mockResolvedValue(0);
+      await findAllOrders({ page: 3, limit: 10 });
+      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
+    });
+  });
+
+  describe('findOrderByIdAdmin', () => {
+    it('should find order without userId constraint', async () => {
+      mockFindUnique.mockResolvedValue(mockOrder);
+      const result = await findOrderByIdAdmin('order-1');
+      expect(result).toEqual(mockOrder);
+    });
+
+    it('should return null when not found', async () => {
+      mockFindUnique.mockResolvedValue(null);
+      const result = await findOrderByIdAdmin('nonexistent');
+      expect(result).toBeNull();
     });
   });
 });

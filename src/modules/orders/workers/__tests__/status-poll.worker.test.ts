@@ -16,12 +16,9 @@ jest.mock('../../../../shared/config', () => ({
   }),
 }));
 jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  }),
+  createServiceLogger: jest
+    .fn()
+    .mockReturnValue({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }),
 }));
 jest.mock('../../orders.repository', () => ({
   findProcessingOrders: (...args: unknown[]): unknown => mockFindProcessingOrders(...args),

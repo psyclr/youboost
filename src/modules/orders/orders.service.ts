@@ -6,6 +6,7 @@ import { selectProvider } from '../providers';
 import * as serviceRepo from './service.repository';
 import * as ordersRepo from './orders.repository';
 import { enqueueWebhookDelivery } from '../webhooks';
+import { enqueueNotification } from '../notifications';
 import type {
   CreateOrderInput,
   OrdersQuery,
@@ -92,6 +93,19 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
     /* fire-and-forget */
   });
 
+  enqueueNotification({
+    userId,
+    type: 'EMAIL',
+    channel: 'user-email',
+    subject: 'Order Created',
+    body: `Your order ${order.id} has been created.`,
+    eventType: 'order.created',
+    referenceType: 'order',
+    referenceId: order.id,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
+
   return mapOrderToDetailed(updated);
 }
 
@@ -154,6 +168,19 @@ export async function cancelOrder(userId: string, orderId: string): Promise<Canc
     orderId: updated.id,
     status: updated.status,
     refundAmount,
+  }).catch(() => {
+    /* fire-and-forget */
+  });
+
+  enqueueNotification({
+    userId,
+    type: 'EMAIL',
+    channel: 'user-email',
+    subject: 'Order Cancelled',
+    body: `Your order ${orderId} has been cancelled. Refund: $${refundAmount}.`,
+    eventType: 'order.cancelled',
+    referenceType: 'order',
+    referenceId: orderId,
   }).catch(() => {
     /* fire-and-forget */
   });

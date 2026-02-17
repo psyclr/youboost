@@ -34,13 +34,15 @@ jest.mock('../../webhooks', () => ({
   enqueueWebhookDelivery: (...args: unknown[]): unknown => mockEnqueueWebhookDelivery(...args),
 }));
 
+const mockEnqueueNotification = jest.fn();
+jest.mock('../../notifications', () => ({
+  enqueueNotification: (...args: unknown[]): unknown => mockEnqueueNotification(...args),
+}));
+
 jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
+  createServiceLogger: jest
+    .fn()
+    .mockReturnValue({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }),
 }));
 
 const mockService = {
@@ -85,6 +87,7 @@ describe('Orders Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
+    mockEnqueueNotification.mockResolvedValue(undefined);
     mockSelectProvider.mockResolvedValue({
       providerId: 'stub',
       client: { submitOrder: mockSubmitOrder, checkStatus: jest.fn() },
