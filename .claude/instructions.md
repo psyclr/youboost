@@ -1,161 +1,99 @@
-# Инструкции для разработки youboost
+# Development Instructions — youboost
 
-## Архитектурные принципы
+## Architecture Principles
 
-1. **Микросервисная архитектура** - каждый сервис независим и имеет свою зону ответственности
-2. **API-first подход** - все взаимодействие через API
-3. **Безопасность на всех уровнях** - валидация, аутентификация, шифрование
-4. **Масштабируемость с первого дня** - горизонтальное масштабирование, stateless сервисы
+1. **Modular monorepo** — each module in `src/modules/` is independent with its own routes, service, tests
+2. **API-first** — all interaction through REST endpoints
+3. **Security at every level** — validation, authentication, encryption
+4. **Horizontal scalability** — stateless services, Redis for shared state
 
-## Стандарты кода
+## Code Standards
 
-- **TypeScript строгий режим**: Все опции strict включены, no-any, no-implicit-any
-- **Функциональное программирование**: Предпочитать pure functions, избегать side effects
-- **Immutability by default**: Использовать const, readonly, Object.freeze где возможно
-- **Явное лучше неявного**: Явная типизация, явные error handling
+- **TypeScript strict mode**: All strict options enabled, no-any, no-implicit-any
+- **Functional style**: Prefer pure functions, minimize side effects
+- **Immutability by default**: Use `const`, `readonly`, `Object.freeze` where possible
+- **Explicit over implicit**: Explicit types, explicit error handling
 
-## Структура проекта
-
-### /services - Микросервисы
-
-Каждый микросервис содержит:
-
-- `src/` - исходный код
-- `tests/` - тесты сервиса
-- `README.md` - документация сервиса
-- `package.json` - зависимости (если нужны специфичные)
-
-### /shared - Общие модули
-
-- `/types` - TypeScript типы и интерфейсы
-- `/utils` - Вспомогательные функции
-- `/constants` - Константы проекта
-
-### /tests - Тесты
-
-- `/unit` - Юнит-тесты
-- `/integration` - Интеграционные тесты
-- `/e2e` - End-to-end тесты
-
-### /docs - Документация
-
-- `/api` - API документация (OpenAPI/Swagger)
-- `/architecture` - Архитектурные решения
-- `/development` - Гайды для разработчиков
-- `/deployment` - Инструкции по деплою
-
-## Git workflow
+## Git Workflow
 
 ### Branches
 
-- `main` - Production-ready код
-- `feat/feature-name` - Новые фичи
-- `fix/bug-name` - Исправления багов
-- `refactor/description` - Рефакторинг
+- `main` — production-ready code
+- `feat/feature-name` — new features
+- `fix/bug-name` — bug fixes
+- `refactor/description` — refactoring
 
 ### Conventional Commits
 
-Формат: `type(scope): message`
+Format: `type(scope): message`
 
-**Типы:**
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-- `feat` - Новая функциональность
-- `fix` - Исправление бага
-- `docs` - Изменения в документации
-- `style` - Форматирование
-- `refactor` - Рефакторинг кода
-- `test` - Добавление тестов
-- `chore` - Изменения в инструментах
-
-**Примеры:**
+Examples:
 
 ```
 feat(auth): add JWT authentication
 fix(billing): resolve payment processing bug
-docs(readme): update installation instructions
 ```
 
 ### Pull Requests
 
-- Обязательный code review
-- Все CI/CD проверки должны пройти
+- Code review required
+- All CI checks must pass
 - Coverage >= 80%
-- Обновление документации при необходимости
+- Update docs if needed
 
-## Тестирование
+## Testing
 
-### Обязательные требования
+### Requirements
 
-- **Unit tests**: 90% coverage
-- **Integration tests**: 70% coverage
-- **E2E tests**: Критические пути
-- **Security tests**: Все уязвимости OWASP Top 10
+- **Unit tests**: 90% coverage target
+- **Integration tests**: 70% coverage target
+- **E2E tests**: Critical paths
+- **Security tests**: OWASP Top 10
 
-### TDD подход
+### TDD Approach
 
-1. Написать failing test
-2. Написать минимальный код для прохождения теста
-3. Рефакторинг
-4. Повторить
+1. Write failing test
+2. Write minimal code to pass
+3. Refactor
+4. Repeat
 
-## Документация
+## Security
 
-### Обязательное обновление .claude.md при:
+### Required
 
-1. Добавлении нового микросервиса
-2. Изменении архитектуры
-3. Обнаружении критического бага
-4. Добавлении новых API endpoints
-5. Изменении зависимостей
-6. Выполнении крупной задачи
+- Input validation on all endpoints
+- SQL injection protection (parameterized queries via Prisma)
+- XSS protection (escape outputs)
+- Rate limiting (per-tier via Redis)
+- Secrets in environment variables only
+- API keys encrypted at rest (AES-256-GCM)
 
-### API документация
+### Banned
 
-- OpenAPI/Swagger для всех endpoints
-- Примеры запросов и ответов
-- Описание error codes
-- Rate limiting информация
-
-## Безопасность
-
-### Обязательные меры
-
-- Input validation на всех endpoints
-- SQL injection защита (параметризованные запросы)
-- XSS защита (escape outputs)
-- CSRF tokens
-- Rate limiting
-- Secrets в environment variables, не в коде
-- API keys зашифрованы at rest
-
-### Запрещено
-
-- Хардкодить секреты в коде
-- Использовать eval() или аналоги
-- Игнорировать security warnings
-- Коммитить .env файлы
+- Hardcoded secrets in code
+- `eval()` or equivalents
+- Ignoring security warnings
+- Committing `.env` files
 
 ## Performance
 
-### Требования
-
 - API response time < 100ms (p95)
-- Database queries оптимизированы (используем индексы)
-- Redis для кэширования часто запрашиваемых данных
-- Pagination для больших списков
-- Избегать N+1 queries
+- Database queries optimized (indexes)
+- Redis caching for frequently accessed data
+- Pagination for large lists
+- Avoid N+1 queries
 
 ## Code Review Checklist
 
-Перед созданием PR проверь:
+Before creating a PR:
 
-- [ ] Все тесты проходят
+- [ ] All tests pass
 - [ ] Coverage >= 80%
-- [ ] ESLint без ошибок
-- [ ] TypeScript без ошибок
-- [ ] Код отформатирован (Prettier)
-- [ ] Нет console.log или debugger
-- [ ] Нет дублирования кода
-- [ ] API документация обновлена
-- [ ] .claude.md обновлен (если нужно)
-- [ ] Нет security vulnerabilities
+- [ ] ESLint clean
+- [ ] TypeScript clean (`tsc --noEmit`)
+- [ ] Prettier formatted
+- [ ] No `console.log` or `debugger`
+- [ ] No code duplication
+- [ ] No security vulnerabilities

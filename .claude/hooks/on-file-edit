@@ -1,5 +1,9 @@
 #!/bin/bash
-# Триггерится когда Claude редактирует файл через Edit tool
+# SUPERSEDED: This legacy script is NOT triggered by Claude Code.
+# Linting is now handled by PostToolUse hooks in .claude/settings.local.json
+# via .claude/hooks/post-edit-lint.sh. Kept for reference only.
+#
+# Original description: Триггерится когда Claude редактирует файл через Edit tool
 
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
