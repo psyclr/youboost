@@ -89,7 +89,7 @@ describe('Orders Service', () => {
     mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
     mockEnqueueNotification.mockResolvedValue(undefined);
     mockSelectProvider.mockResolvedValue({
-      providerId: 'stub',
+      providerId: null,
       client: { submitOrder: mockSubmitOrder, checkStatus: jest.fn() },
     });
   });
@@ -176,7 +176,6 @@ describe('Orders Service', () => {
       expect(mockUpdateOrderStatus).toHaveBeenCalledWith('o3', {
         status: 'PROCESSING',
         externalOrderId: 'ext-99',
-        providerId: 'stub',
         remains: 1000,
       });
     });

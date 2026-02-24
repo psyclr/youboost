@@ -9,12 +9,12 @@ import { createSmmApiClient } from './utils/smm-api-client';
 const log = createServiceLogger('provider-selector');
 
 export interface SelectedProvider {
-  providerId: string;
+  providerId: string | null;
   client: ProviderClient;
 }
 
 const STUB_PROVIDER: SelectedProvider = {
-  providerId: 'stub',
+  providerId: null,
   client: stubClient,
 };
 

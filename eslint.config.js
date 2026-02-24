@@ -70,6 +70,27 @@ module.exports = [
     },
   },
   {
+    files: ['tests/**/*.ts'],
+    rules: {
+      'max-lines': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      'no-console': 'off',
+      'max-params': 'off',
+      'complexity': 'off',
+    },
+  },
+  {
+    files: ['src/**/__tests__/**/*.ts'],
+    rules: {
+      'max-lines': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-console': 'off',
+      'max-params': 'off',
+      'complexity': 'off',
+    },
+  },
+  {
     ignores: [
       'node_modules/',
       'dist/',
@@ -80,6 +101,7 @@ module.exports = [
       'src/generated/',
       '.claude/',
       'docs/',
+      'frontend/',
     ],
   },
 ];

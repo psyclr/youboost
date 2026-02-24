@@ -2,17 +2,26 @@ import { getQueue, startWorker, scheduleRepeatingJob, closeQueue } from '../queu
 
 const mockAdd = jest.fn().mockResolvedValue({});
 const mockClose = jest.fn().mockResolvedValue(undefined);
-const mockOn = jest.fn();
+
+let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
+const capturedEventHandlers: Record<string, (...args: unknown[]) => void> = {};
 
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: mockAdd,
     close: mockClose,
   })),
-  Worker: jest.fn().mockImplementation(() => ({
-    on: mockOn,
-    close: mockClose,
-  })),
+  Worker: jest
+    .fn()
+    .mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
+      capturedProcessor = processor;
+      return {
+        on: jest.fn().mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+          capturedEventHandlers[event] = handler;
+        }),
+        close: mockClose,
+      };
+    }),
 }));
 
 const { Worker } = jest.requireMock<typeof import('bullmq')>('bullmq');
@@ -37,6 +46,10 @@ jest.mock('../../utils/logger', () => ({
 describe('Queue Infrastructure', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    capturedProcessor = null;
+    for (const key of Object.keys(capturedEventHandlers)) {
+      delete capturedEventHandlers[key];
+    }
   });
 
   afterEach(async () => {
@@ -76,8 +89,8 @@ describe('Queue Infrastructure', () => {
     it('should register error and completed event handlers', async () => {
       await startWorker(jest.fn());
 
-      expect(mockOn).toHaveBeenCalledWith('failed', expect.any(Function));
-      expect(mockOn).toHaveBeenCalledWith('completed', expect.any(Function));
+      expect(capturedEventHandlers['failed']).toBeDefined();
+      expect(capturedEventHandlers['completed']).toBeDefined();
     });
 
     it('should not create a second worker if already started', async () => {
@@ -86,6 +99,36 @@ describe('Queue Infrastructure', () => {
 
       await startWorker(jest.fn());
       expect((Worker as unknown as jest.Mock).mock.calls.length).toBe(callCount);
+    });
+  });
+
+  describe('worker processor and event handlers', () => {
+    it('should call the provided processor function via worker wrapper', async () => {
+      const processor = jest.fn().mockResolvedValue(undefined);
+      await startWorker(processor);
+      expect(capturedProcessor).toBeDefined();
+
+      const fakeJob = { name: 'test-job' };
+      await capturedProcessor!(fakeJob);
+      expect(processor).toHaveBeenCalledWith(fakeJob);
+    });
+
+    it('should not throw from failed event handler', async () => {
+      await startWorker(jest.fn());
+      const handler = capturedEventHandlers['failed'];
+      if (!handler) throw new Error('failed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' }, new Error('fail'));
+      }).not.toThrow();
+    });
+
+    it('should not throw from completed event handler', async () => {
+      await startWorker(jest.fn());
+      const handler = capturedEventHandlers['completed'];
+      if (!handler) throw new Error('completed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' });
+      }).not.toThrow();
     });
   });
 

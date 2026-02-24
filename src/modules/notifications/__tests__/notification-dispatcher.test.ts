@@ -8,21 +8,27 @@ import type { Job } from 'bullmq';
 
 const mockQueueAdd = jest.fn();
 const mockQueueClose = jest.fn();
-const mockWorkerOn = jest.fn();
 const mockWorkerClose = jest.fn();
+
+let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
+const capturedEventHandlers: Record<string, (...args: unknown[]) => void> = {};
 
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: (...args: unknown[]): unknown => mockQueueAdd(...args),
     close: (...args: unknown[]): unknown => mockQueueClose(...args),
   })),
-  Worker: jest.fn().mockImplementation((_name: unknown, _processor: unknown) => ({
-    on: (...args: unknown[]): unknown => {
-      mockWorkerOn(...args);
-      return { on: mockWorkerOn, close: mockWorkerClose };
-    },
-    close: (...args: unknown[]): unknown => mockWorkerClose(...args),
-  })),
+  Worker: jest
+    .fn()
+    .mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
+      capturedProcessor = processor;
+      return {
+        on: jest.fn().mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+          capturedEventHandlers[event] = handler;
+        }),
+        close: (...args: unknown[]): unknown => mockWorkerClose(...args),
+      };
+    }),
 }));
 
 jest.mock('../../../shared/redis/redis', () => ({
@@ -81,6 +87,14 @@ describe('Notification Dispatcher', () => {
     mockQueueAdd.mockResolvedValue({});
     mockQueueClose.mockResolvedValue(undefined);
     mockWorkerClose.mockResolvedValue(undefined);
+    capturedProcessor = null;
+    for (const key of Object.keys(capturedEventHandlers)) {
+      delete capturedEventHandlers[key];
+    }
+  });
+
+  afterEach(async () => {
+    await stopNotificationWorker();
   });
 
   describe('enqueueNotification', () => {
@@ -190,6 +204,46 @@ describe('Notification Dispatcher', () => {
 
     it('should handle stop when not started', async () => {
       await expect(stopNotificationWorker()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('worker processor and event handlers', () => {
+    it('should invoke processNotificationDelivery via worker processor', async () => {
+      await startNotificationWorker();
+      expect(capturedProcessor).toBeDefined();
+
+      mockFindNotificationById.mockResolvedValue(mockNotification);
+      mockEmailSend.mockResolvedValue(undefined);
+      mockUpdateNotificationStatus.mockResolvedValue({ ...mockNotification, status: 'SENT' });
+
+      const fakeJob = {
+        name: 'deliver-notification',
+        data: { notificationId: 'notif-1' },
+      };
+      await capturedProcessor!(fakeJob);
+      expect(mockEmailSend).toHaveBeenCalledWith({
+        to: 'test@test.com',
+        subject: 'Test Subject',
+        body: 'Test body',
+      });
+    });
+
+    it('should not throw from failed event handler', async () => {
+      await startNotificationWorker();
+      const handler = capturedEventHandlers['failed'];
+      if (!handler) throw new Error('failed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' }, new Error('fail'));
+      }).not.toThrow();
+    });
+
+    it('should not throw from completed event handler', async () => {
+      await startNotificationWorker();
+      const handler = capturedEventHandlers['completed'];
+      if (!handler) throw new Error('completed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' });
+      }).not.toThrow();
     });
   });
 });

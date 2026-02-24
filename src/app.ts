@@ -2,7 +2,10 @@ import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply }
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { StatusCodes } from 'http-status-codes';
+import { openapiSpec } from './shared/swagger/openapi-spec';
 import { AppError } from './shared/errors/app-error';
 import { checkHealth } from './shared/health/health';
 import { createServiceLogger } from './shared/utils/logger';
@@ -34,6 +37,19 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(rateLimit, {
     max: Number(process.env['RATE_LIMIT_MAX'] ?? '100'),
     timeWindow: Number(process.env['RATE_LIMIT_WINDOW_MS'] ?? '60000'),
+  });
+
+  await app.register(swagger, {
+    mode: 'static',
+    specification: { document: openapiSpec },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+    },
   });
 
   app.addHook('onRequest', (request: FastifyRequest, _reply: FastifyReply, done: () => void) => {

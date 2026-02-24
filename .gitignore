@@ -11,3 +11,10 @@ coverage/
 .cache/
 
 /src/generated/prisma
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/test-screenshots/
+tests/screenshots/

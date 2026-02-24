@@ -34,15 +34,25 @@ jest.mock('../../../shared/redis/redis', () => ({
   }),
 }));
 
+let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
+const capturedEventHandlers: Record<string, (...args: unknown[]) => void> = {};
+
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: (...args: unknown[]): unknown => mockQueueAdd(...args),
     close: (...args: unknown[]): unknown => mockQueueClose(...args),
   })),
-  Worker: jest.fn().mockImplementation((_name: string, _processor: unknown, _opts: unknown) => ({
-    on: jest.fn(),
-    close: (...args: unknown[]): unknown => mockWorkerClose(...args),
-  })),
+  Worker: jest
+    .fn()
+    .mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
+      capturedProcessor = processor;
+      return {
+        on: jest.fn().mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+          capturedEventHandlers[event] = handler;
+        }),
+        close: (...args: unknown[]): unknown => mockWorkerClose(...args),
+      };
+    }),
 }));
 
 // Mock global fetch
@@ -53,6 +63,14 @@ describe('Webhook Dispatcher', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUpdateLastTriggeredAt.mockResolvedValue(undefined);
+    capturedProcessor = null;
+    for (const key of Object.keys(capturedEventHandlers)) {
+      delete capturedEventHandlers[key];
+    }
+  });
+
+  afterEach(async () => {
+    await stopWebhookWorker();
   });
 
   describe('signPayload', () => {
@@ -166,6 +184,14 @@ describe('Webhook Dispatcher', () => {
       await processWebhookDelivery(mockJob);
       expect(mockUpdateLastTriggeredAt).toHaveBeenCalledWith('wh-1');
     });
+
+    it('should not propagate updateLastTriggeredAt rejection', async () => {
+      mockFetch.mockResolvedValue({ ok: true, status: 200 });
+      mockUpdateLastTriggeredAt.mockRejectedValue(new Error('DB error'));
+      await expect(processWebhookDelivery(mockJob)).resolves.toBeUndefined();
+      // Let fire-and-forget catch handler run
+      await new Promise((r) => setTimeout(r, 0));
+    });
   });
 
   describe('startWebhookWorker / stopWebhookWorker', () => {
@@ -177,6 +203,50 @@ describe('Webhook Dispatcher', () => {
       mockWorkerClose.mockResolvedValue(undefined);
       mockQueueClose.mockResolvedValue(undefined);
       await expect(stopWebhookWorker()).resolves.toBeUndefined();
+    });
+
+    it('should log warning and return early when worker already started', async () => {
+      await startWebhookWorker();
+      await expect(startWebhookWorker()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('worker processor and event handlers', () => {
+    it('should invoke processWebhookDelivery via worker processor', async () => {
+      await startWebhookWorker();
+      expect(capturedProcessor).toBeDefined();
+
+      mockFetch.mockResolvedValue({ ok: true, status: 200 });
+      const fakeJob = {
+        name: 'deliver:order.created',
+        data: {
+          webhookId: 'wh-1',
+          url: 'https://example.com/hook',
+          secret: 'test-secret',
+          event: 'order.created',
+          payload: { event: 'order.created', data: {} },
+        },
+      };
+      await capturedProcessor!(fakeJob);
+      expect(mockFetch).toHaveBeenCalledWith('https://example.com/hook', expect.any(Object));
+    });
+
+    it('should not throw from failed event handler', async () => {
+      await startWebhookWorker();
+      const handler = capturedEventHandlers['failed'];
+      if (!handler) throw new Error('failed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' }, new Error('fail'));
+      }).not.toThrow();
+    });
+
+    it('should not throw from completed event handler', async () => {
+      await startWebhookWorker();
+      const handler = capturedEventHandlers['completed'];
+      if (!handler) throw new Error('completed handler not registered');
+      expect(() => {
+        handler({ name: 'test-job' });
+      }).not.toThrow();
     });
   });
 });

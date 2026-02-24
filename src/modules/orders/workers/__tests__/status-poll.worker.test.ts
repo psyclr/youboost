@@ -46,6 +46,13 @@ const mockEnqueueWebhookDelivery = jest.fn();
 jest.mock('../../../webhooks', () => ({
   enqueueWebhookDelivery: (...args: unknown[]): unknown => mockEnqueueWebhookDelivery(...args),
 }));
+
+const mockEnqueueNotification = jest.fn();
+
+jest.mock('../../../notifications', () => ({
+  enqueueNotification: (...args: unknown[]): unknown => mockEnqueueNotification(...args),
+}));
+
 jest.mock('../../utils/fund-settlement', () => ({
   settleFunds: (...args: unknown[]): unknown => mockSettleFunds(...args),
 }));
@@ -85,6 +92,7 @@ describe('Status Poll Worker', () => {
     mockUpdateOrderStatus.mockResolvedValue({});
     mockSettleFunds.mockResolvedValue(undefined);
     mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
+    mockEnqueueNotification.mockResolvedValue(undefined);
     (isCircuitOpen as jest.Mock).mockReturnValue(false);
   });
 
@@ -294,5 +302,69 @@ describe('Status Poll Worker', () => {
     mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
     await pollOrderStatuses();
     expect(mockEnqueueWebhookDelivery).not.toHaveBeenCalled();
+  });
+
+  describe('dispatchTerminalNotifications', () => {
+    it('should enqueue notification on COMPLETED status', async () => {
+      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
+      await pollOrderStatuses();
+      // Let fire-and-forget promises settle
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockEnqueueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-1',
+          type: 'EMAIL',
+          subject: 'Order Completed',
+          eventType: 'order.completed',
+          referenceType: 'order',
+          referenceId: 'order-1',
+        }),
+      );
+    });
+
+    it('should enqueue notification on FAILED status', async () => {
+      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'error' }));
+      await pollOrderStatuses();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockEnqueueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Order Failed',
+          eventType: 'order.failed',
+        }),
+      );
+    });
+
+    it('should enqueue notification on PARTIAL status', async () => {
+      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 200 }));
+      await pollOrderStatuses();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockEnqueueNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Order Partially Completed',
+          eventType: 'order.partial',
+        }),
+      );
+    });
+
+    it('should not enqueue notification for non-terminal statuses', async () => {
+      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+      await pollOrderStatuses();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('should not fail pollOrderStatuses when webhook and notification reject', async () => {
+      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
+      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
+      mockEnqueueWebhookDelivery.mockRejectedValue(new Error('webhook fail'));
+      mockEnqueueNotification.mockRejectedValue(new Error('notification fail'));
+      await expect(pollOrderStatuses()).resolves.toBeUndefined();
+      // Let fire-and-forget catch handlers run
+      await new Promise((r) => setTimeout(r, 0));
+    });
   });
 });

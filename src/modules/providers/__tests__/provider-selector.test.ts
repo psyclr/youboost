@@ -44,7 +44,7 @@ describe('Provider Selector', () => {
 
     const result = await selectProvider();
 
-    expect(result.providerId).toBe('stub');
+    expect(result.providerId).toBeNull();
     expect(result.client).toBeDefined();
     expect(mockFindActiveProvidersByPriority).not.toHaveBeenCalled();
   });
@@ -96,7 +96,7 @@ describe('Provider Selector', () => {
 
     const result = await selectProvider();
 
-    expect(result.providerId).toBe('stub');
+    expect(result.providerId).toBeNull();
     expect(mockCreateSmmApiClient).not.toHaveBeenCalled();
   });
 

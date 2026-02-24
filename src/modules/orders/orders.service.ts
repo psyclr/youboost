@@ -79,7 +79,7 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
   const updated = await ordersRepo.updateOrderStatus(order.id, {
     status: 'PROCESSING',
     externalOrderId: submitResult.externalOrderId,
-    providerId,
+    ...(providerId ? { providerId } : {}),
     remains: input.quantity,
   });
 
