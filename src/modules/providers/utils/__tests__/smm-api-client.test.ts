@@ -70,6 +70,14 @@ describe('SMM API Client', () => {
         client.submitOrder({ serviceId: '100', link: 'https://yt.com', quantity: 100 }),
       ).rejects.toThrow('Provider returned no order ID');
     });
+
+    it('should throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(
+        client.submitOrder({ serviceId: '100', link: 'https://yt.com', quantity: 100 }),
+      ).rejects.toThrow('Provider API request failed');
+    });
   });
 
   describe('checkStatus', () => {
@@ -105,6 +113,125 @@ describe('SMM API Client', () => {
       mockFetch.mockResolvedValue(jsonResponse({ error: 'Order not found' }));
 
       await expect(client.checkStatus('bad-id')).rejects.toThrow('Provider error: Order not found');
+    });
+
+    it('should throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(client.checkStatus('12345')).rejects.toThrow('Provider API request failed');
+    });
+  });
+
+  describe('fetchServices', () => {
+    it('should return parsed services array', async () => {
+      mockFetch.mockResolvedValue(
+        jsonResponse([
+          {
+            service: '201',
+            name: 'YouTube Views',
+            type: 'Default',
+            category: 'YouTube',
+            rate: '1.50',
+            min: '100',
+            max: '1000000',
+            description: 'HQ views',
+          },
+          {
+            service: '202',
+            name: 'Instagram Likes',
+            type: 'Default',
+            category: 'Instagram',
+            rate: '2.00',
+            min: '50',
+            max: '50000',
+          },
+        ]),
+      );
+
+      const result = await client.fetchServices();
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        serviceId: '201',
+        name: 'YouTube Views',
+        type: 'Default',
+        category: 'YouTube',
+        rate: 1.5,
+        min: 100,
+        max: 1000000,
+        description: 'HQ views',
+      });
+    });
+
+    it('should send correct form data for services', async () => {
+      mockFetch.mockResolvedValue(jsonResponse([]));
+
+      await client.fetchServices();
+
+      const body = mockFetch.mock.calls[0][1].body as string;
+      expect(body).toContain('key=test-api-key');
+      expect(body).toContain('action=services');
+    });
+
+    it('should throw on provider error response', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ error: 'Authentication failed' }));
+
+      await expect(client.fetchServices()).rejects.toThrow('Provider error: Authentication failed');
+    });
+
+    it('should return empty array for non-array response', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({}));
+
+      const result = await client.fetchServices();
+
+      expect(result).toEqual([]);
+    });
+
+    it('should throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(client.fetchServices()).rejects.toThrow('Provider API request failed');
+    });
+  });
+
+  describe('checkBalance', () => {
+    it('should return balance info', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ balance: '150.25', currency: 'USD' }));
+
+      const result = await client.checkBalance();
+
+      expect(result.balance).toBe(150.25);
+      expect(result.currency).toBe('USD');
+    });
+
+    it('should send correct form data for balance', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ balance: '0', currency: 'USD' }));
+
+      await client.checkBalance();
+
+      const body = mockFetch.mock.calls[0][1].body as string;
+      expect(body).toContain('key=test-api-key');
+      expect(body).toContain('action=balance');
+    });
+
+    it('should throw on provider error response', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ error: 'Invalid API key' }));
+
+      await expect(client.checkBalance()).rejects.toThrow('Provider error: Invalid API key');
+    });
+
+    it('should default currency to USD when not provided', async () => {
+      mockFetch.mockResolvedValue(jsonResponse({ balance: '50' }));
+
+      const result = await client.checkBalance();
+
+      expect(result.currency).toBe('USD');
+    });
+
+    it('should throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(client.checkBalance()).rejects.toThrow('Provider API request failed');
     });
   });
 });

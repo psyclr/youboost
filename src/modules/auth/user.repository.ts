@@ -1,5 +1,8 @@
 import { getPrisma } from '../../shared/database';
 
+const VALID_ROLES = ['USER', 'RESELLER', 'ADMIN'] as const;
+const VALID_STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED'] as const;
+
 interface CreateUserData {
   email: string;
   username: string;
@@ -54,6 +57,14 @@ export async function updatePassword(userId: string, hash: string): Promise<void
   });
 }
 
+export async function updateUsername(userId: string, username: string): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.user.update({
+    where: { id: userId },
+    data: { username },
+  });
+}
+
 export async function findAllUsers(filters: {
   role?: string | undefined;
   status?: string | undefined;
@@ -83,6 +94,11 @@ export async function findAllUsers(filters: {
 }
 
 export async function updateUserRole(userId: string, role: string): Promise<UserRecord> {
+  // Validate role against whitelist to prevent SQL injection
+  if (!VALID_ROLES.includes(role as (typeof VALID_ROLES)[number])) {
+    throw new Error(`Invalid role: ${role}. Must be one of: ${VALID_ROLES.join(', ')}`);
+  }
+
   const prisma = getPrisma();
   return prisma.user.update({
     where: { id: userId },
@@ -91,6 +107,11 @@ export async function updateUserRole(userId: string, role: string): Promise<User
 }
 
 export async function updateUserStatus(userId: string, status: string): Promise<UserRecord> {
+  // Validate status against whitelist to prevent SQL injection
+  if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
+    throw new Error(`Invalid status: ${status}. Must be one of: ${VALID_STATUSES.join(', ')}`);
+  }
+
   const prisma = getPrisma();
   return prisma.user.update({
     where: { id: userId },

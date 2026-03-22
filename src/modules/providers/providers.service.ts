@@ -1,6 +1,8 @@
-import { NotFoundError } from '../../shared/errors';
+import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { encryptApiKey } from './utils/encryption';
+import { encryptApiKey, decryptApiKey } from './utils/encryption';
+import { createSmmApiClient } from './utils/smm-api-client';
+import type { ProviderServiceInfo, ProviderBalanceInfo } from '../orders/utils/provider-client';
 import * as providerRepo from './providers.repository';
 import type {
   CreateProviderInput,
@@ -109,4 +111,40 @@ export async function deactivateProvider(id: string): Promise<void> {
 
   await providerRepo.updateProvider(id, { isActive: false });
   log.info({ providerId: id }, 'Provider deactivated');
+}
+
+export async function fetchProviderServices(providerId: string): Promise<ProviderServiceInfo[]> {
+  const provider = await providerRepo.findProviderById(providerId);
+  if (!provider) {
+    throw new NotFoundError('Provider not found', 'PROVIDER_NOT_FOUND');
+  }
+  try {
+    const apiKey = decryptApiKey(provider.apiKeyEncrypted);
+    const client = createSmmApiClient({ apiEndpoint: provider.apiEndpoint, apiKey });
+    return await client.fetchServices();
+  } catch (error) {
+    log.warn({ providerId, error }, 'Failed to fetch provider services');
+    throw new ValidationError(
+      'Provider API key is not configured or invalid',
+      'PROVIDER_API_ERROR',
+    );
+  }
+}
+
+export async function checkProviderBalance(providerId: string): Promise<ProviderBalanceInfo> {
+  const provider = await providerRepo.findProviderById(providerId);
+  if (!provider) {
+    throw new NotFoundError('Provider not found', 'PROVIDER_NOT_FOUND');
+  }
+  try {
+    const apiKey = decryptApiKey(provider.apiKeyEncrypted);
+    const client = createSmmApiClient({ apiEndpoint: provider.apiEndpoint, apiKey });
+    return await client.checkBalance();
+  } catch (error) {
+    log.warn({ providerId, error }, 'Failed to check provider balance');
+    throw new ValidationError(
+      'Provider API key is not configured or invalid',
+      'PROVIDER_API_ERROR',
+    );
+  }
 }

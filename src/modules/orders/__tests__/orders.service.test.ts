@@ -24,9 +24,9 @@ jest.mock('../../billing', () => ({
 }));
 
 const mockSubmitOrder = jest.fn();
-const mockSelectProvider = jest.fn();
+const mockSelectProviderById = jest.fn();
 jest.mock('../../providers', () => ({
-  selectProvider: (...args: unknown[]): unknown => mockSelectProvider(...args),
+  selectProviderById: (...args: unknown[]): unknown => mockSelectProviderById(...args),
 }));
 
 const mockEnqueueWebhookDelivery = jest.fn();
@@ -54,6 +54,9 @@ const mockService = {
   minQuantity: 100,
   maxQuantity: 100_000,
   isActive: true,
+  providerId: 'prov-1',
+  externalServiceId: '101',
+  refillDays: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -70,6 +73,13 @@ const mockOrder = {
   status: 'PROCESSING',
   startCount: null,
   remains: 1000,
+  isDripFeed: false,
+  dripFeedRuns: null,
+  dripFeedInterval: null,
+  dripFeedRunsCompleted: 0,
+  dripFeedPausedAt: null,
+  refillEligibleUntil: null,
+  refillCount: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
   completedAt: null,
@@ -88,14 +98,19 @@ describe('Orders Service', () => {
     jest.clearAllMocks();
     mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
     mockEnqueueNotification.mockResolvedValue(undefined);
-    mockSelectProvider.mockResolvedValue({
-      providerId: null,
+    mockSelectProviderById.mockResolvedValue({
+      providerId: 'prov-1',
       client: { submitOrder: mockSubmitOrder, checkStatus: jest.fn() },
     });
   });
 
   describe('createOrder', () => {
-    const input = { serviceId: 'svc-1', link: 'https://youtube.com/watch?v=test', quantity: 1000 };
+    const input = {
+      serviceId: 'svc-1',
+      link: 'https://youtube.com/watch?v=test',
+      quantity: 1000,
+      isDripFeed: false as const,
+    };
 
     it('should create order and hold funds', async () => {
       setupCreateOrder();
@@ -139,11 +154,28 @@ describe('Orders Service', () => {
       );
     });
 
-    it('should submit to provider after creating order', async () => {
+    it('should throw ValidationError if service has no provider', async () => {
+      mockFindServiceById.mockResolvedValue({
+        ...mockService,
+        providerId: null,
+        externalServiceId: null,
+      });
+      await expect(createOrder('user-1', input)).rejects.toThrow(
+        'Service is not linked to a provider',
+      );
+    });
+
+    it('should use selectProviderById with service providerId', async () => {
+      setupCreateOrder();
+      await createOrder('user-1', input);
+      expect(mockSelectProviderById).toHaveBeenCalledWith('prov-1');
+    });
+
+    it('should submit to provider with externalServiceId', async () => {
       setupCreateOrder();
       await createOrder('user-1', input);
       expect(mockSubmitOrder).toHaveBeenCalledWith({
-        serviceId: 'svc-1',
+        serviceId: '101',
         link: 'https://youtube.com/watch?v=test',
         quantity: 1000,
       });
@@ -176,8 +208,33 @@ describe('Orders Service', () => {
       expect(mockUpdateOrderStatus).toHaveBeenCalledWith('o3', {
         status: 'PROCESSING',
         externalOrderId: 'ext-99',
+        providerId: 'prov-1',
         remains: 1000,
       });
+    });
+
+    it('should throw when externalServiceId is null but providerId exists', async () => {
+      mockFindServiceById.mockResolvedValue({
+        ...mockService,
+        providerId: 'prov-1',
+        externalServiceId: null,
+      });
+      await expect(createOrder('user-1', input)).rejects.toThrow(
+        'Service is not linked to a provider',
+      );
+    });
+
+    it('should propagate selectProviderById errors', async () => {
+      mockFindServiceById.mockResolvedValue(mockService);
+      mockCreateOrder.mockResolvedValue(mockOrder);
+      mockHoldFunds.mockResolvedValue(undefined);
+      mockReleaseFunds.mockResolvedValue(undefined);
+      mockUpdateOrderStatus.mockResolvedValue(mockOrder);
+      mockSelectProviderById.mockRejectedValue(new Error('Linked provider is not available'));
+
+      await expect(createOrder('user-1', input)).rejects.toThrow(
+        'Linked provider is not available',
+      );
     });
   });
 

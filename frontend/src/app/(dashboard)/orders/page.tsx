@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus } from 'lucide-react';
+import { Plus, Layers } from 'lucide-react';
 import type { OrderResponse, OrderStatus } from '@/lib/api/types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -73,12 +73,20 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-muted-foreground">Manage your service orders</p>
         </div>
-        <Button asChild>
-          <Link href="/orders/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New Order
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/orders/bulk">
+              <Layers className="h-4 w-4 mr-2" />
+              Bulk Order
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/orders/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Order
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-4">

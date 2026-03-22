@@ -4,7 +4,12 @@ import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import { authenticate } from '../auth/auth.middleware';
 import * as ordersService from './orders.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
-import { createOrderSchema, ordersQuerySchema, orderIdSchema } from './orders.types';
+import {
+  createOrderSchema,
+  ordersQuerySchema,
+  orderIdSchema,
+  bulkOrderSchema,
+} from './orders.types';
 
 function validateBody<T>(
   schema: {
@@ -63,6 +68,13 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(StatusCodes.CREATED).send(result);
   });
 
+  app.post('/bulk', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const input = validateBody(bulkOrderSchema, request.body);
+    const result = await ordersService.createBulkOrders(user.userId, input);
+    return reply.status(StatusCodes.CREATED).send(result);
+  });
+
   app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const user = getAuthUser(request);
     const query = validateQuery(ordersQuerySchema, request.query);
@@ -75,6 +87,13 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     const params = validateParams(orderIdSchema, request.params);
     const result = await ordersService.getOrder(user.userId, params.orderId);
     return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.post('/:orderId/refill', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const params = validateParams(orderIdSchema, request.params);
+    const result = await ordersService.refillOrder(user.userId, params.orderId);
+    return reply.status(StatusCodes.CREATED).send(result);
   });
 
   app.delete('/:orderId', async (request: FastifyRequest, reply: FastifyReply) => {

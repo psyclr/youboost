@@ -3,6 +3,8 @@ import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { pollOrderStatuses } from './status-poll.worker';
 
+export { startDripFeedWorker, stopDripFeedWorker } from './drip-feed.worker';
+
 const log = createServiceLogger('order-polling');
 
 export async function startOrderPolling(): Promise<void> {

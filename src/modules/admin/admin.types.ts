@@ -28,6 +28,7 @@ export const adminOrdersQuerySchema = z.object({
     .enum(['PENDING', 'PROCESSING', 'COMPLETED', 'PARTIAL', 'CANCELLED', 'FAILED', 'REFUNDED'])
     .optional(),
   userId: z.string().uuid().optional(),
+  isDripFeed: z.coerce.boolean().optional(),
 });
 
 export const adminOrderIdSchema = z.object({
@@ -46,26 +47,53 @@ export const adminForceStatusSchema = z.object({
   ]),
 });
 
-export const adminServiceCreateSchema = z.object({
-  name: z.string().min(1).max(255),
-  description: z.string().max(1000).optional(),
-  platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']),
-  type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']),
-  pricePer1000: z.number().min(0),
-  minQuantity: z.number().int().min(1),
-  maxQuantity: z.number().int().min(1),
+export const adminServicesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export const adminServiceUpdateSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().max(1000).optional(),
-  platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']).optional(),
-  type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']).optional(),
-  pricePer1000: z.number().min(0).optional(),
-  minQuantity: z.number().int().min(1).optional(),
-  maxQuantity: z.number().int().min(1).optional(),
-  isActive: z.boolean().optional(),
-});
+export const adminServiceCreateSchema = z
+  .object({
+    name: z.string().min(1).max(255),
+    description: z.string().max(1000).optional(),
+    platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']),
+    type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']),
+    pricePer1000: z.number().min(0),
+    minQuantity: z.number().int().min(1),
+    maxQuantity: z.number().int().min(1),
+    providerId: z.string().uuid(),
+    externalServiceId: z.string().min(1),
+  })
+  .refine((data) => data.maxQuantity >= data.minQuantity, {
+    message: 'maxQuantity must be >= minQuantity',
+    path: ['maxQuantity'],
+  });
+
+export const adminServiceUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(255).optional(),
+    description: z.string().max(1000).optional(),
+    platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']).optional(),
+    type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']).optional(),
+    pricePer1000: z.number().min(0).optional(),
+    minQuantity: z.number().int().min(1).optional(),
+    maxQuantity: z.number().int().min(1).optional(),
+    isActive: z.boolean().optional(),
+    providerId: z.string().uuid().optional(),
+    externalServiceId: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.minQuantity != null && data.maxQuantity != null) {
+        return data.maxQuantity >= data.minQuantity;
+      }
+      return true;
+    },
+    {
+      message: 'maxQuantity must be >= minQuantity',
+      path: ['maxQuantity'],
+    },
+  );
 
 export const adminServiceIdSchema = z.object({
   serviceId: z.string().uuid(),
@@ -78,6 +106,7 @@ export type AdminBalanceAdjustInput = z.infer<typeof adminBalanceAdjustSchema>;
 export type AdminOrdersQuery = z.infer<typeof adminOrdersQuerySchema>;
 export type AdminOrderIdParam = z.infer<typeof adminOrderIdSchema>;
 export type AdminForceStatusInput = z.infer<typeof adminForceStatusSchema>;
+export type AdminServicesQuery = z.infer<typeof adminServicesQuerySchema>;
 export type AdminServiceCreateInput = z.infer<typeof adminServiceCreateSchema>;
 export type AdminServiceUpdateInput = z.infer<typeof adminServiceUpdateSchema>;
 export type AdminServiceIdParam = z.infer<typeof adminServiceIdSchema>;
@@ -111,6 +140,11 @@ export interface AdminOrderResponse {
   link: string;
   startCount: number | null;
   remains: number | null;
+  isDripFeed: boolean;
+  dripFeedRuns: number | null;
+  dripFeedRunsCompleted: number;
+  dripFeedInterval: number | null;
+  dripFeedPausedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -126,6 +160,9 @@ export interface AdminServiceResponse {
   minQuantity: number;
   maxQuantity: number;
   isActive: boolean;
+  providerId: string | null;
+  externalServiceId: string | null;
+  providerName: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

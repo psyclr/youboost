@@ -111,6 +111,11 @@ export default function CatalogPage() {
                   {service.description && (
                     <p className="text-sm text-muted-foreground mb-3">{service.description}</p>
                   )}
+                  {service.refillDays && (
+                    <Badge variant="outline" className="mb-2 text-green-600 border-green-600">
+                      {service.refillDays}-day refill guarantee
+                    </Badge>
+                  )}
                   <div className="flex items-baseline gap-1">
                     <span className="text-2xl font-bold">
                       {formatCurrency(service.pricePer1000)}

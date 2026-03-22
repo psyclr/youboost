@@ -16,6 +16,7 @@ import {
   adminOrdersQuerySchema,
   adminOrderIdSchema,
   adminForceStatusSchema,
+  adminServicesQuerySchema,
   adminServiceCreateSchema,
   adminServiceUpdateSchema,
   adminServiceIdSchema,
@@ -127,10 +128,31 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(StatusCodes.OK).send(result);
   });
 
+  app.post(
+    '/orders/:orderId/pause-drip-feed',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      requireAdmin(request);
+      const params = validateParams(adminOrderIdSchema, request.params);
+      const result = await adminOrdersService.pauseDripFeed(params.orderId);
+      return reply.status(StatusCodes.OK).send(result);
+    },
+  );
+
+  app.post(
+    '/orders/:orderId/resume-drip-feed',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      requireAdmin(request);
+      const params = validateParams(adminOrderIdSchema, request.params);
+      const result = await adminOrdersService.resumeDripFeed(params.orderId);
+      return reply.status(StatusCodes.OK).send(result);
+    },
+  );
+
   // Services
   app.get('/services', async (request: FastifyRequest, reply: FastifyReply) => {
     requireAdmin(request);
-    const result = await adminServicesService.listAllServices();
+    const query = validateQuery(adminServicesQuerySchema, request.query);
+    const result = await adminServicesService.listAllServices(query);
     return reply.status(StatusCodes.OK).send(result);
   });
 

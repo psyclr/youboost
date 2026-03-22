@@ -5,6 +5,21 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
 
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+
+  // SMTP (optional — falls back to stub email provider)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z
+    .string()
+    .default('587')
+    .transform((val) => Number.parseInt(val, 10)),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('YouBoost <noreply@youboost.io>'),
+  APP_URL: z.string().default('http://localhost:3000'),
+
+  // Stripe (optional)
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
   PORT: z
     .string()
     .default('3000')
@@ -76,6 +91,7 @@ export interface AppConfig {
     nodeEnv: 'development' | 'production' | 'test';
     port: number;
     logLevel: string;
+    url: string;
   };
   jwt: {
     secret: string;
@@ -88,6 +104,17 @@ export interface AppConfig {
     rateLimitMax: number;
     rateLimitWindowMs: number;
     corsOrigin: string;
+  };
+  smtp: {
+    host: string | undefined;
+    port: number;
+    user: string | undefined;
+    pass: string | undefined;
+    from: string;
+  };
+  stripe: {
+    secretKey: string | undefined;
+    webhookSecret: string | undefined;
   };
   provider: {
     encryptionKey: string;
@@ -116,6 +143,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       nodeEnv: parsed.NODE_ENV,
       port: parsed.PORT,
       logLevel: parsed.LOG_LEVEL,
+      url: parsed.APP_URL,
     },
     jwt: {
       secret: parsed.JWT_SECRET,
@@ -128,6 +156,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       rateLimitMax: parsed.RATE_LIMIT_MAX,
       rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
       corsOrigin: parsed.CORS_ORIGIN,
+    },
+    smtp: {
+      host: parsed.SMTP_HOST,
+      port: parsed.SMTP_PORT,
+      user: parsed.SMTP_USER,
+      pass: parsed.SMTP_PASS,
+      from: parsed.SMTP_FROM,
+    },
+    stripe: {
+      secretKey: parsed.STRIPE_SECRET_KEY,
+      webhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
     },
     provider: {
       encryptionKey: parsed.PROVIDER_ENCRYPTION_KEY,

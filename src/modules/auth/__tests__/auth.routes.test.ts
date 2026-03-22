@@ -136,7 +136,11 @@ describe('Auth Routes', () => {
 
   describe('POST /auth/refresh', () => {
     it('should return 200 with new access token', async () => {
-      mockRefresh.mockResolvedValue({ accessToken: 'new-at', expiresIn: 3600 });
+      mockRefresh.mockResolvedValue({
+        accessToken: 'new-at',
+        refreshToken: 'new-rt',
+        expiresIn: 3600,
+      });
 
       const res = await app.inject({
         method: 'POST',

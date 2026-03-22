@@ -42,6 +42,48 @@ export async function findAllServices(filters?: { isActive?: boolean }): Promise
   });
 }
 
+export async function findAllServicesPaginated(
+  page: number,
+  limit: number,
+): Promise<{ services: ServiceRecord[]; total: number }> {
+  const prisma = getPrisma();
+  const [services, total] = await Promise.all([
+    prisma.service.findMany({ skip: (page - 1) * limit, take: limit, orderBy: { name: 'asc' } }),
+    prisma.service.count(),
+  ]);
+  return { services, total };
+}
+
+export async function findAllServicesPaginatedWithProvider(
+  page: number,
+  limit: number,
+): Promise<{
+  services: Array<ServiceRecord & { provider: { id: string; name: string } | null }>;
+  total: number;
+}> {
+  const prisma = getPrisma();
+  const [services, total] = await Promise.all([
+    prisma.service.findMany({
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { name: 'asc' },
+      include: { provider: { select: { id: true, name: true } } },
+    }),
+    prisma.service.count(),
+  ]);
+  return { services, total };
+}
+
+export async function findServiceWithProvider(
+  id: string,
+): Promise<(ServiceRecord & { provider: { id: string; name: string } | null }) | null> {
+  const prisma = getPrisma();
+  return prisma.service.findUnique({
+    where: { id },
+    include: { provider: { select: { id: true, name: true } } },
+  });
+}
+
 export async function createService(data: CreateServiceData): Promise<ServiceRecord> {
   const prisma = getPrisma();
   return prisma.service.create({
@@ -53,8 +95,35 @@ export async function createService(data: CreateServiceData): Promise<ServiceRec
       pricePer1000: data.pricePer1000,
       minQuantity: data.minQuantity,
       maxQuantity: data.maxQuantity,
+      providerId: data.providerId ?? null,
+      externalServiceId: data.externalServiceId ?? null,
     },
   });
+}
+
+function buildUpdateData(data: UpdateServiceData): Record<string, unknown> {
+  const updateData: Record<string, unknown> = {};
+  const nullableFields = [
+    'name',
+    'description',
+    'platform',
+    'type',
+    'pricePer1000',
+    'minQuantity',
+    'maxQuantity',
+    'isActive',
+  ] as const;
+
+  for (const field of nullableFields) {
+    if (data[field] != null) {
+      updateData[field] = data[field];
+    }
+  }
+
+  if (data.providerId !== undefined) updateData.providerId = data.providerId;
+  if (data.externalServiceId !== undefined) updateData.externalServiceId = data.externalServiceId;
+
+  return updateData;
 }
 
 export async function updateService(
@@ -62,19 +131,9 @@ export async function updateService(
   data: UpdateServiceData,
 ): Promise<ServiceRecord> {
   const prisma = getPrisma();
-  const updateData: Record<string, unknown> = {};
-  if (data.name != null) updateData.name = data.name;
-  if (data.description != null) updateData.description = data.description;
-  if (data.platform != null) updateData.platform = data.platform;
-  if (data.type != null) updateData.type = data.type;
-  if (data.pricePer1000 != null) updateData.pricePer1000 = data.pricePer1000;
-  if (data.minQuantity != null) updateData.minQuantity = data.minQuantity;
-  if (data.maxQuantity != null) updateData.maxQuantity = data.maxQuantity;
-  if (data.isActive != null) updateData.isActive = data.isActive;
-
   return prisma.service.update({
     where: { id: serviceId },
-    data: updateData,
+    data: buildUpdateData(data),
   });
 }
 

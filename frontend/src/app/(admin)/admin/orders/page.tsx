@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAdminOrders, forceOrderStatus, refundOrder } from '@/lib/api/admin';
+import {
+  getAdminOrders,
+  forceOrderStatus,
+  refundOrder,
+  pauseDripFeed,
+  resumeDripFeed,
+} from '@/lib/api/admin';
 import { ApiError } from '@/lib/api/client';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
@@ -24,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { AdminOrderResponse, OrderStatus } from '@/lib/api/types';
 import { toast } from 'sonner';
@@ -51,6 +58,7 @@ const allStatuses: OrderStatus[] = [
 
 export default function AdminOrdersPage() {
   const [status, setStatus] = useState('ALL');
+  const [dripFeedOnly, setDripFeedOnly] = useState(false);
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderResponse | null>(null);
@@ -58,12 +66,13 @@ export default function AdminOrdersPage() {
   const [newStatus, setNewStatus] = useState<OrderStatus>('COMPLETED');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'orders', { page, status }],
+    queryKey: ['admin', 'orders', { page, status, dripFeedOnly }],
     queryFn: () =>
       getAdminOrders({
         page,
         limit: 20,
         status: status === 'ALL' ? undefined : (status as OrderStatus),
+        isDripFeed: dripFeedOnly ? true : undefined,
       }),
   });
 
@@ -92,6 +101,28 @@ export default function AdminOrdersPage() {
     },
   });
 
+  const pauseMutation = useMutation({
+    mutationFn: (orderId: string) => pauseDripFeed(orderId),
+    onSuccess: () => {
+      toast.success('Drip-feed paused');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to pause drip-feed');
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: (orderId: string) => resumeDripFeed(orderId),
+    onSuccess: () => {
+      toast.success('Drip-feed resumed');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to resume drip-feed');
+    },
+  });
+
   const columns: Column<AdminOrderResponse>[] = [
     {
       header: 'Order ID',
@@ -106,6 +137,17 @@ export default function AdminOrdersPage() {
       cell: (row) => <StatusBadge status={row.status} />,
     },
     { header: 'Qty', accessorKey: 'quantity' },
+    {
+      header: 'Drip-feed',
+      cell: (row) => {
+        if (!row.isDripFeed) return '\u2014';
+        const progress = `${row.dripFeedRunsCompleted}/${row.dripFeedRuns} runs`;
+        if (row.dripFeedPausedAt) {
+          return <span className="text-yellow-600">{progress} (paused)</span>;
+        }
+        return progress;
+      },
+    },
     {
       header: 'Price',
       cell: (row) => formatCurrency(row.price),
@@ -124,9 +166,29 @@ export default function AdminOrdersPage() {
           <Button variant="outline" size="sm" onClick={() => setRefundOrderId(row.orderId)}>
             Refund
           </Button>
+          {row.isDripFeed && row.status === 'PROCESSING' && !row.dripFeedPausedAt && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => pauseMutation.mutate(row.orderId)}
+              disabled={pauseMutation.isPending}
+            >
+              Pause
+            </Button>
+          )}
+          {row.isDripFeed && row.status === 'PROCESSING' && row.dripFeedPausedAt && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => resumeMutation.mutate(row.orderId)}
+              disabled={resumeMutation.isPending}
+            >
+              Resume
+            </Button>
+          )}
         </div>
       ),
-      className: 'w-40',
+      className: 'w-56',
     },
   ];
 
@@ -137,7 +199,7 @@ export default function AdminOrdersPage() {
         <p className="text-muted-foreground">Manage all platform orders</p>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex gap-4 items-center">
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-48">
             <SelectValue />
@@ -150,6 +212,10 @@ export default function AdminOrdersPage() {
             ))}
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Switch checked={dripFeedOnly} onCheckedChange={setDripFeedOnly} />
+          Drip-feed only
+        </label>
       </div>
 
       <DataTable

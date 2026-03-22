@@ -6,10 +6,15 @@ import type {
   DashboardStats,
   PaginatedAdminOrders,
   PaginatedUsers,
+  ProviderResponse,
+  ProviderDetailResponse,
+  PaginatedProviders,
+  ProviderServiceItem,
+  ProviderBalanceInfo,
 } from './types';
 
 // Dashboard
-export const getDashboardStats = () => apiRequest<DashboardStats>('/admin/dashboard');
+export const getDashboardStats = () => apiRequest<DashboardStats>('/admin/dashboard/stats');
 
 // Users
 export const getAdminUsers = (params?: {
@@ -37,7 +42,7 @@ export const updateAdminUser = (userId: string, data: { role?: string; status?: 
   });
 
 export const adjustBalance = (userId: string, data: { amount: number; reason: string }) =>
-  apiRequest<{ message: string }>(`/admin/users/${userId}/balance`, {
+  apiRequest<{ success: boolean }>(`/admin/users/${userId}/balance/adjust`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -48,12 +53,14 @@ export const getAdminOrders = (params?: {
   limit?: number;
   status?: string;
   userId?: string;
+  isDripFeed?: boolean;
 }) => {
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.status) searchParams.set('status', params.status);
   if (params?.userId) searchParams.set('userId', params.userId);
+  if (params?.isDripFeed !== undefined) searchParams.set('isDripFeed', String(params.isDripFeed));
   const qs = searchParams.toString();
   return apiRequest<PaginatedAdminOrders>(`/admin/orders${qs ? `?${qs}` : ''}`);
 };
@@ -68,7 +75,17 @@ export const forceOrderStatus = (orderId: string, status: string) =>
   });
 
 export const refundOrder = (orderId: string) =>
-  apiRequest<{ message: string }>(`/admin/orders/${orderId}/refund`, {
+  apiRequest<AdminOrderResponse>(`/admin/orders/${orderId}/refund`, {
+    method: 'POST',
+  });
+
+export const pauseDripFeed = (orderId: string) =>
+  apiRequest<AdminOrderResponse>(`/admin/orders/${orderId}/pause-drip-feed`, {
+    method: 'POST',
+  });
+
+export const resumeDripFeed = (orderId: string) =>
+  apiRequest<AdminOrderResponse>(`/admin/orders/${orderId}/resume-drip-feed`, {
     method: 'POST',
   });
 
@@ -92,6 +109,8 @@ export const createAdminService = (data: {
   pricePer1000: number;
   minQuantity: number;
   maxQuantity: number;
+  providerId: string;
+  externalServiceId: string;
 }) =>
   apiRequest<AdminServiceResponse>('/admin/services', {
     method: 'POST',
@@ -103,3 +122,50 @@ export const updateAdminService = (serviceId: string, data: Record<string, unkno
     method: 'PATCH',
     body: JSON.stringify(data),
   });
+
+// Providers
+export const getProviders = (params?: { page?: number; limit?: number; isActive?: boolean }) => {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
+  const qs = searchParams.toString();
+  return apiRequest<PaginatedProviders>(`/providers${qs ? `?${qs}` : ''}`);
+};
+
+export const getProvider = (id: string) => apiRequest<ProviderDetailResponse>(`/providers/${id}`);
+
+export const createProvider = (data: {
+  name: string;
+  apiEndpoint: string;
+  apiKey: string;
+  priority?: number;
+}) =>
+  apiRequest<ProviderResponse>('/providers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const updateProvider = (
+  id: string,
+  data: {
+    name?: string;
+    apiEndpoint?: string;
+    apiKey?: string;
+    priority?: number;
+    isActive?: boolean;
+  },
+) =>
+  apiRequest<ProviderResponse>(`/providers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+export const deactivateProvider = (id: string) =>
+  apiRequest<void>(`/providers/${id}`, { method: 'DELETE' });
+
+export const getProviderServices = (id: string) =>
+  apiRequest<{ services: ProviderServiceItem[] }>(`/providers/${id}/services`);
+
+export const getProviderBalance = (id: string) =>
+  apiRequest<ProviderBalanceInfo>(`/providers/${id}/balance`);

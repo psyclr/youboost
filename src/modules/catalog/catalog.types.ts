@@ -23,6 +23,7 @@ export interface CatalogServiceResponse {
   pricePer1000: number;
   minQuantity: number;
   maxQuantity: number;
+  refillDays: number | null;
 }
 
 export interface PaginatedCatalog {

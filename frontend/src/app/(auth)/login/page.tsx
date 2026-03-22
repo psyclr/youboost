@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -44,11 +44,18 @@ export default function LoginPage() {
     defaultValues: { email: '', password: '' },
   });
 
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      router.replace(user.role === 'ADMIN' ? '/admin' : '/dashboard');
+    }
+  }, [user, router]);
+
   const onSubmit = async (data: LoginForm) => {
     setError(null);
     try {
       await login(data.email, data.password);
-      router.push('/dashboard');
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -98,6 +105,11 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
+            <div className="flex justify-end">
+              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? 'Signing in...' : 'Sign In'}
             </Button>

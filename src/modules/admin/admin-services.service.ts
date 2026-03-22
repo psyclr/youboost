@@ -1,9 +1,11 @@
-import { NotFoundError } from '../../shared/errors';
+import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as serviceRepo from '../orders/service.repository';
+import { findProviderById } from '../providers/providers.repository';
 import { toNumber } from '../billing/utils/decimal';
 import type { ServiceRecord } from '../orders/orders.types';
 import type {
+  AdminServicesQuery,
   AdminServiceCreateInput,
   AdminServiceUpdateInput,
   AdminServiceResponse,
@@ -11,7 +13,11 @@ import type {
 
 const log = createServiceLogger('admin-services');
 
-function toServiceResponse(record: ServiceRecord): AdminServiceResponse {
+interface ServiceWithProvider extends ServiceRecord {
+  provider?: { id: string; name: string } | null;
+}
+
+function toServiceResponse(record: ServiceWithProvider): AdminServiceResponse {
   return {
     serviceId: record.id,
     name: record.name,
@@ -22,20 +28,38 @@ function toServiceResponse(record: ServiceRecord): AdminServiceResponse {
     minQuantity: record.minQuantity,
     maxQuantity: record.maxQuantity,
     isActive: record.isActive,
+    providerId: record.providerId,
+    externalServiceId: record.externalServiceId,
+    providerName: record.provider?.name ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
 }
 
-export async function listAllServices(): Promise<{ services: AdminServiceResponse[] }> {
-  const services = await serviceRepo.findAllServices();
+export async function listAllServices(query: AdminServicesQuery): Promise<{
+  services: AdminServiceResponse[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}> {
+  const { services, total } = await serviceRepo.findAllServicesPaginatedWithProvider(
+    query.page,
+    query.limit,
+  );
+  const totalPages = Math.ceil(total / query.limit);
 
-  log.info({ count: services.length }, 'Listed all services');
+  log.info({ page: query.page, total }, 'Listed all services');
 
-  return { services: services.map(toServiceResponse) };
+  return {
+    services: services.map(toServiceResponse),
+    pagination: { page: query.page, limit: query.limit, total, totalPages },
+  };
 }
 
 export async function createService(input: AdminServiceCreateInput): Promise<AdminServiceResponse> {
+  const provider = await findProviderById(input.providerId);
+  if (!provider) {
+    throw new ValidationError('Provider not found', 'PROVIDER_NOT_FOUND');
+  }
+
   const record = await serviceRepo.createService({
     name: input.name,
     description: input.description,
@@ -44,11 +68,15 @@ export async function createService(input: AdminServiceCreateInput): Promise<Adm
     pricePer1000: input.pricePer1000,
     minQuantity: input.minQuantity,
     maxQuantity: input.maxQuantity,
+    providerId: input.providerId,
+    externalServiceId: input.externalServiceId,
   });
+
+  const withProvider = await serviceRepo.findServiceWithProvider(record.id);
 
   log.info({ serviceId: record.id }, 'Created service');
 
-  return toServiceResponse(record);
+  return toServiceResponse(withProvider ?? record);
 }
 
 export async function updateService(
@@ -60,11 +88,19 @@ export async function updateService(
     throw new NotFoundError('Service not found', 'SERVICE_NOT_FOUND');
   }
 
-  const record = await serviceRepo.updateService(serviceId, input);
+  if (input.providerId) {
+    const provider = await findProviderById(input.providerId);
+    if (!provider) {
+      throw new ValidationError('Provider not found', 'PROVIDER_NOT_FOUND');
+    }
+  }
+
+  await serviceRepo.updateService(serviceId, input);
+  const withProvider = await serviceRepo.findServiceWithProvider(serviceId);
 
   log.info({ serviceId }, 'Updated service');
 
-  return toServiceResponse(record);
+  return toServiceResponse(withProvider ?? existing);
 }
 
 export async function deactivateService(serviceId: string): Promise<void> {

@@ -1,6 +1,7 @@
 import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import * as ordersRepo from '../orders.repository';
+import * as serviceRepo from '../service.repository';
 import { findProviderById } from '../../providers/providers.repository';
 import { decryptApiKey } from '../../providers/utils/encryption';
 import { createSmmApiClient } from '../../providers/utils/smm-api-client';
@@ -123,6 +124,37 @@ function dispatchTerminalNotifications(
   });
 }
 
+async function handleRefillEligibility(orderId: string, serviceId: string): Promise<void> {
+  try {
+    const service = await serviceRepo.findServiceById(serviceId);
+    if (service?.refillDays) {
+      const eligibleUntil = new Date();
+      eligibleUntil.setDate(eligibleUntil.getDate() + service.refillDays);
+      await ordersRepo.updateOrderStatus(orderId, {
+        status: 'COMPLETED',
+        refillEligibleUntil: eligibleUntil,
+      });
+      log.info({ orderId, refillDays: service.refillDays }, 'Refill eligibility set');
+    }
+  } catch (err) {
+    log.error({ orderId, err }, 'Failed to set refill eligibility');
+  }
+}
+
+async function handleTerminalStatus(
+  order: OrderRecord,
+  newStatus: string,
+  remains: number | null | undefined,
+): Promise<void> {
+  const updatedOrder = { ...order, remains: remains ?? order.remains };
+  await settleFunds(updatedOrder, newStatus);
+  dispatchTerminalNotifications(order, newStatus, updatedOrder.remains);
+
+  if (newStatus === 'COMPLETED') {
+    await handleRefillEligibility(order.id, order.serviceId);
+  }
+}
+
 async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Promise<void> {
   const externalOrderId = order.externalOrderId ?? '';
   const result = await client.checkStatus(externalOrderId);
@@ -140,9 +172,7 @@ async function pollSingleOrder(client: ProviderClient, order: OrderRecord): Prom
   await ordersRepo.updateOrderStatus(order.id, updateData);
 
   if (isTerminalStatus(newStatus)) {
-    const updatedOrder = { ...order, remains: result.remains ?? order.remains };
-    await settleFunds(updatedOrder, newStatus);
-    dispatchTerminalNotifications(order, newStatus, updatedOrder.remains);
+    await handleTerminalStatus(order, newStatus, result.remains);
   }
 
   log.info({ orderId: order.id, oldStatus: order.status, newStatus }, 'Order status updated');

@@ -1,7 +1,7 @@
 import { Queue, Worker, type Job } from 'bullmq';
 import { getRedis } from '../../shared/redis/redis';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { emailProvider } from './utils/stub-email-provider';
+import { getEmailProvider } from './utils/email-provider-factory';
 import * as repo from './notification.repository';
 
 const log = createServiceLogger('notification-dispatcher');
@@ -57,6 +57,7 @@ export async function processNotificationDelivery(job: Job<NotificationJobData>)
   }
 
   try {
+    const emailProvider = getEmailProvider();
     await emailProvider.send({
       to: notification.channel,
       subject: notification.subject ?? '',

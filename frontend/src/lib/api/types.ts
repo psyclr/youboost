@@ -66,6 +66,7 @@ export interface RegisterInput {
   email: string;
   password: string;
   username: string;
+  referralCode?: string;
 }
 
 export interface LoginInput {
@@ -153,6 +154,7 @@ export interface CatalogService {
   pricePer1000: number;
   minQuantity: number;
   maxQuantity: number;
+  refillDays: number | null;
 }
 
 export interface PaginatedCatalog {
@@ -169,6 +171,10 @@ export interface CreateOrderInput {
   link: string;
   quantity: number;
   comments?: string;
+  couponCode?: string;
+  isDripFeed?: boolean;
+  dripFeedRuns?: number;
+  dripFeedInterval?: number;
 }
 
 export interface OrderResponse {
@@ -179,6 +185,7 @@ export interface OrderResponse {
   completed: number;
   price: number;
   createdAt: string;
+  isDripFeed: boolean;
 }
 
 export interface OrderDetailed extends OrderResponse {
@@ -187,6 +194,36 @@ export interface OrderDetailed extends OrderResponse {
   remains: number | null;
   updatedAt: string;
   comments: string | null;
+  dripFeedRuns: number | null;
+  dripFeedInterval: number | null;
+  dripFeedRunsCompleted: number;
+  refillEligibleUntil: string | null;
+  refillCount: number;
+}
+
+export interface BulkOrderLinkInput {
+  link: string;
+  quantity?: number;
+}
+
+export interface BulkOrderInput {
+  serviceId: string;
+  links: BulkOrderLinkInput[];
+  defaultQuantity: number;
+  comments?: string;
+}
+
+export interface BulkOrderResultItem {
+  link: string;
+  orderId: string | null;
+  status: 'success' | 'error';
+  error?: string;
+}
+
+export interface BulkOrderResult {
+  results: BulkOrderResultItem[];
+  totalCreated: number;
+  totalFailed: number;
 }
 
 export interface CancelOrderResponse {
@@ -293,6 +330,11 @@ export interface AdminOrderResponse {
   link: string;
   startCount: number | null;
   remains: number | null;
+  isDripFeed: boolean;
+  dripFeedRuns: number | null;
+  dripFeedRunsCompleted: number;
+  dripFeedInterval: number | null;
+  dripFeedPausedAt: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -308,6 +350,9 @@ export interface AdminServiceResponse {
   minQuantity: number;
   maxQuantity: number;
   isActive: boolean;
+  providerId: string | null;
+  externalServiceId: string | null;
+  providerName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -328,6 +373,46 @@ export interface PaginatedUsers {
 export interface PaginatedAdminOrders {
   orders: AdminOrderResponse[];
   pagination: Pagination;
+}
+
+// ============================================
+// Providers
+// ============================================
+
+export interface ProviderResponse {
+  providerId: string;
+  name: string;
+  apiEndpoint: string;
+  isActive: boolean;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderDetailResponse extends ProviderResponse {
+  balance: number | null;
+  metadata: unknown;
+}
+
+export interface PaginatedProviders {
+  providers: ProviderResponse[];
+  pagination: Pagination;
+}
+
+export interface ProviderServiceItem {
+  serviceId: string;
+  name: string;
+  category: string;
+  rate: number;
+  min: number;
+  max: number;
+  type: string;
+  description: string;
+}
+
+export interface ProviderBalanceInfo {
+  balance: number;
+  currency: string;
 }
 
 // ============================================

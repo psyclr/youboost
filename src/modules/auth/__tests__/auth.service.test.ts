@@ -89,7 +89,7 @@ describe('Auth Service', () => {
           password: 'Password1',
           username: 'newuser',
         }),
-      ).rejects.toThrow('Email already registered');
+      ).rejects.toThrow('Email or username already taken');
     });
 
     it('should throw ConflictError if username taken', async () => {
@@ -101,7 +101,7 @@ describe('Auth Service', () => {
           password: 'Password1',
           username: 'testuser',
         }),
-      ).rejects.toThrow('Username already taken');
+      ).rejects.toThrow('Email or username already taken');
     });
   });
 
@@ -151,6 +151,7 @@ describe('Auth Service', () => {
       const result = await refresh('old-refresh-token');
 
       expect(result.accessToken).toBe('access-token');
+      expect(result.refreshToken).toBe('refresh-token');
       expect(mockRevokeRefresh).toHaveBeenCalled();
       expect(mockSaveRefresh).toHaveBeenCalled();
     });

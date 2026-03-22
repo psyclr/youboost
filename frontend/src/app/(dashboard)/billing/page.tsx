@@ -77,6 +77,10 @@ export default function BillingPage() {
           emptyMessage="No transactions yet"
         />
       </div>
+
+      <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 flex items-center justify-center h-24">
+        <span className="text-sm text-muted-foreground">Advertisement</span>
+      </div>
     </div>
   );
 }

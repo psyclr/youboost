@@ -11,6 +11,7 @@ import { checkHealth } from './shared/health/health';
 import { createServiceLogger } from './shared/utils/logger';
 import { authRoutes } from './modules/auth';
 import { billingRoutes } from './modules/billing';
+import { stripeRoutes } from './modules/billing/stripe';
 import { orderRoutes } from './modules/orders';
 import { providerRoutes } from './modules/providers';
 import { apiKeyRoutes } from './modules/api-keys';
@@ -18,6 +19,10 @@ import { webhookRoutes } from './modules/webhooks';
 import { catalogRoutes } from './modules/catalog';
 import { adminRoutes } from './modules/admin';
 import { notificationRoutes } from './modules/notifications';
+import { supportRoutes, adminSupportRoutes } from './modules/support';
+import { referralRoutes } from './modules/referrals';
+import { couponRoutes, adminCouponRoutes } from './modules/coupons';
+import { adminTrackingRoutes } from './modules/tracking';
 
 const log = createServiceLogger('http');
 
@@ -110,6 +115,7 @@ export async function createApp(): Promise<FastifyInstance> {
 
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
+  await app.register(stripeRoutes, { prefix: '/billing/stripe' });
   await app.register(orderRoutes, { prefix: '/orders' });
   await app.register(providerRoutes, { prefix: '/providers' });
   await app.register(apiKeyRoutes, { prefix: '/api-keys' });
@@ -117,6 +123,12 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(catalogRoutes, { prefix: '/catalog' });
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(notificationRoutes, { prefix: '/notifications' });
+  await app.register(supportRoutes, { prefix: '/support' });
+  await app.register(adminSupportRoutes, { prefix: '/admin/support' });
+  await app.register(referralRoutes, { prefix: '/referrals' });
+  await app.register(couponRoutes, { prefix: '/coupons' });
+  await app.register(adminCouponRoutes, { prefix: '/admin/coupons' });
+  await app.register(adminTrackingRoutes, { prefix: '/admin/tracking-links' });
 
   return app;
 }

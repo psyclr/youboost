@@ -4,6 +4,8 @@ import type {
   SubmitOrderParams,
   SubmitResult,
   StatusResult,
+  ProviderServiceInfo,
+  ProviderBalanceInfo,
 } from '../../orders/utils/provider-client';
 
 interface SmmApiClientOptions {
@@ -35,13 +37,17 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
         quantity: String(params.quantity),
       });
 
-      const response = await fetch(opts.apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      });
-
-      const data = (await response.json()) as SmmSubmitResponse;
+      let data: SmmSubmitResponse;
+      try {
+        const response = await fetch(opts.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+        data = (await response.json()) as SmmSubmitResponse;
+      } catch {
+        throw new Error('Provider API request failed: network error');
+      }
 
       if (data.error) {
         throw new ValidationError(`Provider error: ${data.error}`, 'PROVIDER_ERROR');
@@ -64,13 +70,17 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
         order: externalOrderId,
       });
 
-      const response = await fetch(opts.apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      });
-
-      const data = (await response.json()) as SmmStatusResponse;
+      let data: SmmStatusResponse;
+      try {
+        const response = await fetch(opts.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+        data = (await response.json()) as SmmStatusResponse;
+      } catch {
+        throw new Error('Provider API request failed: network error');
+      }
 
       if (data.error) {
         throw new ValidationError(`Provider error: ${data.error}`, 'PROVIDER_ERROR');
@@ -81,6 +91,62 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
         startCount: Number(data.start_count ?? '0'),
         completed: Number(data.start_count ?? '0'),
         remains: Number(data.remains ?? '0'),
+      };
+    },
+
+    async fetchServices(): Promise<ProviderServiceInfo[]> {
+      const body = new URLSearchParams({ key: opts.apiKey, action: 'services' });
+      let data: unknown;
+      try {
+        const response = await fetch(opts.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+        data = await response.json();
+      } catch {
+        throw new Error('Provider API request failed: network error');
+      }
+      if ((data as Record<string, unknown>).error) {
+        throw new ValidationError(
+          `Provider error: ${(data as Record<string, unknown>).error}`,
+          'PROVIDER_ERROR',
+        );
+      }
+      return (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
+        serviceId: String(s.service ?? ''),
+        name: String(s.name ?? ''),
+        category: String(s.category ?? ''),
+        rate: Number(s.rate ?? 0),
+        min: Number(s.min ?? 0),
+        max: Number(s.max ?? 0),
+        type: String(s.type ?? ''),
+        description: String(s.description ?? ''),
+      }));
+    },
+
+    async checkBalance(): Promise<ProviderBalanceInfo> {
+      const body = new URLSearchParams({ key: opts.apiKey, action: 'balance' });
+      let data: unknown;
+      try {
+        const response = await fetch(opts.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+        data = await response.json();
+      } catch {
+        throw new Error('Provider API request failed: network error');
+      }
+      if ((data as Record<string, unknown>).error) {
+        throw new ValidationError(
+          `Provider error: ${(data as Record<string, unknown>).error}`,
+          'PROVIDER_ERROR',
+        );
+      }
+      return {
+        balance: Number((data as Record<string, unknown>).balance ?? 0),
+        currency: String((data as Record<string, unknown>).currency ?? 'USD'),
       };
     },
   };

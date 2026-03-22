@@ -1,5 +1,7 @@
 import { apiRequest } from './client';
 import type {
+  BulkOrderInput,
+  BulkOrderResult,
   CancelOrderResponse,
   CreateOrderInput,
   OrderDetailed,
@@ -33,4 +35,15 @@ export const getOrder = (orderId: string) => apiRequest<OrderDetailed>(`/orders/
 export const cancelOrder = (orderId: string) =>
   apiRequest<CancelOrderResponse>(`/orders/${orderId}/cancel`, {
     method: 'POST',
+  });
+
+export const refillOrder = (orderId: string) =>
+  apiRequest<OrderDetailed>(`/orders/${orderId}/refill`, {
+    method: 'POST',
+  });
+
+export const createBulkOrders = (data: BulkOrderInput) =>
+  apiRequest<BulkOrderResult>('/orders/bulk', {
+    method: 'POST',
+    body: JSON.stringify(data),
   });

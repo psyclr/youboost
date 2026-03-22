@@ -59,6 +59,17 @@ export async function findDepositsByUserId(
   return { deposits, total };
 }
 
+export async function updateDepositStripeSession(
+  depositId: string,
+  stripeSessionId: string,
+): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.deposit.update({
+    where: { id: depositId },
+    data: { stripeSessionId, paymentMethod: 'STRIPE' },
+  });
+}
+
 export async function updateDepositStatus(
   depositId: string,
   data: {

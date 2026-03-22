@@ -1,4 +1,9 @@
-import { ConflictError, UnauthorizedError, NotFoundError } from '../../shared/errors';
+import {
+  ConflictError,
+  UnauthorizedError,
+  NotFoundError,
+  ValidationError,
+} from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { hashPassword, comparePassword } from './utils/password';
 import {
@@ -9,7 +14,15 @@ import {
 } from './utils/tokens';
 import * as userRepo from './user.repository';
 import * as tokenStore from './token-store';
-import type { RegisterInput, LoginInput, TokenPair, UserProfile } from './auth.types';
+import { sendVerificationEmail } from './auth-email.service';
+import { applyReferral } from '../referrals';
+import type {
+  RegisterInput,
+  LoginInput,
+  TokenPair,
+  UserProfile,
+  UpdateProfileInput,
+} from './auth.types';
 
 const log = createServiceLogger('auth');
 
@@ -17,13 +30,10 @@ export async function register(
   input: RegisterInput,
 ): Promise<{ userId: string; email: string; username: string }> {
   const existingEmail = await userRepo.findByEmail(input.email);
-  if (existingEmail) {
-    throw new ConflictError('Email already registered', 'EMAIL_TAKEN');
-  }
-
   const existingUsername = await userRepo.findByUsername(input.username);
-  if (existingUsername) {
-    throw new ConflictError('Username already taken', 'USERNAME_TAKEN');
+
+  if (existingEmail || existingUsername) {
+    throw new ConflictError('Email or username already taken', 'REGISTRATION_CONFLICT');
   }
 
   const passwordHash = await hashPassword(input.password);
@@ -34,6 +44,20 @@ export async function register(
   });
 
   log.info({ userId: user.id }, 'User registered');
+
+  // Send verification email (fire-and-forget)
+  sendVerificationEmail(user.id, user.email).catch(() => {});
+
+  // Apply referral code if provided (fire-and-forget, non-blocking)
+  if (input.referralCode) {
+    applyReferral(user.id, input.referralCode).catch((err) => {
+      log.warn(
+        { userId: user.id, referralCode: input.referralCode, err },
+        'Failed to apply referral code',
+      );
+    });
+  }
+
   return { userId: user.id, email: user.email, username: user.username };
 }
 
@@ -69,7 +93,7 @@ export async function login(input: LoginInput): Promise<TokenPair> {
 
 export async function refresh(
   refreshToken: string,
-): Promise<{ accessToken: string; expiresIn: number }> {
+): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
   const tokenHash = hashToken(refreshToken);
   const stored = await tokenStore.findRefreshToken(tokenHash);
   if (!stored) {
@@ -94,7 +118,7 @@ export async function refresh(
   const expiresAt = getRefreshExpiresAt();
   await tokenStore.saveRefreshToken(user.id, newHash, expiresAt);
 
-  return { accessToken, expiresIn: 3600 };
+  return { accessToken, refreshToken: newRefreshToken, expiresIn: 3600 };
 }
 
 export async function logout(userId: string, jti: string): Promise<void> {
@@ -116,4 +140,36 @@ export async function getMe(userId: string): Promise<UserProfile> {
     emailVerified: user.emailVerified,
     createdAt: user.createdAt,
   };
+}
+
+export async function updateProfile(
+  userId: string,
+  input: UpdateProfileInput,
+): Promise<UserProfile> {
+  const user = await userRepo.findById(userId);
+  if (!user) {
+    throw new NotFoundError('User not found', 'USER_NOT_FOUND');
+  }
+
+  if (input.username && input.username !== user.username) {
+    const existing = await userRepo.findByUsername(input.username);
+    if (existing) {
+      throw new ConflictError('Username already taken', 'USERNAME_TAKEN');
+    }
+  }
+
+  if (input.currentPassword && input.newPassword) {
+    const valid = await comparePassword(input.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new ValidationError('Current password is incorrect', 'INVALID_PASSWORD');
+    }
+    const newHash = await hashPassword(input.newPassword);
+    await userRepo.updatePassword(userId, newHash);
+  }
+
+  if (input.username && input.username !== user.username) {
+    await userRepo.updateUsername(userId, input.username);
+  }
+
+  return getMe(userId);
 }

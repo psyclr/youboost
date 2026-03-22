@@ -2,111 +2,129 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { toNumber } from '../billing/utils/decimal';
 import { holdFunds, releaseFunds } from '../billing';
-import { selectProvider } from '../providers';
+import { selectProviderById } from '../providers';
+import { applyCoupon } from '../coupons';
 import * as serviceRepo from './service.repository';
 import * as ordersRepo from './orders.repository';
-import { enqueueWebhookDelivery } from '../webhooks';
-import { enqueueNotification } from '../notifications';
+import {
+  calculatePrice,
+  validateService,
+  validateQuantity,
+  applyOrderCoupon,
+  handleOrderCreationFailure,
+  dispatchOrderNotifications,
+  dispatchCancelNotifications,
+  mapOrderToDetailed,
+} from './orders.helpers';
 import type {
   CreateOrderInput,
   OrdersQuery,
   OrderDetailed,
   PaginatedOrders,
   CancelOrderResponse,
-  OrderRecord,
+  BulkOrderInput,
+  BulkOrderResult,
+  ServiceRecord,
 } from './orders.types';
 
 const log = createServiceLogger('orders');
 
 const CANCELLABLE_STATUSES = new Set(['PENDING', 'PROCESSING']);
 
-function calculatePrice(quantity: number, pricePer1000: number): number {
-  return Math.round(((quantity * pricePer1000) / 1000) * 100) / 100;
-}
+async function submitOrderToProvider(params: {
+  service: ServiceRecord;
+  input: CreateOrderInput;
+  isDripFeed: boolean;
+  dripFeedRuns: number | undefined;
+}): Promise<{ providerId: string | null; externalOrderId: string }> {
+  const { service, input, isDripFeed, dripFeedRuns } = params;
 
-function mapOrderToDetailed(order: OrderRecord): OrderDetailed {
-  return {
-    orderId: order.id,
-    serviceId: order.serviceId,
-    status: order.status,
-    quantity: order.quantity,
-    completed: order.quantity - (order.remains ?? order.quantity),
-    price: toNumber(order.price),
-    createdAt: order.createdAt,
-    link: order.link,
-    startCount: order.startCount,
-    remains: order.remains,
-    updatedAt: order.updatedAt,
-    comments: null,
-  };
+  if (!service.providerId || !service.externalServiceId) {
+    throw new ValidationError('Service provider info missing', 'SERVICE_PROVIDER_MISSING');
+  }
+
+  const { providerId, client } = await selectProviderById(service.providerId);
+
+  const submitQuantity =
+    isDripFeed && dripFeedRuns ? Math.ceil(input.quantity / dripFeedRuns) : input.quantity;
+
+  const submitResult = await client.submitOrder({
+    serviceId: service.externalServiceId,
+    link: input.link,
+    quantity: submitQuantity,
+  });
+
+  return { providerId, externalOrderId: submitResult.externalOrderId };
 }
 
 export async function createOrder(userId: string, input: CreateOrderInput): Promise<OrderDetailed> {
   const service = await serviceRepo.findServiceById(input.serviceId);
-  if (!service) {
-    throw new NotFoundError('Service not found', 'SERVICE_NOT_FOUND');
-  }
-  if (!service.isActive) {
-    throw new ValidationError('Service is not available', 'SERVICE_INACTIVE');
-  }
+  validateService(service);
 
-  if (input.quantity < service.minQuantity || input.quantity > service.maxQuantity) {
-    throw new ValidationError(
-      `Quantity must be between ${service.minQuantity} and ${service.maxQuantity}`,
-      'INVALID_QUANTITY',
-    );
-  }
+  // After validateService, we know service is not null and has required fields
+  const validatedService = service as ServiceRecord;
+  validateQuantity(input.quantity, validatedService.minQuantity, validatedService.maxQuantity);
 
-  const price = calculatePrice(input.quantity, toNumber(service.pricePer1000));
+  const basePrice = calculatePrice(input.quantity, toNumber(validatedService.pricePer1000));
+  const { finalPrice, couponId, discount } = await applyOrderCoupon(input.couponCode, basePrice);
+
+  const isDripFeed = input.isDripFeed ?? false;
+  const dripFeedRuns = isDripFeed ? input.dripFeedRuns : undefined;
+  const dripFeedInterval = isDripFeed ? input.dripFeedInterval : undefined;
 
   const order = await ordersRepo.createOrder({
     userId,
     serviceId: input.serviceId,
     link: input.link,
     quantity: input.quantity,
-    price,
+    price: finalPrice,
+    isDripFeed,
+    dripFeedRuns,
+    dripFeedInterval,
+    dripFeedRunsCompleted: isDripFeed ? 1 : 0,
+    couponId,
+    discount,
   });
 
-  await holdFunds(userId, price, order.id);
+  try {
+    await holdFunds(userId, finalPrice, order.id);
 
-  const { providerId, client } = await selectProvider();
-  const submitResult = await client.submitOrder({
-    serviceId: input.serviceId,
-    link: input.link,
-    quantity: input.quantity,
-  });
+    const { providerId, externalOrderId } = await submitOrderToProvider({
+      service: validatedService,
+      input,
+      isDripFeed,
+      dripFeedRuns,
+    });
 
-  const updated = await ordersRepo.updateOrderStatus(order.id, {
-    status: 'PROCESSING',
-    externalOrderId: submitResult.externalOrderId,
-    ...(providerId ? { providerId } : {}),
-    remains: input.quantity,
-  });
+    const updated = await ordersRepo.updateOrderStatus(order.id, {
+      status: 'PROCESSING',
+      externalOrderId,
+      ...(providerId ? { providerId } : {}),
+      remains: input.quantity,
+    });
 
-  log.info({ userId, orderId: order.id, price }, 'Order created');
+    if (couponId) {
+      applyCoupon(couponId).catch(() => {
+        /* fire-and-forget */
+      });
+    }
 
-  enqueueWebhookDelivery(userId, 'order.created', {
-    orderId: order.id,
-    status: updated.status,
-    price,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+    log.info(
+      { userId, orderId: order.id, price: finalPrice, discount, isDripFeed },
+      'Order created',
+    );
+    dispatchOrderNotifications({
+      userId,
+      orderId: order.id,
+      status: updated.status,
+      price: finalPrice,
+    });
 
-  enqueueNotification({
-    userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: 'Order Created',
-    body: `Your order ${order.id} has been created.`,
-    eventType: 'order.created',
-    referenceType: 'order',
-    referenceId: order.id,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
-
-  return mapOrderToDetailed(updated);
+    return mapOrderToDetailed(updated);
+  } catch (error) {
+    await handleOrderCreationFailure({ userId, orderId: order.id, price: finalPrice, error });
+    throw error;
+  }
 }
 
 export async function getOrder(userId: string, orderId: string): Promise<OrderDetailed> {
@@ -134,6 +152,7 @@ export async function listOrders(userId: string, query: OrdersQuery): Promise<Pa
       completed: o.quantity - (o.remains ?? o.quantity),
       price: toNumber(o.price),
       createdAt: o.createdAt,
+      isDripFeed: o.isDripFeed,
     })),
     pagination: {
       page: query.page,
@@ -163,26 +182,11 @@ export async function cancelOrder(userId: string, orderId: string): Promise<Canc
   });
 
   log.info({ userId, orderId, refundAmount }, 'Order cancelled');
-
-  enqueueWebhookDelivery(userId, 'order.cancelled', {
+  dispatchCancelNotifications({
+    userId,
     orderId: updated.id,
     status: updated.status,
     refundAmount,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
-
-  enqueueNotification({
-    userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: 'Order Cancelled',
-    body: `Your order ${orderId} has been cancelled. Refund: $${refundAmount}.`,
-    eventType: 'order.cancelled',
-    referenceType: 'order',
-    referenceId: orderId,
-  }).catch(() => {
-    /* fire-and-forget */
   });
 
   return {
@@ -190,5 +194,108 @@ export async function cancelOrder(userId: string, orderId: string): Promise<Canc
     status: updated.status,
     refundAmount,
     cancelledAt: updated.completedAt ?? new Date(),
+  };
+}
+
+export async function refillOrder(userId: string, orderId: string): Promise<OrderDetailed> {
+  const order = await ordersRepo.findOrderById(orderId, userId);
+  if (!order) {
+    throw new NotFoundError('Order not found', 'ORDER_NOT_FOUND');
+  }
+
+  if (order.status !== 'COMPLETED') {
+    throw new ValidationError('Only completed orders can be refilled', 'ORDER_NOT_COMPLETED');
+  }
+
+  if (!order.refillEligibleUntil || order.refillEligibleUntil < new Date()) {
+    throw new ValidationError('Order is not eligible for refill', 'REFILL_EXPIRED');
+  }
+
+  const service = await serviceRepo.findServiceById(order.serviceId);
+  if (!service || !service.providerId || !service.externalServiceId) {
+    throw new ValidationError('Service is no longer available for refill', 'SERVICE_UNAVAILABLE');
+  }
+
+  // Create a new order at $0 for the refill
+  const refillOrderRecord = await ordersRepo.createOrder({
+    userId,
+    serviceId: order.serviceId,
+    link: order.link,
+    quantity: order.quantity,
+    price: 0,
+  });
+
+  // Submit to provider
+  const { providerId, client } = await selectProviderById(service.providerId);
+  const submitResult = await client.submitOrder({
+    serviceId: service.externalServiceId,
+    link: order.link,
+    quantity: order.quantity,
+  });
+
+  const updated = await ordersRepo.updateOrderStatus(refillOrderRecord.id, {
+    status: 'PROCESSING',
+    externalOrderId: submitResult.externalOrderId,
+    ...(providerId ? { providerId } : {}),
+    remains: order.quantity,
+  });
+
+  // Increment refill count on original order
+  await ordersRepo.incrementRefillCount(orderId);
+
+  log.info({ userId, orderId, refillOrderId: refillOrderRecord.id }, 'Order refill created');
+
+  return mapOrderToDetailed(updated);
+}
+
+export async function setRefillEligibility(orderId: string, refillDays: number): Promise<void> {
+  const eligibleUntil = new Date();
+  eligibleUntil.setDate(eligibleUntil.getDate() + refillDays);
+  await ordersRepo.updateOrderStatus(orderId, {
+    status: 'COMPLETED',
+    refillEligibleUntil: eligibleUntil,
+    completedAt: new Date(),
+  });
+}
+
+export async function createBulkOrders(
+  userId: string,
+  input: BulkOrderInput,
+): Promise<BulkOrderResult> {
+  const results: BulkOrderResult['results'] = [];
+
+  for (const item of input.links) {
+    try {
+      const order = await createOrder(userId, {
+        serviceId: input.serviceId,
+        link: item.link,
+        quantity: item.quantity ?? input.defaultQuantity,
+        isDripFeed: false,
+        comments: input.comments,
+      });
+      results.push({ link: item.link, orderId: order.orderId, status: 'success' });
+    } catch (error) {
+      results.push({
+        link: item.link,
+        orderId: null,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  log.info(
+    {
+      userId,
+      totalCreated: results.filter((r) => r.status === 'success').length,
+      totalFailed: results.filter((r) => r.status === 'error').length,
+    },
+    'Bulk orders created',
+  );
+
+  return {
+    results,
+    totalCreated: results.filter((r) => r.status === 'success').length,
+    totalFailed: results.filter((r) => r.status === 'error').length,
   };
 }

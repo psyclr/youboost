@@ -17,6 +17,7 @@ export const registerSchema = z.object({
   email: z.email(),
   password: passwordSchema,
   username: usernameSchema,
+  referralCode: z.string().min(1).optional(),
 });
 
 export const loginSchema = z.object({
@@ -41,12 +42,24 @@ export const resetPasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const updateProfileSchema = z
+  .object({
+    username: usernameSchema.optional(),
+    currentPassword: z.string().min(1).optional(),
+    newPassword: passwordSchema.optional(),
+  })
+  .refine((data) => !data.newPassword || data.currentPassword, {
+    message: 'Current password is required to set a new password',
+    path: ['currentPassword'],
+  });
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export interface AuthenticatedUser {
   userId: string;

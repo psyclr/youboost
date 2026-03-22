@@ -70,6 +70,10 @@ describe('Orders Repository', () => {
           link: 'https://youtube.com/watch?v=test',
           quantity: 1000,
           price: 2.5,
+          isDripFeed: false,
+          dripFeedRuns: null,
+          dripFeedInterval: null,
+          dripFeedRunsCompleted: 0,
         },
       });
     });

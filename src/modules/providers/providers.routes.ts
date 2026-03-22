@@ -88,4 +88,18 @@ export async function providerRoutes(app: FastifyInstance): Promise<void> {
     await providerService.deactivateProvider(params.providerId);
     return reply.status(StatusCodes.NO_CONTENT).send();
   });
+
+  app.get('/:providerId/services', async (request: FastifyRequest, reply: FastifyReply) => {
+    requireAdmin(request);
+    const params = validateParams(providerIdSchema, request.params);
+    const result = await providerService.fetchProviderServices(params.providerId);
+    return reply.status(StatusCodes.OK).send({ services: result });
+  });
+
+  app.get('/:providerId/balance', async (request: FastifyRequest, reply: FastifyReply) => {
+    requireAdmin(request);
+    const params = validateParams(providerIdSchema, request.params);
+    const result = await providerService.checkProviderBalance(params.providerId);
+    return reply.status(StatusCodes.OK).send(result);
+  });
 }

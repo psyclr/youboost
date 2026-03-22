@@ -43,3 +43,9 @@ export const getTransactions = (params?: { page?: number; limit?: number; type?:
 
 export const getTransaction = (id: string) =>
   apiRequest<TransactionDetailed>(`/billing/transactions/${id}`);
+
+export const createStripeCheckout = (amount: number) =>
+  apiRequest<{ sessionId: string; url: string }>('/billing/stripe/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });

@@ -11,6 +11,12 @@ export async function createOrder(data: CreateOrderData): Promise<OrderRecord> {
       link: data.link,
       quantity: data.quantity,
       price: data.price,
+      isDripFeed: data.isDripFeed ?? false,
+      dripFeedRuns: data.dripFeedRuns ?? null,
+      dripFeedInterval: data.dripFeedInterval ?? null,
+      dripFeedRunsCompleted: data.dripFeedRunsCompleted ?? 0,
+      ...(data.couponId ? { couponId: data.couponId } : {}),
+      ...(data.discount ? { discount: data.discount } : {}),
     },
   });
 }
@@ -19,6 +25,13 @@ export async function findOrderById(orderId: string, userId: string): Promise<Or
   const prisma = getPrisma();
   return prisma.order.findFirst({
     where: { id: orderId, userId },
+  });
+}
+
+export async function findOrderByIdAnyUser(orderId: string): Promise<OrderRecord | null> {
+  const prisma = getPrisma();
+  return prisma.order.findUnique({
+    where: { id: orderId },
   });
 }
 
@@ -76,6 +89,10 @@ export async function updateOrderStatus(
   if (data.remains != null) updateData.remains = data.remains;
   if (data.providerId != null) updateData.providerId = data.providerId;
   if (data.externalOrderId != null) updateData.externalOrderId = data.externalOrderId;
+  if (data.refillEligibleUntil !== undefined)
+    updateData.refillEligibleUntil = data.refillEligibleUntil;
+  if (data.dripFeedRunsCompleted != null)
+    updateData.dripFeedRunsCompleted = data.dripFeedRunsCompleted;
 
   return prisma.order.update({
     where: { id: orderId },
@@ -83,9 +100,67 @@ export async function updateOrderStatus(
   });
 }
 
+export async function findDripFeedOrdersDue(): Promise<OrderRecord[]> {
+  const prisma = getPrisma();
+  const now = new Date();
+
+  // Find drip-feed orders that are PROCESSING, not paused, and have remaining runs
+  const orders = await prisma.order.findMany({
+    where: {
+      isDripFeed: true,
+      status: 'PROCESSING' as OrderStatus,
+      dripFeedRuns: { not: null },
+      dripFeedRunsCompleted: { gt: 0 },
+      dripFeedPausedAt: null,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Filter in JS: next run is due based on updatedAt + interval
+  return orders.filter((order) => {
+    if (!order.dripFeedRuns || !order.dripFeedInterval) return false;
+    if (order.dripFeedRunsCompleted >= order.dripFeedRuns) return false;
+    const nextRunAt = new Date(order.updatedAt.getTime() + order.dripFeedInterval * 60_000);
+    return nextRunAt <= now;
+  });
+}
+
+export async function incrementDripFeedRun(orderId: string): Promise<OrderRecord> {
+  const prisma = getPrisma();
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { dripFeedRunsCompleted: { increment: 1 } },
+  });
+}
+
+export async function incrementRefillCount(orderId: string): Promise<OrderRecord> {
+  const prisma = getPrisma();
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { refillCount: { increment: 1 } },
+  });
+}
+
+export async function pauseDripFeed(orderId: string): Promise<OrderRecord> {
+  const prisma = getPrisma();
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { dripFeedPausedAt: new Date() },
+  });
+}
+
+export async function resumeDripFeed(orderId: string): Promise<OrderRecord> {
+  const prisma = getPrisma();
+  return prisma.order.update({
+    where: { id: orderId },
+    data: { dripFeedPausedAt: null, updatedAt: new Date() },
+  });
+}
+
 export async function findAllOrders(filters: {
   status?: string | undefined;
   userId?: string | undefined;
+  isDripFeed?: boolean | undefined;
   page: number;
   limit: number;
 }): Promise<{ orders: OrderRecord[]; total: number }> {
@@ -96,6 +171,9 @@ export async function findAllOrders(filters: {
   }
   if (filters.userId) {
     where.userId = filters.userId;
+  }
+  if (filters.isDripFeed !== undefined) {
+    where.isDripFeed = filters.isDripFeed;
   }
 
   const [orders, total] = await Promise.all([

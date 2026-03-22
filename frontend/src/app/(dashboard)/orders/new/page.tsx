@@ -8,9 +8,11 @@ import { useService, useCatalog } from '@/hooks/use-catalog';
 import { useCreateOrder } from '@/hooks/use-orders';
 import { ApiError } from '@/lib/api/client';
 import { formatCurrency } from '@/lib/utils';
+import { sanitizeInput } from '@/lib/utils/sanitize';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
@@ -30,13 +32,27 @@ import {
 } from '@/components/ui/select';
 import { PlatformBadge } from '@/components/shared/platform-badge';
 import { toast } from 'sonner';
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useMemo } from 'react';
+
+const dripFeedIntervals = [
+  { value: '30', label: '30 minutes' },
+  { value: '60', label: '1 hour' },
+  { value: '120', label: '2 hours' },
+  { value: '360', label: '6 hours' },
+  { value: '720', label: '12 hours' },
+  { value: '1440', label: '24 hours' },
+  { value: '2880', label: '48 hours' },
+];
 
 const orderSchema = z.object({
   serviceId: z.string().uuid('Please select a service'),
   link: z.string().url('Please enter a valid URL'),
-  quantity: z.coerce.number().int().min(1, 'Minimum quantity is 1'),
+  quantity: z.number().int().min(1, 'Minimum quantity is 1'),
   comments: z.string().max(500).optional(),
+  couponCode: z.string().optional(),
+  isDripFeed: z.boolean(),
+  dripFeedRuns: z.number().int().min(2).max(100).optional(),
+  dripFeedInterval: z.number().int().min(10).max(10080).optional(),
 });
 
 type OrderForm = z.infer<typeof orderSchema>;
@@ -58,15 +74,51 @@ function NewOrderForm() {
       link: '',
       quantity: service?.minQuantity ?? 100,
       comments: '',
+      couponCode: '',
+      isDripFeed: false,
+      dripFeedRuns: undefined,
+      dripFeedInterval: undefined,
     },
   });
 
   const watchQuantity = form.watch('quantity');
-  const estimatedPrice = service ? (watchQuantity / 1000) * service.pricePer1000 : 0;
+  const watchIsDripFeed = form.watch('isDripFeed');
+  const watchDripFeedRuns = form.watch('dripFeedRuns');
+
+  // Memoize expensive calculations
+  const estimatedPrice = useMemo(() => {
+    return service ? (watchQuantity / 1000) * service.pricePer1000 : 0;
+  }, [service, watchQuantity]);
+
+  const chunkSize = useMemo(() => {
+    return watchDripFeedRuns ? Math.ceil(watchQuantity / watchDripFeedRuns) : 0;
+  }, [watchQuantity, watchDripFeedRuns]);
 
   const onSubmit = async (data: OrderForm) => {
+    if (data.isDripFeed && (!data.dripFeedRuns || !data.dripFeedInterval)) {
+      form.setError('dripFeedRuns', { message: 'Drip-feed requires runs and interval' });
+      return;
+    }
     try {
-      const result = await createOrder.mutateAsync(data);
+      // Sanitize user inputs before sending to API
+      const sanitizedLink = sanitizeInput(data.link);
+      const sanitizedComments = sanitizeInput(data.comments);
+
+      const payload = {
+        serviceId: data.serviceId,
+        link: sanitizedLink,
+        quantity: data.quantity,
+        comments: sanitizedComments,
+        ...(data.couponCode ? { couponCode: data.couponCode } : {}),
+        ...(data.isDripFeed
+          ? {
+              isDripFeed: true,
+              dripFeedRuns: data.dripFeedRuns,
+              dripFeedInterval: data.dripFeedInterval,
+            }
+          : {}),
+      };
+      const result = await createOrder.mutateAsync(payload);
       toast.success('Order created successfully');
       router.push(`/orders/${result.orderId}`);
     } catch (err) {
@@ -76,6 +128,11 @@ function NewOrderForm() {
         toast.error('Failed to create order');
       }
     }
+  };
+
+  const getIntervalLabel = (minutes: number) => {
+    const item = dripFeedIntervals.find((i) => i.value === String(minutes));
+    return item?.label ?? `${minutes} min`;
   };
 
   return (
@@ -176,15 +233,110 @@ function NewOrderForm() {
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="couponCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Coupon Code (optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter coupon code" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="isDripFeed"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-md border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">Drip-feed</FormLabel>
+                      <FormDescription>
+                        Gradually deliver the order in multiple runs
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              {watchIsDripFeed && (
+                <div className="space-y-4 rounded-md border p-4">
+                  <FormField
+                    control={form.control}
+                    name="dripFeedRuns"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Number of Runs</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={2}
+                            max={100}
+                            placeholder="e.g. 5"
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.valueAsNumber || undefined)}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                          />
+                        </FormControl>
+                        <FormDescription>How many times to deliver (2-100)</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="dripFeedInterval"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Interval Between Runs</FormLabel>
+                        <Select
+                          value={field.value ? String(field.value) : ''}
+                          onValueChange={(val) => field.onChange(Number(val))}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select interval" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {dripFeedIntervals.map((interval) => (
+                              <SelectItem key={interval.value} value={interval.value}>
+                                {interval.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
               {service && (
-                <div className="rounded-md bg-muted p-4">
+                <div className="rounded-md bg-muted p-4 space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Estimated Price</span>
                     <span className="text-lg font-bold">{formatCurrency(estimatedPrice)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground">
                     {formatCurrency(service.pricePer1000)} per 1,000
                   </p>
+                  {watchIsDripFeed && watchDripFeedRuns && form.watch('dripFeedInterval') && (
+                    <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                      {watchDripFeedRuns} runs of {chunkSize.toLocaleString()} every{' '}
+                      {getIntervalLabel(form.watch('dripFeedInterval')!)}
+                    </p>
+                  )}
                 </div>
               )}
 

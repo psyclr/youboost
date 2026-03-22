@@ -2,87 +2,81 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getAdminServices, createAdminService, updateAdminService } from '@/lib/api/admin';
+import {
+  getAdminServices,
+  createAdminService,
+  updateAdminService,
+  getProviders,
+  getProviderServices,
+} from '@/lib/api/admin';
 import { ApiError } from '@/lib/api/client';
 import { usePagination } from '@/hooks/use-pagination';
+import { ServiceTable } from '@/components/admin/service-table';
+import {
+  ServiceForm,
+  defaultServiceForm,
+  type ServiceFormData,
+} from '@/components/admin/service-form';
 import { DataTable, type Column } from '@/components/shared/data-table';
-import { PlatformBadge } from '@/components/shared/platform-badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { formatCurrency } from '@/lib/utils';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AdminServiceResponse, Platform, ServiceType } from '@/lib/api/types';
-
-const platformOptions: Platform[] = ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK'];
-const typeOptions: ServiceType[] = ['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES'];
-
-interface ServiceFormData {
-  name: string;
-  description: string;
-  platform: Platform;
-  type: ServiceType;
-  pricePer1000: string;
-  minQuantity: string;
-  maxQuantity: string;
-}
-
-const defaultForm: ServiceFormData = {
-  name: '',
-  description: '',
-  platform: 'YOUTUBE',
-  type: 'VIEWS',
-  pricePer1000: '',
-  minQuantity: '100',
-  maxQuantity: '100000',
-};
+import type { AdminServiceResponse, ProviderServiceItem } from '@/lib/api/types';
 
 export default function AdminServicesPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editService, setEditService] = useState<AdminServiceResponse | null>(null);
-  const [form, setForm] = useState<ServiceFormData>(defaultForm);
+  const [form, setForm] = useState<ServiceFormData>(defaultServiceForm);
+  const [browseOpen, setBrowseOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'services', { page }],
     queryFn: () => getAdminServices({ page, limit: 20 }),
   });
 
+  const { data: providersData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => getProviders({ limit: 100 }),
+  });
+
+  const {
+    data: providerServicesData,
+    isLoading: providerServicesLoading,
+    error: providerServicesError,
+  } = useQuery({
+    queryKey: ['provider-services', form.providerId],
+    queryFn: () => getProviderServices(form.providerId),
+    enabled: !!form.providerId && browseOpen,
+    retry: false,
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: ServiceFormData) =>
+    mutationFn: (formData: ServiceFormData) =>
       createAdminService({
-        name: data.name,
-        description: data.description || undefined,
-        platform: data.platform,
-        type: data.type,
-        pricePer1000: parseFloat(data.pricePer1000),
-        minQuantity: parseInt(data.minQuantity),
-        maxQuantity: parseInt(data.maxQuantity),
+        name: formData.name,
+        description: formData.description || undefined,
+        platform: formData.platform,
+        type: formData.type,
+        pricePer1000: parseFloat(formData.pricePer1000),
+        minQuantity: parseInt(formData.minQuantity),
+        maxQuantity: parseInt(formData.maxQuantity),
+        providerId: formData.providerId,
+        externalServiceId: formData.externalServiceId,
       }),
     onSuccess: () => {
       toast.success('Service created');
       setCreateOpen(false);
-      setForm(defaultForm);
+      setForm(defaultServiceForm);
       queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
     },
     onError: (err) => {
@@ -91,16 +85,28 @@ export default function AdminServicesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
-      updateAdminService(id, data),
+    mutationFn: ({ id, data: updateData }: { id: string; data: Record<string, unknown> }) =>
+      updateAdminService(id, updateData),
     onSuccess: () => {
       toast.success('Service updated');
       setEditService(null);
-      setForm(defaultForm);
+      setForm(defaultServiceForm);
       queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
     },
     onError: (err) => {
       toast.error(err instanceof ApiError ? err.message : 'Failed to update service');
+    },
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: (service: AdminServiceResponse) =>
+      updateAdminService(service.serviceId, { isActive: !service.isActive }),
+    onSuccess: () => {
+      toast.success('Service status updated');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update status');
     },
   });
 
@@ -114,6 +120,8 @@ export default function AdminServicesPage() {
       pricePer1000: String(service.pricePer1000),
       minQuantity: String(service.minQuantity),
       maxQuantity: String(service.maxQuantity),
+      providerId: service.providerId ?? '',
+      externalServiceId: service.externalServiceId ?? '',
     });
   };
 
@@ -121,129 +129,77 @@ export default function AdminServicesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const serviceForm = (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Name</Label>
-        <Input value={form.name} onChange={(e) => updateField('name', e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <Label>Description</Label>
-        <Textarea
-          value={form.description}
-          onChange={(e) => updateField('description', e.target.value)}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Platform</Label>
-          <Select value={form.platform} onValueChange={(v) => updateField('platform', v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {platformOptions.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label>Type</Label>
-          <Select value={form.type} onValueChange={(v) => updateField('type', v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {typeOptions.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label>Price per 1000</Label>
-        <Input
-          type="number"
-          step="0.01"
-          value={form.pricePer1000}
-          onChange={(e) => updateField('pricePer1000', e.target.value)}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Min Quantity</Label>
-          <Input
-            type="number"
-            value={form.minQuantity}
-            onChange={(e) => updateField('minQuantity', e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Max Quantity</Label>
-          <Input
-            type="number"
-            value={form.maxQuantity}
-            onChange={(e) => updateField('maxQuantity', e.target.value)}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  const selectProviderService = (svc: ProviderServiceItem) => {
+    setForm((prev) => ({
+      ...prev,
+      externalServiceId: svc.serviceId,
+      name: prev.name || svc.name,
+      minQuantity: String(svc.min),
+      maxQuantity: String(svc.max),
+      pricePer1000: String(svc.rate),
+    }));
+    setBrowseOpen(false);
+  };
 
-  const columns: Column<AdminServiceResponse>[] = [
+  const handleCreateSubmit = () => {
+    if (!form.name || !form.pricePer1000 || !form.providerId || !form.externalServiceId) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    createMutation.mutate(form);
+  };
+
+  const handleEditSubmit = () => {
+    if (!editService) return;
+
+    const updates: Record<string, unknown> = {};
+    if (form.name !== editService.name) updates.name = form.name;
+    if (form.description !== editService.description)
+      updates.description = form.description || null;
+    if (form.platform !== editService.platform) updates.platform = form.platform;
+    if (form.type !== editService.type) updates.type = form.type;
+    if (parseFloat(form.pricePer1000) !== editService.pricePer1000) {
+      updates.pricePer1000 = parseFloat(form.pricePer1000);
+    }
+    if (parseInt(form.minQuantity) !== editService.minQuantity) {
+      updates.minQuantity = parseInt(form.minQuantity);
+    }
+    if (parseInt(form.maxQuantity) !== editService.maxQuantity) {
+      updates.maxQuantity = parseInt(form.maxQuantity);
+    }
+    if (form.providerId !== editService.providerId) {
+      updates.providerId = form.providerId;
+    }
+    if (form.externalServiceId !== editService.externalServiceId) {
+      updates.externalServiceId = form.externalServiceId;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      toast.info('No changes to save');
+      return;
+    }
+
+    updateMutation.mutate({ id: editService.serviceId, data: updates });
+  };
+
+  const browseColumns: Column<ProviderServiceItem>[] = [
+    { header: 'ID', accessorKey: 'serviceId' },
     { header: 'Name', accessorKey: 'name' },
+    { header: 'Category', accessorKey: 'category' },
     {
-      header: 'Platform',
-      cell: (row) => <PlatformBadge platform={row.platform} />,
+      header: 'Rate',
+      cell: (row) => `$${row.rate}`,
     },
-    {
-      header: 'Type',
-      cell: (row) => <Badge variant="outline">{row.type}</Badge>,
-    },
-    {
-      header: 'Price/1K',
-      cell: (row) => formatCurrency(row.pricePer1000),
-    },
-    {
-      header: 'Range',
-      cell: (row) => `${row.minQuantity.toLocaleString()} - ${row.maxQuantity.toLocaleString()}`,
-    },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.isActive ? 'default' : 'secondary'}>
-          {row.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
-    },
+    { header: 'Min', accessorKey: 'min' },
+    { header: 'Max', accessorKey: 'max' },
     {
       header: '',
       cell: (row) => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              updateMutation.mutate({
-                id: row.serviceId,
-                data: { isActive: !row.isActive },
-              })
-            }
-          >
-            {row.isActive ? 'Deactivate' : 'Activate'}
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => selectProviderService(row)}>
+          Select
+        </Button>
       ),
-      className: 'w-40',
+      className: 'w-24',
     },
   ];
 
@@ -252,45 +208,44 @@ export default function AdminServicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Services</h1>
-          <p className="text-muted-foreground">Manage platform services</p>
+          <p className="text-muted-foreground">Manage service offerings</p>
         </div>
-        <Dialog
-          open={createOpen}
-          onOpenChange={(open) => {
-            setCreateOpen(open);
-            if (!open) setForm(defaultForm);
-          }}
-        >
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               Add Service
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create Service</DialogTitle>
-              <DialogDescription>Add a new service to the catalog</DialogDescription>
+              <DialogDescription>Add a new service offering</DialogDescription>
             </DialogHeader>
-            {serviceForm}
-            <DialogFooter>
-              <Button
-                onClick={() => createMutation.mutate(form)}
-                disabled={!form.name || !form.pricePer1000 || createMutation.isPending}
-              >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
-              </Button>
-            </DialogFooter>
+            <ServiceForm
+              form={form}
+              onUpdateField={updateField}
+              onBrowseProviderServices={() => setBrowseOpen(true)}
+              providers={providersData?.providers}
+              isSubmitting={createMutation.isPending}
+              onSubmit={handleCreateSubmit}
+              onCancel={() => {
+                setCreateOpen(false);
+                setForm(defaultServiceForm);
+              }}
+              submitLabel="Create"
+            />
           </DialogContent>
         </Dialog>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={data?.services ?? []}
+      <ServiceTable
+        services={data?.services ?? []}
         isLoading={isLoading}
+        onEdit={openEdit}
+        onToggleStatus={(service) => toggleStatusMutation.mutate(service)}
         pagination={
-          data?.pagination
+          data
             ? {
                 page: data.pagination.page,
                 totalPages: data.pagination.totalPages,
@@ -300,43 +255,59 @@ export default function AdminServicesPage() {
         }
       />
 
-      <Dialog
-        open={!!editService}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditService(null);
-            setForm(defaultForm);
-          }
-        }}
-      >
-        <DialogContent>
+      {/* Edit Dialog */}
+      <Dialog open={!!editService} onOpenChange={(open) => !open && setEditService(null)}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Service</DialogTitle>
-            <DialogDescription>Update service configuration</DialogDescription>
+            <DialogDescription>Update service details</DialogDescription>
           </DialogHeader>
-          {serviceForm}
-          <DialogFooter>
-            <Button
-              onClick={() =>
-                editService &&
-                updateMutation.mutate({
-                  id: editService.serviceId,
-                  data: {
-                    name: form.name,
-                    description: form.description || undefined,
-                    platform: form.platform,
-                    type: form.type,
-                    pricePer1000: parseFloat(form.pricePer1000),
-                    minQuantity: parseInt(form.minQuantity),
-                    maxQuantity: parseInt(form.maxQuantity),
-                  },
-                })
-              }
-              disabled={!form.name || !form.pricePer1000 || updateMutation.isPending}
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </DialogFooter>
+          <ServiceForm
+            form={form}
+            onUpdateField={updateField}
+            onBrowseProviderServices={() => setBrowseOpen(true)}
+            providers={providersData?.providers}
+            isSubmitting={updateMutation.isPending}
+            onSubmit={handleEditSubmit}
+            onCancel={() => {
+              setEditService(null);
+              setForm(defaultServiceForm);
+            }}
+            submitLabel="Update"
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Browse Provider Services Dialog */}
+      <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Browse Provider Services</DialogTitle>
+            <DialogDescription>
+              Select a service from{' '}
+              {providersData?.providers.find((p) => p.providerId === form.providerId)?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-auto">
+            {providerServicesError ? (
+              <div className="text-sm text-destructive bg-destructive/10 p-4 rounded-md space-y-2">
+                <p className="font-medium">Failed to fetch services from provider</p>
+                {providerServicesError instanceof ApiError && (
+                  <p className="text-muted-foreground">{providerServicesError.message}</p>
+                )}
+                <p className="text-muted-foreground">
+                  Make sure the provider has a valid API key configured. You can close this dialog
+                  and enter the External Service ID manually.
+                </p>
+              </div>
+            ) : (
+              <DataTable
+                columns={browseColumns}
+                data={providerServicesData?.services ?? []}
+                isLoading={providerServicesLoading}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

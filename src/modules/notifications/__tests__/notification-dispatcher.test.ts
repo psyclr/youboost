@@ -49,10 +49,10 @@ jest.mock('../notification.repository', () => ({
 
 const mockEmailSend = jest.fn();
 
-jest.mock('../utils/stub-email-provider', () => ({
-  emailProvider: {
+jest.mock('../utils/email-provider-factory', () => ({
+  getEmailProvider: () => ({
     send: (...args: unknown[]): unknown => mockEmailSend(...args),
-  },
+  }),
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({

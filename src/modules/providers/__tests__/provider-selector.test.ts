@@ -1,4 +1,4 @@
-import { selectProvider } from '../provider-selector';
+import { selectProvider, selectProviderById } from '../provider-selector';
 
 const mockGetConfig = jest.fn();
 
@@ -16,10 +16,12 @@ jest.mock('../../../shared/utils/logger', () => ({
 }));
 
 const mockFindActiveProvidersByPriority = jest.fn();
+const mockFindProviderById = jest.fn();
 
 jest.mock('../providers.repository', () => ({
   findActiveProvidersByPriority: (...args: unknown[]): unknown =>
     mockFindActiveProvidersByPriority(...args),
+  findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
 }));
 
 const mockDecryptApiKey = jest.fn();
@@ -116,5 +118,59 @@ describe('Provider Selector', () => {
 
     expect(typeof result.client.submitOrder).toBe('function');
     expect(typeof result.client.checkStatus).toBe('function');
+  });
+});
+
+describe('selectProviderById', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return stub client when mode is stub', async () => {
+    mockGetConfig.mockReturnValue({ provider: { mode: 'stub', encryptionKey: 'x' } });
+
+    const result = await selectProviderById('prov-1');
+
+    expect(result.providerId).toBeNull();
+    expect(result.client).toBeDefined();
+    expect(mockFindProviderById).not.toHaveBeenCalled();
+  });
+
+  it('should return provider by ID when mode is real', async () => {
+    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
+    mockFindProviderById.mockResolvedValue({
+      id: 'prov-1',
+      apiEndpoint: 'https://api.provider.com',
+      apiKeyEncrypted: 'iv:tag:encrypted',
+      isActive: true,
+    });
+    mockDecryptApiKey.mockReturnValue('decrypted-key');
+    const mockClient = { submitOrder: jest.fn(), checkStatus: jest.fn() };
+    mockCreateSmmApiClient.mockReturnValue(mockClient);
+
+    const result = await selectProviderById('prov-1');
+
+    expect(result.providerId).toBe('prov-1');
+    expect(result.client).toBe(mockClient);
+    expect(mockFindProviderById).toHaveBeenCalledWith('prov-1');
+  });
+
+  it('should throw when provider not found', async () => {
+    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
+    mockFindProviderById.mockResolvedValue(null);
+
+    await expect(selectProviderById('bad-id')).rejects.toThrow('Linked provider is not available');
+  });
+
+  it('should throw when provider is inactive', async () => {
+    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
+    mockFindProviderById.mockResolvedValue({
+      id: 'prov-1',
+      apiEndpoint: 'https://api.provider.com',
+      apiKeyEncrypted: 'enc',
+      isActive: false,
+    });
+
+    await expect(selectProviderById('prov-1')).rejects.toThrow('Linked provider is not available');
   });
 });

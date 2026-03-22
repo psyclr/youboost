@@ -16,7 +16,25 @@ export interface StatusResult {
   remains: number;
 }
 
+export interface ProviderServiceInfo {
+  serviceId: string;
+  name: string;
+  category: string;
+  rate: number;
+  min: number;
+  max: number;
+  type: string;
+  description: string;
+}
+
+export interface ProviderBalanceInfo {
+  balance: number;
+  currency: string;
+}
+
 export interface ProviderClient {
   submitOrder(params: SubmitOrderParams): Promise<SubmitResult>;
   checkStatus(externalOrderId: string): Promise<StatusResult>;
+  fetchServices(): Promise<ProviderServiceInfo[]>;
+  checkBalance(): Promise<ProviderBalanceInfo>;
 }

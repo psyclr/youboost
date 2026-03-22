@@ -15,7 +15,7 @@ async function seed(): Promise<void> {
     create: {
       email: 'admin@youboost.dev',
       username: 'admin',
-      passwordHash: '$2b$10$placeholder.hash.for.dev.only.do.not.use.in.prod',
+      passwordHash: '$2b$10$IljWvd0vjhdHWvEfPTA58evZu8SwUfHrPTKLWXbXOyp/1CH/sl5zK', // admin123
       role: 'ADMIN',
       status: 'ACTIVE',
       emailVerified: true,
@@ -24,7 +24,24 @@ async function seed(): Promise<void> {
 
   console.log(`Admin user: ${admin.email} (${admin.id})`);
 
-  // Create sample services
+  // Create sample provider (before services so we can link them)
+  const PROVIDER_ID = 'a0000000-0000-4000-8000-000000000001';
+  const provider = await prisma.provider.upsert({
+    where: { id: PROVIDER_ID },
+    update: {},
+    create: {
+      id: PROVIDER_ID,
+      name: 'SMMPanel Provider',
+      apiEndpoint: 'https://api.example-provider.com/v2',
+      apiKeyEncrypted: 'encrypted_placeholder_key',
+      isActive: true,
+      priority: 1,
+    },
+  });
+
+  console.log(`Provider: ${provider.name} (${provider.id})`);
+
+  // Create sample services linked to provider
   const services = [
     {
       name: 'YouTube Views',
@@ -34,6 +51,8 @@ async function seed(): Promise<void> {
       pricePer1000: 1.5,
       minQuantity: 100,
       maxQuantity: 1000000,
+      providerId: PROVIDER_ID,
+      externalServiceId: '1',
     },
     {
       name: 'YouTube Subscribers',
@@ -43,6 +62,8 @@ async function seed(): Promise<void> {
       pricePer1000: 15.0,
       minQuantity: 50,
       maxQuantity: 100000,
+      providerId: PROVIDER_ID,
+      externalServiceId: '2',
     },
     {
       name: 'YouTube Likes',
@@ -52,6 +73,8 @@ async function seed(): Promise<void> {
       pricePer1000: 3.0,
       minQuantity: 50,
       maxQuantity: 500000,
+      providerId: PROVIDER_ID,
+      externalServiceId: '3',
     },
   ];
 
@@ -67,22 +90,6 @@ async function seed(): Promise<void> {
       console.log(`Service exists: ${existing.name}`);
     }
   }
-
-  // Create sample provider
-  const provider = await prisma.provider.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000001' },
-    update: {},
-    create: {
-      id: '00000000-0000-0000-0000-000000000001',
-      name: 'SMMPanel Provider',
-      apiEndpoint: 'https://api.example-provider.com/v2',
-      apiKeyEncrypted: 'encrypted_placeholder_key',
-      isActive: true,
-      priority: 1,
-    },
-  });
-
-  console.log(`Provider: ${provider.name} (${provider.id})`);
   console.log('Seeding complete!');
 }
 

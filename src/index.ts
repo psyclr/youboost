@@ -3,7 +3,12 @@ import { loadConfig } from './shared/config/env';
 import { createServiceLogger } from './shared/utils/logger';
 import { connectDatabase, disconnectDatabase } from './shared/database/prisma';
 import { connectRedis, disconnectRedis } from './shared/redis/redis';
-import { startOrderPolling, stopOrderPolling } from './modules/orders/workers';
+import {
+  startOrderPolling,
+  stopOrderPolling,
+  startDripFeedWorker,
+  stopDripFeedWorker,
+} from './modules/orders/workers';
 import { startWebhookWorker, stopWebhookWorker } from './modules/webhooks';
 import { startNotificationWorker, stopNotificationWorker } from './modules/notifications';
 import { createApp } from './app';
@@ -22,6 +27,7 @@ async function main(): Promise<void> {
   log.info({ port: config.app.port }, 'Server listening');
 
   await startOrderPolling();
+  await startDripFeedWorker();
   await startWebhookWorker();
   await startNotificationWorker();
 
@@ -30,6 +36,7 @@ async function main(): Promise<void> {
     await app.close();
     await stopNotificationWorker();
     await stopWebhookWorker();
+    await stopDripFeedWorker();
     await stopOrderPolling();
     await disconnectRedis();
     await disconnectDatabase();

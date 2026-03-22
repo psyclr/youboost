@@ -19,6 +19,7 @@ function mapToResponse(record: ServiceRecord): CatalogServiceResponse {
     pricePer1000: record.pricePer1000.toNumber(),
     minQuantity: record.minQuantity,
     maxQuantity: record.maxQuantity,
+    refillDays: record.refillDays,
   };
 }
 

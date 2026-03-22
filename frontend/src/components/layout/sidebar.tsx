@@ -8,10 +8,10 @@ import {
   ShoppingCart,
   Package,
   Wallet,
-  Key,
-  Webhook,
   Settings,
+  BookOpen,
   Zap,
+  MessageSquare,
 } from 'lucide-react';
 
 const navItems = [
@@ -19,8 +19,8 @@ const navItems = [
   { href: '/catalog', label: 'Catalog', icon: Package },
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/billing', label: 'Billing', icon: Wallet },
-  { href: '/api-keys', label: 'API Keys', icon: Key },
-  { href: '/webhooks', label: 'Webhooks', icon: Webhook },
+  { href: '/support', label: 'Support', icon: MessageSquare },
+  { href: '/guide', label: 'Guide', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

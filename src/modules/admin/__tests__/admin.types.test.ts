@@ -208,6 +208,8 @@ describe('Admin Types - Zod Schemas', () => {
       pricePer1000: 5.99,
       minQuantity: 100,
       maxQuantity: 100000,
+      providerId: 'a0000000-0000-4000-a000-000000000001',
+      externalServiceId: '101',
     };
 
     it('should parse valid service', () => {
@@ -245,6 +247,19 @@ describe('Admin Types - Zod Schemas', () => {
 
     it('should reject minQuantity < 1', () => {
       const result = adminServiceCreateSchema.safeParse({ ...validService, minQuantity: 0 });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid UUID for providerId', () => {
+      const result = adminServiceCreateSchema.safeParse({
+        ...validService,
+        providerId: 'not-a-uuid',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject empty externalServiceId', () => {
+      const result = adminServiceCreateSchema.safeParse({ ...validService, externalServiceId: '' });
       expect(result.success).toBe(false);
     });
   });

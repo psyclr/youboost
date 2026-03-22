@@ -3,6 +3,8 @@ import type {
   SubmitOrderParams,
   SubmitResult,
   StatusResult,
+  ProviderServiceInfo,
+  ProviderBalanceInfo,
 } from './provider-client';
 
 class StubProviderClient implements ProviderClient {
@@ -20,6 +22,25 @@ class StubProviderClient implements ProviderClient {
       completed: 0,
       remains: 0,
     };
+  }
+
+  async fetchServices(): Promise<ProviderServiceInfo[]> {
+    return [
+      {
+        serviceId: '1',
+        name: 'Stub Views',
+        category: 'YouTube',
+        rate: 1.5,
+        min: 100,
+        max: 1000000,
+        type: 'Default',
+        description: 'Stub service',
+      },
+    ];
+  }
+
+  async checkBalance(): Promise<ProviderBalanceInfo> {
+    return { balance: 100.0, currency: 'USD' };
   }
 }
 

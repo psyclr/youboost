@@ -196,6 +196,8 @@ describe('Admin Routes', () => {
           pricePer1000: 2.5,
           minQuantity: 100,
           maxQuantity: 100000,
+          providerId: 'a0000000-0000-4000-a000-000000000001',
+          externalServiceId: '101',
         },
       });
       expect(res.statusCode).toBe(201);

@@ -3,13 +3,30 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, ShoppingCart, Package, ArrowLeft, Zap } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  ShoppingCart,
+  Package,
+  BookOpen,
+  ArrowLeft,
+  Zap,
+  Server,
+  MessageSquare,
+  Tag,
+  Link2,
+} from 'lucide-react';
 
 const adminItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/admin/services', label: 'Services', icon: Package },
+  { href: '/admin/providers', label: 'Providers', icon: Server },
+  { href: '/admin/support', label: 'Support', icon: MessageSquare },
+  { href: '/admin/coupons', label: 'Coupons', icon: Tag },
+  { href: '/admin/referrals', label: 'Tracking', icon: Link2 },
+  { href: '/admin/docs', label: 'Documentation', icon: BookOpen },
 ];
 
 export function AdminSidebar() {

@@ -1,6 +1,7 @@
 import type { OpenAPIV3 } from 'openapi-types';
+import { adminSchemas } from './admin-schemas';
 
-export const schemas: Record<string, OpenAPIV3.SchemaObject> = {
+const baseSchemas: Record<string, OpenAPIV3.SchemaObject> = {
   Pagination: {
     type: 'object',
     properties: {
@@ -214,79 +215,29 @@ export const schemas: Record<string, OpenAPIV3.SchemaObject> = {
       createdAt: { type: 'string', format: 'date-time' },
     },
   },
-  AdminUser: {
+  ProviderServiceInfo: {
     type: 'object',
     properties: {
-      userId: { type: 'string', format: 'uuid' },
-      email: { type: 'string' },
-      username: { type: 'string' },
-      role: { type: 'string' },
-      status: { type: 'string' },
-      emailVerified: { type: 'boolean' },
-      createdAt: { type: 'string', format: 'date-time' },
-      updatedAt: { type: 'string', format: 'date-time' },
-    },
-  },
-  AdminUserDetail: {
-    allOf: [
-      { $ref: '#/components/schemas/AdminUser' },
-      {
-        type: 'object',
-        properties: {
-          wallet: {
-            type: 'object',
-            nullable: true,
-            properties: {
-              balance: { type: 'number' },
-              frozen: { type: 'number' },
-              available: { type: 'number' },
-            },
-          },
-        },
-      },
-    ],
-  },
-  AdminOrder: {
-    type: 'object',
-    properties: {
-      orderId: { type: 'string', format: 'uuid' },
-      userId: { type: 'string', format: 'uuid' },
-      serviceId: { type: 'string', format: 'uuid' },
-      status: { type: 'string' },
-      quantity: { type: 'integer' },
-      price: { type: 'number' },
-      link: { type: 'string' },
-      startCount: { type: 'integer', nullable: true },
-      remains: { type: 'integer', nullable: true },
-      createdAt: { type: 'string', format: 'date-time' },
-      updatedAt: { type: 'string', format: 'date-time' },
-      completedAt: { type: 'string', format: 'date-time', nullable: true },
-    },
-  },
-  AdminService: {
-    type: 'object',
-    properties: {
-      serviceId: { type: 'string', format: 'uuid' },
+      serviceId: { type: 'string' },
       name: { type: 'string' },
-      description: { type: 'string', nullable: true },
-      platform: { type: 'string' },
+      category: { type: 'string' },
+      rate: { type: 'number' },
+      min: { type: 'integer' },
+      max: { type: 'integer' },
       type: { type: 'string' },
-      pricePer1000: { type: 'number' },
-      minQuantity: { type: 'integer' },
-      maxQuantity: { type: 'integer' },
-      isActive: { type: 'boolean' },
-      createdAt: { type: 'string', format: 'date-time' },
-      updatedAt: { type: 'string', format: 'date-time' },
+      description: { type: 'string' },
     },
   },
-  DashboardStats: {
+  ProviderBalance: {
     type: 'object',
     properties: {
-      totalUsers: { type: 'integer' },
-      totalOrders: { type: 'integer' },
-      totalRevenue: { type: 'number' },
-      activeServices: { type: 'integer' },
-      recentOrders: { type: 'array', items: { $ref: '#/components/schemas/AdminOrder' } },
+      balance: { type: 'number' },
+      currency: { type: 'string' },
     },
   },
+};
+
+export const schemas: Record<string, OpenAPIV3.SchemaObject> = {
+  ...baseSchemas,
+  ...adminSchemas,
 };

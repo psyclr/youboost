@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import { authenticate } from './auth.middleware';
@@ -12,6 +13,7 @@ import {
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  updateProfileSchema,
 } from './auth.types';
 
 function validateBody<T>(
@@ -36,17 +38,44 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/register', async (request: FastifyRequest, reply: FastifyReply) => {
-    const input = validateBody(registerSchema, request.body);
-    const result = await authService.register(input);
-    return reply.status(StatusCodes.CREATED).send(result);
+  // Register rate limit plugin
+  await app.register(rateLimit, {
+    global: false, // Don't apply globally, only to specific routes
   });
 
-  app.post('/login', async (request: FastifyRequest, reply: FastifyReply) => {
-    const input = validateBody(loginSchema, request.body);
-    const result = await authService.login(input);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+  app.post(
+    '/register',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const input = validateBody(registerSchema, request.body);
+      const result = await authService.register(input);
+      return reply.status(StatusCodes.CREATED).send(result);
+    },
+  );
+
+  app.post(
+    '/login',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const input = validateBody(loginSchema, request.body);
+      const result = await authService.login(input);
+      return reply.status(StatusCodes.OK).send(result);
+    },
+  );
 
   app.post('/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
     const input = validateBody(refreshSchema, request.body);
@@ -80,15 +109,37 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(StatusCodes.OK).send(result);
   });
 
-  app.post('/forgot-password', async (request: FastifyRequest, reply: FastifyReply) => {
-    const input = validateBody(forgotPasswordSchema, request.body);
-    const result = await authEmailService.forgotPassword(input.email);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+  app.post(
+    '/forgot-password',
+    {
+      config: {
+        rateLimit: {
+          max: 3,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const input = validateBody(forgotPasswordSchema, request.body);
+      const result = await authEmailService.forgotPassword(input.email);
+      return reply.status(StatusCodes.OK).send(result);
+    },
+  );
 
   app.post('/reset-password', async (request: FastifyRequest, reply: FastifyReply) => {
     const input = validateBody(resetPasswordSchema, request.body);
     const result = await authEmailService.resetPassword(input.token, input.newPassword);
     return reply.status(StatusCodes.OK).send(result);
   });
+
+  app.put(
+    '/profile',
+    { preHandler: [authenticate] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = getAuthUser(request);
+      const input = validateBody(updateProfileSchema, request.body);
+      const result = await authService.updateProfile(user.userId, input);
+      return reply.status(StatusCodes.OK).send(result);
+    },
+  );
 }

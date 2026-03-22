@@ -1,11 +1,20 @@
 import { z } from 'zod/v4';
 
-export const createOrderSchema = z.object({
-  serviceId: z.string().uuid(),
-  link: z.string().url(),
-  quantity: z.number().int().min(1),
-  comments: z.string().max(500).optional(),
-});
+export const createOrderSchema = z
+  .object({
+    serviceId: z.string().uuid(),
+    link: z.string().url(),
+    quantity: z.number().int().min(1),
+    comments: z.string().max(500).optional(),
+    isDripFeed: z.boolean().default(false),
+    dripFeedRuns: z.number().int().min(2).max(100).optional(),
+    dripFeedInterval: z.number().int().min(10).max(10080).optional(),
+    couponCode: z.string().min(1).optional(),
+  })
+  .refine((data) => !data.isDripFeed || (data.dripFeedRuns && data.dripFeedInterval), {
+    message: 'Drip-feed requires runs and interval',
+    path: ['dripFeedRuns'],
+  });
 
 export const ordersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -20,9 +29,30 @@ export const orderIdSchema = z.object({
   orderId: z.string().uuid(),
 });
 
+export const refillOrderSchema = z.object({
+  orderId: z.string().uuid(),
+});
+
+export const bulkOrderSchema = z.object({
+  serviceId: z.string().uuid(),
+  links: z
+    .array(
+      z.object({
+        link: z.string().url(),
+        quantity: z.number().int().min(1).optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+  defaultQuantity: z.number().int().min(1),
+  comments: z.string().max(500).optional(),
+});
+
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 export type OrderIdParam = z.infer<typeof orderIdSchema>;
+export type RefillOrderInput = z.infer<typeof refillOrderSchema>;
+export type BulkOrderInput = z.infer<typeof bulkOrderSchema>;
 
 export interface OrderResponse {
   orderId: string;
@@ -32,6 +62,7 @@ export interface OrderResponse {
   completed: number;
   price: number;
   createdAt: Date;
+  isDripFeed: boolean;
 }
 
 export interface OrderDetailed extends OrderResponse {
@@ -40,6 +71,11 @@ export interface OrderDetailed extends OrderResponse {
   remains: number | null;
   updatedAt: Date;
   comments: string | null;
+  dripFeedRuns: number | null;
+  dripFeedInterval: number | null;
+  dripFeedRunsCompleted: number;
+  refillEligibleUntil: Date | null;
+  refillCount: number;
 }
 
 export interface CancelOrderResponse {
@@ -59,6 +95,19 @@ export interface PaginatedOrders {
   };
 }
 
+export interface BulkOrderResultItem {
+  link: string;
+  orderId: string | null;
+  status: 'success' | 'error';
+  error?: string;
+}
+
+export interface BulkOrderResult {
+  results: BulkOrderResultItem[];
+  totalCreated: number;
+  totalFailed: number;
+}
+
 export interface ServiceRecord {
   id: string;
   name: string;
@@ -69,6 +118,9 @@ export interface ServiceRecord {
   minQuantity: number;
   maxQuantity: number;
   isActive: boolean;
+  providerId: string | null;
+  externalServiceId: string | null;
+  refillDays: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +137,15 @@ export interface OrderRecord {
   status: string;
   startCount: number | null;
   remains: number | null;
+  isDripFeed: boolean;
+  dripFeedRuns: number | null;
+  dripFeedInterval: number | null;
+  dripFeedRunsCompleted: number;
+  dripFeedPausedAt: Date | null;
+  refillEligibleUntil: Date | null;
+  refillCount: number;
+  couponId: string | null;
+  discount: { toNumber(): number };
   createdAt: Date;
   updatedAt: Date;
   completedAt: Date | null;
@@ -96,7 +157,13 @@ export interface CreateOrderData {
   link: string;
   quantity: number;
   price: number;
-  comments?: string;
+  comments?: string | undefined;
+  isDripFeed?: boolean | undefined;
+  dripFeedRuns?: number | undefined;
+  dripFeedInterval?: number | undefined;
+  dripFeedRunsCompleted?: number | undefined;
+  couponId?: string | null;
+  discount?: number | undefined;
 }
 
 export interface UpdateOrderData {
@@ -106,6 +173,8 @@ export interface UpdateOrderData {
   remains?: number | null;
   providerId?: string | null;
   externalOrderId?: string | null;
+  refillEligibleUntil?: Date | null;
+  dripFeedRunsCompleted?: number;
 }
 
 export interface CreateServiceData {
@@ -116,6 +185,8 @@ export interface CreateServiceData {
   pricePer1000: number;
   minQuantity: number;
   maxQuantity: number;
+  providerId?: string;
+  externalServiceId?: string;
 }
 
 export interface UpdateServiceData {
@@ -127,4 +198,6 @@ export interface UpdateServiceData {
   minQuantity?: number | undefined;
   maxQuantity?: number | undefined;
   isActive?: boolean | undefined;
+  providerId?: string | undefined;
+  externalServiceId?: string | undefined;
 }

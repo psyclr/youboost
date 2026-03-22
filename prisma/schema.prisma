@@ -24,6 +24,10 @@ model User {
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  // Referral
+  referralCode  String?    @unique @map("referral_code") @db.VarChar(20)
+  referredById  String?    @map("referred_by_id") @db.Uuid
+
   // Relations
   wallets       Wallet[]
   ledger        Ledger[]
@@ -33,11 +37,19 @@ model User {
   refreshTokens RefreshToken[]
   notifications Notification[]
   deposits      Deposit[]
+  supportTickets   SupportTicket[]
+  ticketMessages   TicketMessage[]
+  referredBy       User?            @relation("Referrals", fields: [referredById], references: [id])
+  referrals        User[]           @relation("Referrals")
+  referralBonusesGiven    ReferralBonus[] @relation("ReferrerBonuses")
+  referralBonusesReceived ReferralBonus[] @relation("ReferredBonuses")
+  emailTokens      EmailToken[]
 
   @@index([email])
   @@index([username])
   @@index([role])
   @@index([status])
+  @@index([referralCode])
   @@map("users")
 }
 
@@ -140,15 +152,21 @@ model Service {
   minQuantity  Int      @map("min_quantity")
   maxQuantity  Int      @map("max_quantity")
   isActive     Boolean  @default(true) @map("is_active")
+  refillDays   Int?     @map("refill_days")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  providerId        String?   @map("provider_id") @db.Uuid
+  externalServiceId String?   @map("external_service_id") @db.VarChar(255)
+
   // Relations
-  orders Order[]
+  provider Provider? @relation(fields: [providerId], references: [id])
+  orders   Order[]
 
   @@index([platform])
   @@index([type])
   @@index([isActive])
+  @@index([providerId])
   @@map("services")
 }
 
@@ -175,12 +193,27 @@ model Order {
   providerId      String?     @map("provider_id") @db.Uuid
   externalOrderId String?     @map("external_order_id") @db.VarChar(255)
 
-  // Детали заказа
+  // Order details
   link     String  @db.Text
   quantity Int
   price    Decimal @db.Decimal(10, 2)
 
-  // Статусы
+  // Drip-feed
+  isDripFeed           Boolean   @default(false) @map("is_drip_feed")
+  dripFeedRuns         Int?      @map("drip_feed_runs")
+  dripFeedInterval     Int?      @map("drip_feed_interval")
+  dripFeedRunsCompleted Int      @default(0) @map("drip_feed_runs_completed")
+  dripFeedPausedAt     DateTime? @map("drip_feed_paused_at") @db.Timestamptz(6)
+
+  // Refill
+  refillEligibleUntil  DateTime? @map("refill_eligible_until") @db.Timestamptz(6)
+  refillCount          Int       @default(0) @map("refill_count")
+
+  // Coupon
+  couponId    String?  @map("coupon_id") @db.Uuid
+  discount    Decimal  @default(0) @map("discount") @db.Decimal(10, 2)
+
+  // Status
   status      OrderStatus @default(PENDING)
   startCount  Int?        @map("start_count")
   remains     Int?
@@ -194,12 +227,15 @@ model Order {
   user     User      @relation(fields: [userId], references: [id])
   service  Service   @relation(fields: [serviceId], references: [id])
   provider Provider? @relation(fields: [providerId], references: [id])
+  coupon   Coupon?   @relation(fields: [couponId], references: [id])
 
   @@index([userId])
   @@index([serviceId])
   @@index([providerId])
   @@index([status])
   @@index([createdAt(sort: Desc)])
+  @@index([isDripFeed])
+  @@index([isDripFeed, status])
   @@map("orders")
 }
 
@@ -230,7 +266,8 @@ model Provider {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
-  orders Order[]
+  orders   Order[]
+  services Service[]
 
   @@index([isActive])
   @@index([priority(sort: Desc)])
@@ -332,9 +369,11 @@ model Deposit {
   id             String        @id @default(uuid()) @db.Uuid
   userId         String        @map("user_id") @db.Uuid
   amount         Decimal       @db.Decimal(15, 2)
-  cryptoAmount   Decimal       @map("crypto_amount") @db.Decimal(20, 8)
-  cryptoCurrency String        @map("crypto_currency") @db.VarChar(10)
-  paymentAddress String        @map("payment_address") @db.VarChar(255)
+  paymentMethod  PaymentMethod @default(CRYPTO) @map("payment_method")
+  cryptoAmount   Decimal       @default(0) @map("crypto_amount") @db.Decimal(20, 8)
+  cryptoCurrency String        @default("") @map("crypto_currency") @db.VarChar(10)
+  paymentAddress String        @default("") @map("payment_address") @db.VarChar(255)
+  stripeSessionId String?      @unique @map("stripe_session_id") @db.VarChar(255)
   status         DepositStatus @default(PENDING)
   txHash         String?       @map("tx_hash") @db.VarChar(255)
   expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
@@ -351,9 +390,160 @@ model Deposit {
   @@map("deposits")
 }
 
+enum PaymentMethod {
+  CRYPTO
+  STRIPE
+}
+
 enum DepositStatus {
   PENDING
   CONFIRMED
   EXPIRED
   FAILED
+}
+
+// ============================================
+// SUPPORT TICKETS
+// ============================================
+
+model SupportTicket {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @map("user_id") @db.Uuid
+  subject     String       @db.VarChar(255)
+  description String       @db.Text
+  status      TicketStatus @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  closedAt    DateTime?    @map("closed_at") @db.Timestamptz(6)
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  ticketId  String   @map("ticket_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  isAdmin   Boolean  @default(false) @map("is_admin")
+  body      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("ticket_messages")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================
+// COUPONS
+// ============================================
+
+model Coupon {
+  id            String       @id @default(uuid()) @db.Uuid
+  code          String       @unique @db.VarChar(50)
+  discountType  DiscountType @map("discount_type")
+  discountValue Decimal      @map("discount_value") @db.Decimal(10, 2)
+  maxUses       Int?         @map("max_uses")
+  usedCount     Int          @default(0) @map("used_count")
+  minOrderAmount Decimal?    @map("min_order_amount") @db.Decimal(10, 2)
+  expiresAt     DateTime?    @map("expires_at") @db.Timestamptz(6)
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  orders Order[]
+
+  @@index([code])
+  @@index([isActive])
+  @@map("coupons")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+// ============================================
+// REFERRAL BONUSES
+// ============================================
+
+model ReferralBonus {
+  id         String             @id @default(uuid()) @db.Uuid
+  referrerId String             @map("referrer_id") @db.Uuid
+  referredId String             @map("referred_id") @db.Uuid
+  amount     Decimal            @db.Decimal(10, 2)
+  status     ReferralBonusStatus @default(PENDING)
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  referrer User @relation("ReferrerBonuses", fields: [referrerId], references: [id])
+  referred User @relation("ReferredBonuses", fields: [referredId], references: [id])
+
+  @@index([referrerId])
+  @@index([referredId])
+  @@map("referral_bonuses")
+}
+
+enum ReferralBonusStatus {
+  PENDING
+  CREDITED
+}
+
+// ============================================
+// TRACKING LINKS
+// ============================================
+
+model TrackingLink {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(50)
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([code])
+  @@map("tracking_links")
+}
+
+// ============================================
+// EMAIL TOKENS
+// ============================================
+
+model EmailToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  tokenHash String         @unique @map("token_hash") @db.VarChar(255)
+  type      EmailTokenType
+  expiresAt DateTime       @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime?      @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("email_tokens")
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
 }

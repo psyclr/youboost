@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { register as registerApi } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/client';
+import { sanitizeInput } from '@/lib/utils/sanitize';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -25,6 +26,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from '@/components/ui/form';
 
 const registerSchema = z.object({
@@ -40,23 +42,30 @@ const registerSchema = z.object({
     .regex(/[A-Z]/, 'Must contain an uppercase letter')
     .regex(/[a-z]/, 'Must contain a lowercase letter')
     .regex(/[0-9]/, 'Must contain a digit'),
+  referralCode: z.string().optional(),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
 
-export default function RegisterPage() {
+function RegisterForm_() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const refCode = searchParams.get('ref') ?? '';
   const [error, setError] = useState<string | null>(null);
 
   const form = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { email: '', username: '', password: '' },
+    defaultValues: { email: '', username: '', password: '', referralCode: refCode },
   });
 
   const onSubmit = async (data: RegisterForm) => {
     setError(null);
     try {
-      await registerApi(data);
+      // Sanitize username input
+      await registerApi({
+        ...data,
+        username: sanitizeInput(data.username),
+      });
       router.push('/login');
     } catch (err) {
       if (err instanceof ApiError) {
@@ -120,6 +129,20 @@ export default function RegisterPage() {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="referralCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Referral Code (optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter referral code" {...field} />
+                  </FormControl>
+                  <FormDescription>Got a referral code? Enter it for a bonus.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? 'Creating account...' : 'Create Account'}
             </Button>
@@ -135,5 +158,13 @@ export default function RegisterPage() {
         </p>
       </CardFooter>
     </Card>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm_ />
+    </Suspense>
   );
 }

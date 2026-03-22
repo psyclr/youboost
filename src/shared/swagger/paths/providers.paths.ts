@@ -140,4 +140,62 @@ export const providersPaths: OpenAPIV3.PathsObject = {
       },
     },
   },
+  '/providers/{providerId}/services': {
+    get: {
+      tags: ['Providers (Admin)'],
+      summary: 'Fetch services from provider API',
+      security: auth,
+      parameters: [
+        {
+          name: 'providerId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Provider services list',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  services: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/ProviderServiceInfo' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '404': { description: 'Provider not found' },
+      },
+    },
+  },
+  '/providers/{providerId}/balance': {
+    get: {
+      tags: ['Providers (Admin)'],
+      summary: 'Check provider balance',
+      security: auth,
+      parameters: [
+        {
+          name: 'providerId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Provider balance',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ProviderBalance' } },
+          },
+        },
+        '404': { description: 'Provider not found' },
+      },
+    },
+  },
 };
