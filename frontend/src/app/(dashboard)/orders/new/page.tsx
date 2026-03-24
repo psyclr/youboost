@@ -45,8 +45,8 @@ const dripFeedIntervals = [
 ];
 
 const orderSchema = z.object({
-  serviceId: z.string().uuid('Please select a service'),
-  link: z.string().url('Please enter a valid URL'),
+  serviceId: z.uuid('Please select a service'),
+  link: z.url('Please enter a valid URL'),
   quantity: z.number().int().min(1, 'Minimum quantity is 1'),
   comments: z.string().max(500).optional(),
   couponCode: z.string().optional(),

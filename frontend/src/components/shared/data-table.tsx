@@ -30,6 +30,32 @@ interface DataTableProps<T> {
   };
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
+  getRowId?: (row: T, index: number) => string;
+}
+
+function getColumnKey<T>(col: Column<T>, index: number): string {
+  return col.header || `col-${index}`;
+}
+
+function defaultGetRowId<T>(row: T, index: number): string {
+  const record = row as Record<string, unknown>;
+  if (record && typeof record === 'object' && 'id' in record) {
+    return String(record.id);
+  }
+  return String(index);
+}
+
+function getCellContent<T>(col: Column<T>, row: T): React.ReactNode {
+  if (col.cell) {
+    return col.cell(row);
+  }
+  if (col.accessorKey) {
+    const value = (row as Record<string, unknown>)[col.accessorKey as string];
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return typeof value === 'string' ? value : `${value as string | number | boolean}`;
+  }
+  return null;
 }
 
 export function DataTable<T>({
@@ -39,7 +65,9 @@ export function DataTable<T>({
   pagination,
   onRowClick,
   emptyMessage = 'No data found',
-}: DataTableProps<T>) {
+  getRowId,
+}: Readonly<DataTableProps<T>>) {
+  const resolveRowId = getRowId ?? defaultGetRowId;
   if (isLoading) {
     return (
       <div className="rounded-md border">
@@ -47,17 +75,17 @@ export function DataTable<T>({
           <TableHeader>
             <TableRow>
               {columns.map((col, i) => (
-                <TableHead key={i} className={col.className}>
+                <TableHead key={getColumnKey(col, i)} className={col.className}>
                   {col.header}
                 </TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <TableRow key={i}>
-                {columns.map((_, j) => (
-                  <TableCell key={j}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <TableRow key={`skeleton-${n}`}>
+                {columns.map((col, j) => (
+                  <TableCell key={getColumnKey(col, j)}>
                     <Skeleton className="h-4 w-full" />
                   </TableCell>
                 ))}
@@ -76,7 +104,7 @@ export function DataTable<T>({
           <TableHeader>
             <TableRow>
               {columns.map((col, i) => (
-                <TableHead key={i} className={col.className}>
+                <TableHead key={getColumnKey(col, i)} className={col.className}>
                   {col.header}
                 </TableHead>
               ))}
@@ -95,19 +123,13 @@ export function DataTable<T>({
             ) : (
               data.map((row, i) => (
                 <TableRow
-                  key={i}
+                  key={resolveRowId(row, i)}
                   onClick={() => onRowClick?.(row)}
                   className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : undefined}
                 >
                   {columns.map((col, j) => (
-                    <TableCell key={j} className={col.className}>
-                      {col.cell
-                        ? col.cell(row)
-                        : col.accessorKey
-                          ? String(
-                              (row as Record<string, unknown>)[col.accessorKey as string] ?? '',
-                            )
-                          : null}
+                    <TableCell key={getColumnKey(col, j)} className={col.className}>
+                      {getCellContent(col, row)}
                     </TableCell>
                   ))}
                 </TableRow>

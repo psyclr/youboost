@@ -86,7 +86,7 @@ export default function DepositPage() {
       try {
         const url = new URL(data.url);
         if (url.hostname === 'checkout.stripe.com' || url.hostname.endsWith('.stripe.com')) {
-          window.location.href = data.url;
+          globalThis.location.href = data.url;
         } else {
           toast.error('Invalid payment URL received. Please try again.');
           console.error('Invalid Stripe URL:', data.url);

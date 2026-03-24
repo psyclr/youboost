@@ -19,11 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatDate } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 const statusConfig: Record<string, { className: string; label: string }> = {
   OPEN: {
@@ -53,7 +52,7 @@ const priorityConfig: Record<string, { className: string }> = {
 
 const ticketStatuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
 
-function MessageBubble({ message }: { message: TicketMessageResponse }) {
+function MessageBubble({ message }: Readonly<{ message: TicketMessageResponse }>) {
   return (
     <div className={cn('flex', message.isAdmin ? 'justify-end' : 'justify-start')}>
       <div
@@ -76,7 +75,9 @@ function MessageBubble({ message }: { message: TicketMessageResponse }) {
   );
 }
 
-export default function AdminTicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AdminTicketDetailPage({
+  params,
+}: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);

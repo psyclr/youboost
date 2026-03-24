@@ -25,7 +25,9 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import type { UserRole, UserStatus } from '@/lib/api/types';
 
-export default function AdminUserDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AdminUserDetailPage({
+  params,
+}: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({
@@ -193,7 +195,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
               <Button
                 onClick={() =>
                   balanceMutation.mutate({
-                    amount: parseFloat(adjustAmount),
+                    amount: Number.parseFloat(adjustAmount),
                     reason: adjustReason,
                   })
                 }

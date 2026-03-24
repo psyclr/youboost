@@ -13,7 +13,9 @@ export const getCatalog = (params?: {
   if (params?.platform) searchParams.set('platform', params.platform);
   if (params?.type) searchParams.set('type', params.type);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedCatalog>(`/catalog/services${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/catalog/services${query}`;
+  return apiRequest<PaginatedCatalog>(url);
 };
 
 export const getService = (serviceId: string) =>

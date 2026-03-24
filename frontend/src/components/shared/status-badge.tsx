@@ -15,7 +15,7 @@ const statusConfig: Record<string, { className: string }> = {
   EXPIRED: { className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200' },
 };
 
-export function StatusBadge({ status }: { status: StatusType }) {
+export function StatusBadge({ status }: Readonly<{ status: StatusType }>) {
   const config = statusConfig[status] ?? { className: '' };
   return (
     <Badge variant="secondary" className={config.className}>

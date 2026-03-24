@@ -37,7 +37,7 @@ import Link from 'next/link';
 import type { BulkOrderResult, CatalogService } from '@/lib/api/types';
 
 const bulkSchema = z.object({
-  serviceId: z.string().uuid('Please select a service'),
+  serviceId: z.uuid('Please select a service'),
   linksText: z.string().min(1, 'Enter at least one link'),
   defaultQuantity: z.number().int().min(1, 'Minimum quantity is 1'),
   comments: z.string().max(500).optional(),
@@ -258,7 +258,7 @@ export default function BulkOrderPage() {
           <CardHeader>
             <CardTitle>Preview</CardTitle>
             <CardDescription>
-              {validCount} valid link{validCount !== 1 ? 's' : ''}{' '}
+              {validCount} valid link{validCount === 1 ? '' : 's'}{' '}
               {invalidCount > 0 && (
                 <span className="text-destructive">({invalidCount} invalid - will be skipped)</span>
               )}
@@ -272,9 +272,9 @@ export default function BulkOrderPage() {
               </div>
             )}
             <div className="max-h-64 overflow-y-auto space-y-1">
-              {parsedLinks.map((item, i) => (
+              {parsedLinks.map((item) => (
                 <div
-                  key={i}
+                  key={item.link}
                   className="flex items-center gap-2 text-sm py-1 border-b last:border-0"
                 >
                   {item.valid ? (
@@ -305,9 +305,9 @@ export default function BulkOrderPage() {
           </CardHeader>
           <CardContent>
             <div className="max-h-64 overflow-y-auto space-y-1">
-              {result.results.map((item, i) => (
+              {result.results.map((item) => (
                 <div
-                  key={i}
+                  key={item.orderId ?? item.link}
                   className="flex items-center gap-2 text-sm py-1 border-b last:border-0"
                 >
                   {item.status === 'success' ? (

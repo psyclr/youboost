@@ -27,7 +27,9 @@ export const getOrders = (params?: {
   if (params?.status) searchParams.set('status', params.status);
   if (params?.serviceId) searchParams.set('serviceId', params.serviceId);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedOrders>(`/orders${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/orders${query}`;
+  return apiRequest<PaginatedOrders>(url);
 };
 
 export const getOrder = (orderId: string) => apiRequest<OrderDetailed>(`/orders/${orderId}`);

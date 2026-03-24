@@ -27,7 +27,7 @@ function formatInterval(minutes: number | null): string {
   return `${days} day${days > 1 ? 's' : ''}`;
 }
 
-export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params);
   const router = useRouter();
   const { data: order, isLoading } = useOrder(id);
@@ -37,9 +37,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const canCancel = order && (order.status === 'PENDING' || order.status === 'PROCESSING');
   const canRefill =
-    order &&
-    order.status === 'COMPLETED' &&
-    order.refillEligibleUntil &&
+    order?.status === 'COMPLETED' &&
+    order?.refillEligibleUntil &&
     new Date(order.refillEligibleUntil) > new Date();
 
   const handleCancel = async () => {

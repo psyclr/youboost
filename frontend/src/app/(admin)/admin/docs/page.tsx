@@ -28,7 +28,7 @@ import {
   Settings,
 } from 'lucide-react';
 
-function CodeBlock({ children }: { children: string }): React.ReactElement {
+function CodeBlock({ children }: Readonly<{ children: string }>): React.ReactElement {
   return (
     <pre className="bg-muted rounded-lg p-4 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
       {children}
@@ -40,11 +40,11 @@ function Section({
   title,
   icon: Icon,
   children,
-}: {
+}: Readonly<{
   title: string;
   icon?: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
-}): React.ReactElement {
+}>): React.ReactElement {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -59,10 +59,10 @@ function Section({
 function SubSection({
   title,
   children,
-}: {
+}: Readonly<{
   title: string;
   children: React.ReactNode;
-}): React.ReactElement {
+}>): React.ReactElement {
   return (
     <div className="space-y-3">
       <h3 className="text-base font-semibold">{title}</h3>
@@ -74,10 +74,10 @@ function SubSection({
 function Callout({
   type = 'info',
   children,
-}: {
+}: Readonly<{
   type?: 'info' | 'warning' | 'success';
   children: React.ReactNode;
-}): React.ReactElement {
+}>): React.ReactElement {
   const styles = {
     info: 'border-primary/30 bg-primary/5',
     warning: 'border-yellow-500/30 bg-yellow-500/5',
@@ -86,7 +86,7 @@ function Callout({
   return <div className={`border rounded-lg p-4 text-sm ${styles[type]}`}>{children}</div>;
 }
 
-function StatusBadge({ status }: { status: string }): React.ReactElement {
+function StatusBadge({ status }: Readonly<{ status: string }>): React.ReactElement {
   const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
     COMPLETED: 'default',
     PROCESSING: 'secondary',
@@ -106,11 +106,11 @@ function FlowStep({
   step,
   title,
   description,
-}: {
+}: Readonly<{
   step: number;
   title: string;
   description: string;
-}): React.ReactElement {
+}>): React.ReactElement {
   return (
     <div className="flex gap-3">
       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">

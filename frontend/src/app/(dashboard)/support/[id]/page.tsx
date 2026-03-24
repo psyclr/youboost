@@ -12,11 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatDate } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 const statusConfig: Record<string, { className: string; label: string }> = {
   OPEN: {
@@ -44,7 +43,7 @@ const priorityConfig: Record<string, { className: string }> = {
   URGENT: { className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
 };
 
-function MessageBubble({ message }: { message: TicketMessageResponse }) {
+function MessageBubble({ message }: Readonly<{ message: TicketMessageResponse }>) {
   return (
     <div className={cn('flex', message.isAdmin ? 'justify-start' : 'justify-end')}>
       <div
@@ -67,7 +66,9 @@ function MessageBubble({ message }: { message: TicketMessageResponse }) {
   );
 }
 
-export default function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function TicketDetailPage({
+  params,
+}: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = use(params);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);

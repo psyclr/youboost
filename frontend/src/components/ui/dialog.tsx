@@ -7,7 +7,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+function Dialog({ ...props }: Readonly<React.ComponentProps<typeof DialogPrimitive.Root>>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
 }
 
@@ -15,7 +15,7 @@ function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
 }
 
-function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+function DialogPortal({ ...props }: Readonly<React.ComponentProps<typeof DialogPrimitive.Portal>>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
 }
 
@@ -44,9 +44,11 @@ function DialogContent({
   children,
   showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
-  showCloseButton?: boolean;
-}) {
+}: Readonly<
+  React.ComponentProps<typeof DialogPrimitive.Content> & {
+    showCloseButton?: boolean;
+  }
+>) {
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -88,9 +90,11 @@ function DialogFooter({
   showCloseButton = false,
   children,
   ...props
-}: React.ComponentProps<'div'> & {
-  showCloseButton?: boolean;
-}) {
+}: Readonly<
+  React.ComponentProps<'div'> & {
+    showCloseButton?: boolean;
+  }
+>) {
   return (
     <div
       data-slot="dialog-footer"

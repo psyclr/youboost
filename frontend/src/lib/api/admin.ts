@@ -29,7 +29,9 @@ export const getAdminUsers = (params?: {
   if (params?.role) searchParams.set('role', params.role);
   if (params?.status) searchParams.set('status', params.status);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedUsers>(`/admin/users${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/admin/users${query}`;
+  return apiRequest<PaginatedUsers>(url);
 };
 
 export const getAdminUser = (userId: string) =>
@@ -62,7 +64,9 @@ export const getAdminOrders = (params?: {
   if (params?.userId) searchParams.set('userId', params.userId);
   if (params?.isDripFeed !== undefined) searchParams.set('isDripFeed', String(params.isDripFeed));
   const qs = searchParams.toString();
-  return apiRequest<PaginatedAdminOrders>(`/admin/orders${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/admin/orders${query}`;
+  return apiRequest<PaginatedAdminOrders>(url);
 };
 
 export const getAdminOrder = (orderId: string) =>
@@ -95,10 +99,12 @@ export const getAdminServices = (params?: { page?: number; limit?: number }) => 
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.limit) searchParams.set('limit', String(params.limit));
   const qs = searchParams.toString();
+  const query = qs ? `?${qs}` : '';
+  const url = `/admin/services${query}`;
   return apiRequest<{
     services: AdminServiceResponse[];
     pagination: { page: number; limit: number; total: number; totalPages: number };
-  }>(`/admin/services${qs ? `?${qs}` : ''}`);
+  }>(url);
 };
 
 export const createAdminService = (data: {
@@ -130,7 +136,9 @@ export const getProviders = (params?: { page?: number; limit?: number; isActive?
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
   const qs = searchParams.toString();
-  return apiRequest<PaginatedProviders>(`/providers${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/providers${query}`;
+  return apiRequest<PaginatedProviders>(url);
 };
 
 export const getProvider = (id: string) => apiRequest<ProviderDetailResponse>(`/providers/${id}`);

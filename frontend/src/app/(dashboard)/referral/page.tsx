@@ -15,6 +15,24 @@ import { Gift, Users, DollarSign, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
+const columns: Column<ReferralBonusSummary>[] = [
+  { header: 'Username', accessorKey: 'referredUsername' },
+  {
+    header: 'Amount',
+    cell: (row) => formatCurrency(row.amount),
+  },
+  {
+    header: 'Status',
+    cell: (row) => (
+      <Badge variant={row.status === 'CREDITED' ? 'default' : 'secondary'}>{row.status}</Badge>
+    ),
+  },
+  {
+    header: 'Date',
+    cell: (row) => formatDate(row.createdAt),
+  },
+];
+
 export default function ReferralPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['referral-stats'],
@@ -22,32 +40,14 @@ export default function ReferralPage() {
   });
 
   const referralLink =
-    typeof window !== 'undefined' && data?.referralCode
-      ? `${window.location.origin}/register?ref=${data.referralCode}`
+    typeof globalThis !== 'undefined' && data?.referralCode
+      ? `${globalThis.location.origin}/register?ref=${data.referralCode}`
       : '';
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
   };
-
-  const columns: Column<ReferralBonusSummary>[] = [
-    { header: 'Username', accessorKey: 'referredUsername' },
-    {
-      header: 'Amount',
-      cell: (row) => formatCurrency(row.amount),
-    },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.status === 'CREDITED' ? 'default' : 'secondary'}>{row.status}</Badge>
-      ),
-    },
-    {
-      header: 'Date',
-      cell: (row) => formatDate(row.createdAt),
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -130,17 +130,19 @@ export default function ReferralPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Referral History</h2>
-        {isLoading ? (
+        {isLoading && (
           <div className="space-y-4">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : !data?.bonuses || data.bonuses.length === 0 ? (
+        )}
+        {!isLoading && (!data?.bonuses || data.bonuses.length === 0) && (
           <EmptyState
             title="No referrals yet"
             description="Share your referral code with friends to start earning rewards"
           />
-        ) : (
+        )}
+        {!isLoading && data?.bonuses && data.bonuses.length > 0 && (
           <DataTable columns={columns} data={data.bonuses} isLoading={isLoading} />
         )}
       </div>

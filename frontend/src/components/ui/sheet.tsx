@@ -6,7 +6,7 @@ import { Dialog as SheetPrimitive } from 'radix-ui';
 
 import { cn } from '@/lib/utils';
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+function Sheet({ ...props }: Readonly<React.ComponentProps<typeof SheetPrimitive.Root>>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
 }
 
@@ -18,7 +18,7 @@ function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Clo
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
 }
 
-function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
+function SheetPortal({ ...props }: Readonly<React.ComponentProps<typeof SheetPrimitive.Portal>>) {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
@@ -44,10 +44,12 @@ function SheetContent({
   side = 'right',
   showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  side?: 'top' | 'right' | 'bottom' | 'left';
-  showCloseButton?: boolean;
-}) {
+}: Readonly<
+  React.ComponentProps<typeof SheetPrimitive.Content> & {
+    side?: 'top' | 'right' | 'bottom' | 'left';
+    showCloseButton?: boolean;
+  }
+>) {
   return (
     <SheetPortal>
       <SheetOverlay />

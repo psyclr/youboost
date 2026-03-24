@@ -6,7 +6,7 @@ import { AuthProvider } from '@/lib/auth/auth-context';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children }: Readonly<{ children: ReactNode }>) {
   const [queryClient] = useState(
     () =>
       new QueryClient({

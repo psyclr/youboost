@@ -53,6 +53,45 @@ const statuses = [
   { value: 'CLOSED', label: 'Closed' },
 ];
 
+const columns: Column<TicketResponse>[] = [
+  {
+    header: 'Subject',
+    cell: (row: TicketResponse) => <span className="font-medium">{row.subject}</span>,
+  },
+  {
+    header: 'User',
+    cell: (row: TicketResponse) => (
+      <span className="text-xs">{row.username ?? row.userId.slice(0, 8) + '...'}</span>
+    ),
+  },
+  {
+    header: 'Status',
+    cell: (row: TicketResponse) => {
+      const cfg = statusConfig[row.status] ?? { className: '', label: row.status };
+      return (
+        <Badge variant="secondary" className={cfg.className}>
+          {cfg.label}
+        </Badge>
+      );
+    },
+  },
+  {
+    header: 'Priority',
+    cell: (row: TicketResponse) => {
+      const cfg = priorityConfig[row.priority] ?? { className: '' };
+      return (
+        <Badge variant="secondary" className={cfg.className}>
+          {row.priority}
+        </Badge>
+      );
+    },
+  },
+  {
+    header: 'Created',
+    cell: (row: TicketResponse) => formatDate(row.createdAt),
+  },
+];
+
 export default function AdminSupportPage() {
   const [status, setStatus] = useState('ALL');
   const { page, setPage } = usePagination();
@@ -66,45 +105,6 @@ export default function AdminSupportPage() {
         status: status === 'ALL' ? undefined : status,
       }),
   });
-
-  const columns: Column<TicketResponse>[] = [
-    {
-      header: 'Subject',
-      cell: (row) => <span className="font-medium">{row.subject}</span>,
-    },
-    {
-      header: 'User',
-      cell: (row) => (
-        <span className="text-xs">{row.username ?? row.userId.slice(0, 8) + '...'}</span>
-      ),
-    },
-    {
-      header: 'Status',
-      cell: (row) => {
-        const cfg = statusConfig[row.status] ?? { className: '', label: row.status };
-        return (
-          <Badge variant="secondary" className={cfg.className}>
-            {cfg.label}
-          </Badge>
-        );
-      },
-    },
-    {
-      header: 'Priority',
-      cell: (row) => {
-        const cfg = priorityConfig[row.priority] ?? { className: '' };
-        return (
-          <Badge variant="secondary" className={cfg.className}>
-            {row.priority}
-          </Badge>
-        );
-      },
-    },
-    {
-      header: 'Created',
-      cell: (row) => formatDate(row.createdAt),
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -128,13 +128,14 @@ export default function AdminSupportPage() {
         </Select>
       </div>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="space-y-4">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : !data?.tickets || data.tickets.length === 0 ? (
+      )}
+      {!isLoading && (!data?.tickets || data.tickets.length === 0) && (
         <EmptyState
           title="No support tickets"
           description={
@@ -143,7 +144,8 @@ export default function AdminSupportPage() {
               : `No ${status.toLowerCase().replace('_', ' ')} tickets`
           }
         />
-      ) : (
+      )}
+      {!isLoading && data?.tickets && data.tickets.length > 0 && (
         <DataTable
           columns={columns}
           data={data.tickets}

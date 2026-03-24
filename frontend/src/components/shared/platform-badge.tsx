@@ -24,7 +24,7 @@ const platformConfig: Record<Platform, { label: string; className: string }> = {
   },
 };
 
-export function PlatformBadge({ platform }: { platform: Platform }) {
+export function PlatformBadge({ platform }: Readonly<{ platform: Platform }>) {
   const config = platformConfig[platform];
   return (
     <Badge variant="secondary" className={config.className}>

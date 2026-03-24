@@ -32,6 +32,106 @@ interface TrackingFormData {
 
 const defaultForm: TrackingFormData = { code: '', name: '' };
 
+interface TrackingLinkCallbacks {
+  onCopy: (code: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function TrackingLinkCopyCell({
+  row,
+  onCopy,
+}: Readonly<{
+  row: TrackingLinkWithStats;
+  onCopy: (code: string) => void;
+}>) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
+        /register?ref={row.code}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopy(row.code);
+        }}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+function TrackingLinkDeleteCell({
+  row,
+  onDelete,
+}: Readonly<{
+  row: TrackingLinkWithStats;
+  onDelete: (id: string) => void;
+}>) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete(row.id);
+      }}
+    >
+      <Trash2 className="h-4 w-4 text-destructive" />
+    </Button>
+  );
+}
+
+const staticTrackingColumns: Column<TrackingLinkWithStats>[] = [
+  {
+    header: 'Name',
+    cell: (row: TrackingLinkWithStats) => <span className="font-medium">{row.name}</span>,
+  },
+  {
+    header: 'Code',
+    cell: (row: TrackingLinkWithStats) => <span className="font-mono text-sm">{row.code}</span>,
+  },
+  {
+    header: 'Registrations',
+    cell: (row: TrackingLinkWithStats) => row.registrations,
+  },
+  {
+    header: 'Last Registration',
+    cell: (row: TrackingLinkWithStats) =>
+      row.lastRegistration ? formatDate(row.lastRegistration) : '-',
+  },
+  {
+    header: 'Created',
+    cell: (row: TrackingLinkWithStats) => formatDate(row.createdAt),
+  },
+];
+
+function buildTrackingColumns(callbacks: TrackingLinkCallbacks): Column<TrackingLinkWithStats>[] {
+  return [
+    staticTrackingColumns[0],
+    staticTrackingColumns[1],
+    {
+      header: 'Full Link',
+      cell: (row: TrackingLinkWithStats) => (
+        <TrackingLinkCopyCell row={row} onCopy={callbacks.onCopy} />
+      ),
+    },
+    staticTrackingColumns[2],
+    staticTrackingColumns[3],
+    staticTrackingColumns[4],
+    {
+      header: '',
+      cell: (row: TrackingLinkWithStats) => (
+        <TrackingLinkDeleteCell row={row} onDelete={callbacks.onDelete} />
+      ),
+      className: 'w-12',
+    },
+  ];
+}
+
 export default function AdminTrackingLinksPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -70,7 +170,7 @@ export default function AdminTrackingLinksPage() {
   });
 
   const copyToClipboard = (code: string) => {
-    const url = `${window.location.origin}/register?ref=${code}`;
+    const url = `${globalThis.location.origin}/register?ref=${code}`;
     navigator.clipboard.writeText(url).then(() => {
       toast.success('Link copied to clipboard');
     });
@@ -80,65 +180,10 @@ export default function AdminTrackingLinksPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const columns: Column<TrackingLinkWithStats>[] = [
-    {
-      header: 'Name',
-      cell: (row) => <span className="font-medium">{row.name}</span>,
-    },
-    {
-      header: 'Code',
-      cell: (row) => <span className="font-mono text-sm">{row.code}</span>,
-    },
-    {
-      header: 'Full Link',
-      cell: (row) => (
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
-            /register?ref={row.code}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={(e) => {
-              e.stopPropagation();
-              copyToClipboard(row.code);
-            }}
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ),
-    },
-    {
-      header: 'Registrations',
-      cell: (row) => row.registrations,
-    },
-    {
-      header: 'Last Registration',
-      cell: (row) => (row.lastRegistration ? formatDate(row.lastRegistration) : '-'),
-    },
-    {
-      header: 'Created',
-      cell: (row) => formatDate(row.createdAt),
-    },
-    {
-      header: '',
-      cell: (row) => (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            setDeleteId(row.id);
-          }}
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      ),
-      className: 'w-12',
-    },
-  ];
+  const columns = buildTrackingColumns({
+    onCopy: copyToClipboard,
+    onDelete: setDeleteId,
+  });
 
   return (
     <div className="space-y-6">
@@ -182,7 +227,7 @@ export default function AdminTrackingLinksPage() {
                   placeholder="tg_banner_march"
                   value={form.code}
                   onChange={(e) =>
-                    updateField('code', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
+                    updateField('code', e.target.value.toLowerCase().replaceAll(/[^a-z0-9_-]/g, ''))
                   }
                 />
                 <p className="text-xs text-muted-foreground">
@@ -193,7 +238,8 @@ export default function AdminTrackingLinksPage() {
                 <div className="rounded-md bg-muted p-3">
                   <p className="text-xs text-muted-foreground mb-1">Preview link:</p>
                   <p className="font-mono text-sm break-all">
-                    {typeof window !== 'undefined' ? window.location.origin : ''}/register?ref=
+                    {typeof globalThis === 'undefined' ? '' : globalThis.location.origin}
+                    /register?ref=
                     {form.code}
                   </p>
                 </div>
@@ -211,18 +257,20 @@ export default function AdminTrackingLinksPage() {
         </Dialog>
       </div>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="space-y-4">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : !data || data.length === 0 ? (
+      )}
+      {!isLoading && (!data || data.length === 0) && (
         <EmptyState
           title="No tracking links yet"
           description="Create your first tracking link to monitor campaign registrations"
         />
-      ) : (
+      )}
+      {!isLoading && data && data.length > 0 && (
         <DataTable columns={columns} data={data} isLoading={isLoading} />
       )}
 

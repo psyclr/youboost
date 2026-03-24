@@ -28,7 +28,7 @@ const usernameSchema = z.object({
     .string()
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be at most 30 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
+    .regex(/^\w+$/, 'Only letters, numbers, and underscores'),
 });
 
 const passwordSchema = z
@@ -39,7 +39,7 @@ const passwordSchema = z
       .min(8, 'At least 8 characters')
       .regex(/[A-Z]/, 'Must contain an uppercase letter')
       .regex(/[a-z]/, 'Must contain a lowercase letter')
-      .regex(/[0-9]/, 'Must contain a digit'),
+      .regex(/\d/, 'Must contain a digit'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {

@@ -12,7 +12,7 @@ interface BalanceWidgetProps {
   isLoading: boolean;
 }
 
-export function BalanceWidget({ balance, isLoading }: BalanceWidgetProps) {
+export function BalanceWidget({ balance, isLoading }: Readonly<BalanceWidgetProps>) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">

@@ -1,6 +1,6 @@
 import { Zap } from 'lucide-react';
 
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 px-4">
       <div className="flex items-center gap-2 mb-8">

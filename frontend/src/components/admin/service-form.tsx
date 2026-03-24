@@ -60,7 +60,7 @@ export function ServiceForm({
   onSubmit,
   onCancel,
   submitLabel = 'Save',
-}: ServiceFormProps) {
+}: Readonly<ServiceFormProps>) {
   return (
     <div className="space-y-4">
       <div className="space-y-2">

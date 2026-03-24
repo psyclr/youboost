@@ -52,6 +52,81 @@ const defaultForm: CouponFormData = {
   expiresAt: '',
 };
 
+function CouponDeleteCell({
+  row,
+  onDelete,
+}: Readonly<{
+  row: CouponResponse;
+  onDelete: (id: string) => void;
+}>) {
+  if (!row.isActive) return null;
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete(row.id);
+      }}
+    >
+      <Trash2 className="h-4 w-4 text-destructive" />
+    </Button>
+  );
+}
+
+const staticColumns: Column<CouponResponse>[] = [
+  {
+    header: 'Code',
+    cell: (row: CouponResponse) => <span className="font-mono font-medium">{row.code}</span>,
+  },
+  {
+    header: 'Type',
+    cell: (row: CouponResponse) => (
+      <Badge variant="outline">{row.discountType === 'PERCENTAGE' ? 'Percentage' : 'Fixed'}</Badge>
+    ),
+  },
+  {
+    header: 'Value',
+    cell: (row: CouponResponse) =>
+      row.discountType === 'PERCENTAGE'
+        ? `${row.discountValue}%`
+        : formatCurrency(row.discountValue),
+  },
+  {
+    header: 'Uses',
+    cell: (row: CouponResponse) =>
+      row.maxUses == null ? `${row.usedCount} / Unlimited` : `${row.usedCount} / ${row.maxUses}`,
+  },
+  {
+    header: 'Min Order',
+    cell: (row: CouponResponse) =>
+      row.minOrderAmount == null ? '-' : formatCurrency(row.minOrderAmount),
+  },
+  {
+    header: 'Expires',
+    cell: (row: CouponResponse) => (row.expiresAt ? formatDate(row.expiresAt) : 'Never'),
+  },
+  {
+    header: 'Status',
+    cell: (row: CouponResponse) => (
+      <Badge variant={row.isActive ? 'default' : 'secondary'}>
+        {row.isActive ? 'Active' : 'Inactive'}
+      </Badge>
+    ),
+  },
+];
+
+function buildCouponColumns(onDelete: (id: string) => void): Column<CouponResponse>[] {
+  return [
+    ...staticColumns,
+    {
+      header: '',
+      cell: (row: CouponResponse) => <CouponDeleteCell row={row} onDelete={onDelete} />,
+      className: 'w-12',
+    },
+  ];
+}
+
 export default function AdminCouponsPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
@@ -69,10 +144,11 @@ export default function AdminCouponsPage() {
       const input: CreateCouponInput = {
         code: formData.code,
         discountType: formData.discountType,
-        discountValue: parseFloat(formData.discountValue),
+        discountValue: Number.parseFloat(formData.discountValue),
       };
-      if (formData.maxUses) input.maxUses = parseInt(formData.maxUses);
-      if (formData.minOrderAmount) input.minOrderAmount = parseFloat(formData.minOrderAmount);
+      if (formData.maxUses) input.maxUses = Number.parseInt(formData.maxUses, 10);
+      if (formData.minOrderAmount)
+        input.minOrderAmount = Number.parseFloat(formData.minOrderAmount);
       if (formData.expiresAt) input.expiresAt = new Date(formData.expiresAt).toISOString();
       return adminCreateCoupon(input);
     },
@@ -103,65 +179,7 @@ export default function AdminCouponsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const columns: Column<CouponResponse>[] = [
-    {
-      header: 'Code',
-      cell: (row) => <span className="font-mono font-medium">{row.code}</span>,
-    },
-    {
-      header: 'Type',
-      cell: (row) => (
-        <Badge variant="outline">
-          {row.discountType === 'PERCENTAGE' ? 'Percentage' : 'Fixed'}
-        </Badge>
-      ),
-    },
-    {
-      header: 'Value',
-      cell: (row) =>
-        row.discountType === 'PERCENTAGE'
-          ? `${row.discountValue}%`
-          : formatCurrency(row.discountValue),
-    },
-    {
-      header: 'Uses',
-      cell: (row) =>
-        row.maxUses != null ? `${row.usedCount} / ${row.maxUses}` : `${row.usedCount} / Unlimited`,
-    },
-    {
-      header: 'Min Order',
-      cell: (row) => (row.minOrderAmount != null ? formatCurrency(row.minOrderAmount) : '-'),
-    },
-    {
-      header: 'Expires',
-      cell: (row) => (row.expiresAt ? formatDate(row.expiresAt) : 'Never'),
-    },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.isActive ? 'default' : 'secondary'}>
-          {row.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
-    },
-    {
-      header: '',
-      cell: (row) =>
-        row.isActive ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteId(row.id);
-            }}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        ) : null,
-      className: 'w-12',
-    },
-  ];
+  const columns = buildCouponColumns(setDeleteId);
 
   return (
     <div className="space-y-6">
@@ -269,18 +287,20 @@ export default function AdminCouponsPage() {
         </Dialog>
       </div>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="space-y-4">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : !data?.coupons || data.coupons.length === 0 ? (
+      )}
+      {!isLoading && (!data?.coupons || data.coupons.length === 0) && (
         <EmptyState
           title="No coupons yet"
           description="Create your first coupon to offer discounts to customers"
         />
-      ) : (
+      )}
+      {!isLoading && data?.coupons && data.coupons.length > 0 && (
         <DataTable
           columns={columns}
           data={data.coupons}

@@ -35,7 +35,7 @@ const resetPasswordSchema = z
       .min(8, 'At least 8 characters')
       .regex(/[A-Z]/, 'Must contain an uppercase letter')
       .regex(/[a-z]/, 'Must contain a lowercase letter')
-      .regex(/[0-9]/, 'Must contain a digit'),
+      .regex(/\d/, 'Must contain a digit'),
     confirmPassword: z.string(),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -70,6 +70,7 @@ function ResetPasswordForm() {
         const result = await verifyResetToken(token);
         setIsTokenValid(result.valid);
       } catch (err) {
+        console.error('Token validation failed:', err);
         setIsTokenValid(false);
       } finally {
         setIsValidating(false);

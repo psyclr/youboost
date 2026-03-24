@@ -30,7 +30,7 @@ export function ConfirmDialog({
   variant = 'destructive',
   onConfirm,
   isLoading,
-}: ConfirmDialogProps) {
+}: Readonly<ConfirmDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>

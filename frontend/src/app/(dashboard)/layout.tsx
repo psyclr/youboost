@@ -4,7 +4,7 @@ import { AuthGuard } from '@/lib/auth/auth-guard';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <AuthGuard>
       <div className="min-h-screen">

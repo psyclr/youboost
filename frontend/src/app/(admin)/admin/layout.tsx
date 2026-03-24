@@ -4,7 +4,7 @@ import { AdminGuard } from '@/lib/auth/admin-guard';
 import { AdminSidebar } from '@/components/layout/admin-sidebar';
 import { Header } from '@/components/layout/header';
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <AdminGuard>
       <div className="min-h-screen">

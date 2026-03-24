@@ -38,6 +38,7 @@ type PaginationLinkProps = {
 function PaginationLink({ className, isActive, size = 'icon', ...props }: PaginationLinkProps) {
   return (
     <a
+      aria-label={isActive ? 'Current page' : 'Go to page'}
       aria-current={isActive ? 'page' : undefined}
       data-slot="pagination-link"
       data-active={isActive}

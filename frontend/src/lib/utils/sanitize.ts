@@ -6,13 +6,13 @@ export function sanitizeInput(str: string | undefined | null): string {
   if (!str) return '';
 
   // Remove HTML tags
-  let sanitized = str.replace(/<[^>]*>/g, '');
+  let sanitized = str.replaceAll(/<[^>]*>/g, '');
 
   // Remove script tags more aggressively (case insensitive)
-  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  sanitized = sanitized.replaceAll(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
   // Remove on* event handlers
-  sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+  sanitized = sanitized.replaceAll(/on\w+\s*=\s*["'][^"']*["']/gi, '');
 
   // Trim whitespace
   return sanitized.trim();

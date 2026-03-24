@@ -16,7 +16,6 @@ import {
 import {
   Zap,
   Wallet,
-  ShoppingCart,
   Eye,
   ThumbsUp,
   UserPlus,
@@ -30,7 +29,6 @@ import {
   Webhook,
   Bell,
   CheckCircle,
-  XCircle,
   RefreshCw,
   ChevronRight,
 } from 'lucide-react';
@@ -39,11 +37,11 @@ function FeatureCard({
   icon: Icon,
   title,
   description,
-}: {
+}: Readonly<{
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
-}): React.ReactElement {
+}>): React.ReactElement {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="pt-6">
@@ -66,12 +64,12 @@ function StepCard({
   title,
   description,
   action,
-}: {
+}: Readonly<{
   step: number;
   title: string;
   description: string;
   action?: { label: string; href: string };
-}): React.ReactElement {
+}>): React.ReactElement {
   return (
     <div className="flex gap-4">
       <div className="flex-shrink-0">
@@ -96,7 +94,7 @@ function StepCard({
   );
 }
 
-function ServiceTypeIcon({ type }: { type: string }): React.ReactElement {
+function ServiceTypeIcon({ type }: Readonly<{ type: string }>): React.ReactElement {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
     VIEWS: Eye,
     LIKES: ThumbsUp,

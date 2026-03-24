@@ -10,7 +10,7 @@ interface StatCardProps {
   description?: string;
 }
 
-export function StatCard({ title, value, icon: Icon, description }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, description }: Readonly<StatCardProps>) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">

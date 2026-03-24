@@ -20,14 +20,11 @@ interface ServiceTableProps {
   };
 }
 
-export function ServiceTable({
-  services,
-  isLoading,
-  onEdit,
-  onToggleStatus,
-  pagination,
-}: ServiceTableProps) {
-  const columns: Column<AdminServiceResponse>[] = [
+function buildColumns(
+  onEdit: (service: AdminServiceResponse) => void,
+  onToggleStatus: (service: AdminServiceResponse) => void,
+): Column<AdminServiceResponse>[] {
+  return [
     {
       header: 'Name',
       cell: (row) => (
@@ -107,6 +104,16 @@ export function ServiceTable({
       ),
     },
   ];
+}
+
+export function ServiceTable({
+  services,
+  isLoading,
+  onEdit,
+  onToggleStatus,
+  pagination,
+}: Readonly<ServiceTableProps>) {
+  const columns = buildColumns(onEdit, onToggleStatus);
 
   return (
     <DataTable columns={columns} data={services} isLoading={isLoading} pagination={pagination} />

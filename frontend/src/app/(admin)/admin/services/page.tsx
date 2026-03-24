@@ -31,6 +31,45 @@ import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminServiceResponse, ProviderServiceItem } from '@/lib/api/types';
 
+function BrowseSelectCell({
+  row,
+  onSelect,
+}: Readonly<{
+  row: ProviderServiceItem;
+  onSelect: (svc: ProviderServiceItem) => void;
+}>) {
+  return (
+    <Button variant="outline" size="sm" onClick={() => onSelect(row)}>
+      Select
+    </Button>
+  );
+}
+
+const staticBrowseColumns: Column<ProviderServiceItem>[] = [
+  { header: 'ID', accessorKey: 'serviceId' },
+  { header: 'Name', accessorKey: 'name' },
+  { header: 'Category', accessorKey: 'category' },
+  {
+    header: 'Rate',
+    cell: (row: ProviderServiceItem) => `$${row.rate}`,
+  },
+  { header: 'Min', accessorKey: 'min' },
+  { header: 'Max', accessorKey: 'max' },
+];
+
+function buildBrowseColumns(
+  onSelect: (svc: ProviderServiceItem) => void,
+): Column<ProviderServiceItem>[] {
+  return [
+    ...staticBrowseColumns,
+    {
+      header: '',
+      cell: (row: ProviderServiceItem) => <BrowseSelectCell row={row} onSelect={onSelect} />,
+      className: 'w-24',
+    },
+  ];
+}
+
 export default function AdminServicesPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
@@ -67,9 +106,9 @@ export default function AdminServicesPage() {
         description: formData.description || undefined,
         platform: formData.platform,
         type: formData.type,
-        pricePer1000: parseFloat(formData.pricePer1000),
-        minQuantity: parseInt(formData.minQuantity),
-        maxQuantity: parseInt(formData.maxQuantity),
+        pricePer1000: Number.parseFloat(formData.pricePer1000),
+        minQuantity: Number.parseInt(formData.minQuantity, 10),
+        maxQuantity: Number.parseInt(formData.maxQuantity, 10),
         providerId: formData.providerId,
         externalServiceId: formData.externalServiceId,
       }),
@@ -158,14 +197,14 @@ export default function AdminServicesPage() {
       updates.description = form.description || null;
     if (form.platform !== editService.platform) updates.platform = form.platform;
     if (form.type !== editService.type) updates.type = form.type;
-    if (parseFloat(form.pricePer1000) !== editService.pricePer1000) {
-      updates.pricePer1000 = parseFloat(form.pricePer1000);
+    if (Number.parseFloat(form.pricePer1000) !== editService.pricePer1000) {
+      updates.pricePer1000 = Number.parseFloat(form.pricePer1000);
     }
-    if (parseInt(form.minQuantity) !== editService.minQuantity) {
-      updates.minQuantity = parseInt(form.minQuantity);
+    if (Number.parseInt(form.minQuantity, 10) !== editService.minQuantity) {
+      updates.minQuantity = Number.parseInt(form.minQuantity, 10);
     }
-    if (parseInt(form.maxQuantity) !== editService.maxQuantity) {
-      updates.maxQuantity = parseInt(form.maxQuantity);
+    if (Number.parseInt(form.maxQuantity, 10) !== editService.maxQuantity) {
+      updates.maxQuantity = Number.parseInt(form.maxQuantity, 10);
     }
     if (form.providerId !== editService.providerId) {
       updates.providerId = form.providerId;
@@ -182,26 +221,7 @@ export default function AdminServicesPage() {
     updateMutation.mutate({ id: editService.serviceId, data: updates });
   };
 
-  const browseColumns: Column<ProviderServiceItem>[] = [
-    { header: 'ID', accessorKey: 'serviceId' },
-    { header: 'Name', accessorKey: 'name' },
-    { header: 'Category', accessorKey: 'category' },
-    {
-      header: 'Rate',
-      cell: (row) => `$${row.rate}`,
-    },
-    { header: 'Min', accessorKey: 'min' },
-    { header: 'Max', accessorKey: 'max' },
-    {
-      header: '',
-      cell: (row) => (
-        <Button variant="outline" size="sm" onClick={() => selectProviderService(row)}>
-          Select
-        </Button>
-      ),
-      className: 'w-24',
-    },
-  ];
+  const browseColumns = buildBrowseColumns(selectProviderService);
 
   return (
     <div className="space-y-6">

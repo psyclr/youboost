@@ -47,7 +47,9 @@ export const listTickets = (params?: { page?: number; status?: string }) => {
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.status) searchParams.set('status', params.status);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedTickets>(`/support/tickets${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/support/tickets${query}`;
+  return apiRequest<PaginatedTickets>(url);
 };
 
 export const getTicket = (ticketId: string) =>
@@ -66,7 +68,9 @@ export const adminListTickets = (params?: { page?: number; status?: string }) =>
   if (params?.page) searchParams.set('page', String(params.page));
   if (params?.status) searchParams.set('status', params.status);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedTickets>(`/admin/support/tickets${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/admin/support/tickets${query}`;
+  return apiRequest<PaginatedTickets>(url);
 };
 
 export const adminGetTicket = (ticketId: string) =>

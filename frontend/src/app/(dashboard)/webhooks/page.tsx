@@ -25,6 +25,58 @@ import { formatDate } from '@/lib/utils';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
+function buildColumns(
+  onEdit: (webhook: WebhookResponse) => void,
+  onDelete: (id: string) => void,
+): Column<WebhookResponse>[] {
+  return [
+    {
+      header: 'URL',
+      cell: (row) => (
+        <span className="text-sm font-mono truncate max-w-[200px] block">{row.url}</span>
+      ),
+    },
+    {
+      header: 'Events',
+      cell: (row) => (
+        <div className="flex flex-wrap gap-1">
+          {row.events.map((e) => (
+            <Badge key={e} variant="outline" className="text-xs">
+              {e}
+            </Badge>
+          ))}
+        </div>
+      ),
+    },
+    {
+      header: 'Status',
+      cell: (row) => (
+        <Badge variant={row.isActive ? 'default' : 'secondary'}>
+          {row.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+    {
+      header: 'Last Triggered',
+      cell: (row) => (row.lastTriggeredAt ? formatDate(row.lastTriggeredAt) : 'Never'),
+    },
+    {
+      header: '',
+      cell: (row) => (
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" onClick={() => onEdit(row)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => onDelete(row.id)}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      ),
+      className: 'w-24',
+    },
+  ];
+}
+
 const ALL_EVENTS: WebhookEvent[] = [
   'order.created',
   'order.completed',
@@ -102,52 +154,7 @@ export default function WebhooksPage() {
     );
   };
 
-  const columns: Column<WebhookResponse>[] = [
-    {
-      header: 'URL',
-      cell: (row) => (
-        <span className="text-sm font-mono truncate max-w-[200px] block">{row.url}</span>
-      ),
-    },
-    {
-      header: 'Events',
-      cell: (row) => (
-        <div className="flex flex-wrap gap-1">
-          {row.events.map((e) => (
-            <Badge key={e} variant="outline" className="text-xs">
-              {e}
-            </Badge>
-          ))}
-        </div>
-      ),
-    },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.isActive ? 'default' : 'secondary'}>
-          {row.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
-    },
-    {
-      header: 'Last Triggered',
-      cell: (row) => (row.lastTriggeredAt ? formatDate(row.lastTriggeredAt) : 'Never'),
-    },
-    {
-      header: '',
-      cell: (row) => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => setDeleteId(row.id)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      ),
-      className: 'w-24',
-    },
-  ];
+  const columns = buildColumns(openEdit, setDeleteId);
 
   const webhookForm = (
     <div className="space-y-4">

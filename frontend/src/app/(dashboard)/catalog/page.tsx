@@ -76,10 +76,10 @@ export default function CatalogPage() {
         </TabsList>
       </Tabs>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <Card key={`skeleton-${n}`} className="animate-pulse">
               <CardHeader>
                 <div className="h-5 w-32 bg-muted rounded" />
               </CardHeader>
@@ -90,12 +90,14 @@ export default function CatalogPage() {
             </Card>
           ))}
         </div>
-      ) : filteredServices.length === 0 ? (
+      )}
+      {!isLoading && filteredServices.length === 0 && (
         <EmptyState
           title="No services found"
           description="Try adjusting your filters or search query"
         />
-      ) : (
+      )}
+      {!isLoading && filteredServices.length > 0 && (
         <>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {filteredServices.map((service) => (

@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/form';
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.email('Invalid email address'),
 });
 
 type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;

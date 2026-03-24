@@ -62,7 +62,7 @@ const priorityConfig: Record<string, { className: string }> = {
   URGENT: { className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
 };
 
-function TicketStatusBadge({ status }: { status: string }) {
+function TicketStatusBadge({ status }: Readonly<{ status: string }>) {
   const config = statusConfig[status] ?? { className: '', label: status };
   return (
     <Badge variant="secondary" className={config.className}>
@@ -71,7 +71,7 @@ function TicketStatusBadge({ status }: { status: string }) {
   );
 }
 
-function PriorityBadge({ priority }: { priority: string }) {
+function PriorityBadge({ priority }: Readonly<{ priority: string }>) {
   const config = priorityConfig[priority] ?? { className: '' };
   return (
     <Badge variant="secondary" className={config.className}>
@@ -93,6 +93,25 @@ interface CreateTicketForm {
   description: string;
   priority: string;
 }
+
+const columns: Column<TicketResponse>[] = [
+  {
+    header: 'Subject',
+    cell: (row) => <span className="font-medium">{row.subject}</span>,
+  },
+  {
+    header: 'Status',
+    cell: (row) => <TicketStatusBadge status={row.status} />,
+  },
+  {
+    header: 'Priority',
+    cell: (row) => <PriorityBadge priority={row.priority} />,
+  },
+  {
+    header: 'Created',
+    cell: (row) => formatDate(row.createdAt),
+  },
+];
 
 export default function SupportPage() {
   const [status, setStatus] = useState('ALL');
@@ -139,25 +158,6 @@ export default function SupportPage() {
     defaultValues: { subject: '', description: '', priority: 'LOW' },
   });
 
-  const columns: Column<TicketResponse>[] = [
-    {
-      header: 'Subject',
-      cell: (row) => <span className="font-medium">{row.subject}</span>,
-    },
-    {
-      header: 'Status',
-      cell: (row) => <TicketStatusBadge status={row.status} />,
-    },
-    {
-      header: 'Priority',
-      cell: (row) => <PriorityBadge priority={row.priority} />,
-    },
-    {
-      header: 'Created',
-      cell: (row) => formatDate(row.createdAt),
-    },
-  ];
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -186,32 +186,30 @@ export default function SupportPage() {
         </Select>
       </div>
 
-      {isLoading ? (
+      {isLoading && (
         <div className="space-y-4">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : !data?.tickets || data.tickets.length === 0 ? (
+      )}
+      {!isLoading && (!data?.tickets || data.tickets.length === 0) && (
         <EmptyState
           title="No support tickets"
           description="Create a ticket to get help from our support team"
         />
-      ) : (
+      )}
+      {!isLoading && data?.tickets && data.tickets.length > 0 && (
         <DataTable
           columns={columns}
           data={data.tickets}
           isLoading={isLoading}
           onRowClick={(row) => router.push(`/support/${row.id}`)}
-          pagination={
-            data
-              ? {
-                  page: data.pagination.page,
-                  totalPages: data.pagination.totalPages,
-                  onPageChange: setPage,
-                }
-              : undefined
-          }
+          pagination={{
+            page: data.pagination.page,
+            totalPages: data.pagination.totalPages,
+            onPageChange: setPage,
+          }}
         />
       )}
 

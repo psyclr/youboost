@@ -60,7 +60,8 @@ export const adminListCoupons = (params?: { page?: number; isActive?: boolean })
   if (params?.page) sp.set('page', String(params.page));
   if (params?.isActive !== undefined) sp.set('isActive', String(params.isActive));
   const qs = sp.toString();
-  return apiRequest<PaginatedCoupons>(`/admin/coupons${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  return apiRequest<PaginatedCoupons>(`/admin/coupons${query}`);
 };
 
 export const adminDeleteCoupon = (couponId: string) =>

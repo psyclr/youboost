@@ -30,24 +30,24 @@ import {
 } from '@/components/ui/form';
 
 const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.email('Invalid email address'),
   username: z
     .string()
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be at most 30 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
+    .regex(/^\w+$/, 'Only letters, numbers, and underscores'),
   password: z
     .string()
     .min(8, 'At least 8 characters')
     .regex(/[A-Z]/, 'Must contain an uppercase letter')
     .regex(/[a-z]/, 'Must contain a lowercase letter')
-    .regex(/[0-9]/, 'Must contain a digit'),
+    .regex(/\d/, 'Must contain a digit'),
   referralCode: z.string().optional(),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
 
-function RegisterForm_() {
+function RegisterFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const refCode = searchParams.get('ref') ?? '';
@@ -164,7 +164,7 @@ function RegisterForm_() {
 export default function RegisterPage() {
   return (
     <Suspense>
-      <RegisterForm_ />
+      <RegisterFormContent />
     </Suspense>
   );
 }

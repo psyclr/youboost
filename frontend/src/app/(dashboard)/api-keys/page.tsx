@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApiKeys, generateApiKey, revokeApiKey } from '@/lib/api/api-keys';
 import { ApiError } from '@/lib/api/client';
-import type { ApiKeyCreatedResponse, RateLimitTier } from '@/lib/api/types';
+import type { ApiKeyCreatedResponse, RateLimitTier, ApiKeyResponse } from '@/lib/api/types';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,49 @@ import { Label } from '@/components/ui/label';
 import { formatDate } from '@/lib/utils';
 import { Plus, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ApiKeyResponse } from '@/lib/api/types';
+
+function buildColumns(onRevoke: (id: string) => void): Column<ApiKeyResponse>[] {
+  return [
+    { header: 'Name', accessorKey: 'name' },
+    {
+      header: 'Tier',
+      cell: (row) => <Badge variant="outline">{row.rateLimitTier}</Badge>,
+    },
+    {
+      header: 'Status',
+      cell: (row) => (
+        <Badge variant={row.isActive ? 'default' : 'secondary'}>
+          {row.isActive ? 'Active' : 'Revoked'}
+        </Badge>
+      ),
+    },
+    {
+      header: 'Last Used',
+      cell: (row) => (row.lastUsedAt ? formatDate(row.lastUsedAt) : 'Never'),
+    },
+    {
+      header: 'Created',
+      cell: (row) => formatDate(row.createdAt),
+    },
+    {
+      header: '',
+      cell: (row) =>
+        row.isActive ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRevoke(row.id);
+            }}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null,
+      className: 'w-12',
+    },
+  ];
+}
 
 export default function ApiKeysPage() {
   const queryClient = useQueryClient();
@@ -71,46 +113,7 @@ export default function ApiKeysPage() {
     },
   });
 
-  const columns: Column<ApiKeyResponse>[] = [
-    { header: 'Name', accessorKey: 'name' },
-    {
-      header: 'Tier',
-      cell: (row) => <Badge variant="outline">{row.rateLimitTier}</Badge>,
-    },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.isActive ? 'default' : 'secondary'}>
-          {row.isActive ? 'Active' : 'Revoked'}
-        </Badge>
-      ),
-    },
-    {
-      header: 'Last Used',
-      cell: (row) => (row.lastUsedAt ? formatDate(row.lastUsedAt) : 'Never'),
-    },
-    {
-      header: 'Created',
-      cell: (row) => formatDate(row.createdAt),
-    },
-    {
-      header: '',
-      cell: (row) =>
-        row.isActive ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              setRevokeId(row.id);
-            }}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        ) : null,
-      className: 'w-12',
-    },
-  ];
+  const columns = buildColumns(setRevokeId);
 
   return (
     <div className="space-y-6">

@@ -29,7 +29,9 @@ export const getDeposits = (params?: { page?: number; limit?: number; status?: s
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.status) searchParams.set('status', params.status);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedDeposits>(`/billing/deposits${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/billing/deposits${query}`;
+  return apiRequest<PaginatedDeposits>(url);
 };
 
 export const getTransactions = (params?: { page?: number; limit?: number; type?: string }) => {
@@ -38,7 +40,9 @@ export const getTransactions = (params?: { page?: number; limit?: number; type?:
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.type) searchParams.set('type', params.type);
   const qs = searchParams.toString();
-  return apiRequest<PaginatedTransactions>(`/billing/transactions${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/billing/transactions${query}`;
+  return apiRequest<PaginatedTransactions>(url);
 };
 
 export const getTransaction = (id: string) =>

@@ -18,7 +18,9 @@ export const getWebhooks = (params?: { page?: number; limit?: number; isActive?:
   if (params?.limit) searchParams.set('limit', String(params.limit));
   if (params?.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
   const qs = searchParams.toString();
-  return apiRequest<PaginatedWebhooks>(`/webhooks${qs ? `?${qs}` : ''}`);
+  const query = qs ? `?${qs}` : '';
+  const url = `/webhooks${query}`;
+  return apiRequest<PaginatedWebhooks>(url);
 };
 
 export const getWebhook = (webhookId: string) =>

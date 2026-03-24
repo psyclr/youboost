@@ -44,6 +44,119 @@ const defaultForm: ProviderFormData = {
   priority: '0',
 };
 
+const staticServiceColumns: Column<ProviderServiceItem>[] = [
+  { header: 'ID', accessorKey: 'serviceId' },
+  { header: 'Name', accessorKey: 'name' },
+  { header: 'Category', accessorKey: 'category' },
+  {
+    header: 'Rate',
+    cell: (row: ProviderServiceItem) => `$${row.rate}`,
+  },
+  { header: 'Min', accessorKey: 'min' },
+  { header: 'Max', accessorKey: 'max' },
+  {
+    header: '',
+    cell: () => (
+      <Button variant="outline" size="sm">
+        Create Service
+      </Button>
+    ),
+    className: 'w-32',
+  },
+];
+
+interface ProviderActionCallbacks {
+  onEdit: (provider: ProviderResponse) => void;
+  onCheckBalance: (providerId: string) => void;
+  checkingBalanceId: string | null;
+  onViewServices: (provider: ProviderResponse) => void;
+  onDeactivate: (providerId: string) => void;
+  onActivate: (providerId: string) => void;
+}
+
+function ProviderActionsCell({
+  row,
+  callbacks,
+}: Readonly<{
+  row: ProviderResponse;
+  callbacks: ProviderActionCallbacks;
+}>) {
+  return (
+    <div className="flex gap-1">
+      <Button variant="ghost" size="icon" onClick={() => callbacks.onEdit(row)} title="Edit">
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => callbacks.onCheckBalance(row.providerId)}
+        disabled={callbacks.checkingBalanceId === row.providerId}
+        title="Check Balance"
+      >
+        <Wallet className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => callbacks.onViewServices(row)}
+        title="View Services"
+      >
+        <List className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          if (
+            row.isActive &&
+            !globalThis.confirm(
+              `Deactivate "${row.name}"? Services linked to this provider may stop working.`,
+            )
+          )
+            return;
+          if (row.isActive) {
+            callbacks.onDeactivate(row.providerId);
+          } else {
+            callbacks.onActivate(row.providerId);
+          }
+        }}
+      >
+        {row.isActive ? 'Deactivate' : 'Activate'}
+      </Button>
+    </div>
+  );
+}
+
+const staticProviderColumns: Column<ProviderResponse>[] = [
+  { header: 'Name', accessorKey: 'name' },
+  {
+    header: 'Endpoint',
+    cell: (row: ProviderResponse) => (
+      <span className="text-xs font-mono truncate max-w-[200px] block">{row.apiEndpoint}</span>
+    ),
+  },
+  { header: 'Priority', accessorKey: 'priority' },
+  {
+    header: 'Status',
+    cell: (row: ProviderResponse) => (
+      <Badge variant={row.isActive ? 'default' : 'secondary'}>
+        {row.isActive ? 'Active' : 'Inactive'}
+      </Badge>
+    ),
+  },
+];
+
+function buildProviderColumns(callbacks: ProviderActionCallbacks): Column<ProviderResponse>[] {
+  return [
+    ...staticProviderColumns,
+    {
+      header: '',
+      cell: (row: ProviderResponse) => <ProviderActionsCell row={row} callbacks={callbacks} />,
+      className: 'w-56',
+    },
+  ];
+}
+
 export default function AdminProvidersPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
@@ -70,7 +183,7 @@ export default function AdminProvidersPage() {
         name: formData.name,
         apiEndpoint: formData.apiEndpoint,
         apiKey: formData.apiKey,
-        priority: parseInt(formData.priority) || 0,
+        priority: Number.parseInt(formData.priority, 10) || 0,
       }),
     onSuccess: () => {
       toast.success('Provider created');
@@ -169,96 +282,14 @@ export default function AdminProvidersPage() {
     </div>
   );
 
-  const serviceColumns: Column<ProviderServiceItem>[] = [
-    { header: 'ID', accessorKey: 'serviceId' },
-    { header: 'Name', accessorKey: 'name' },
-    { header: 'Category', accessorKey: 'category' },
-    {
-      header: 'Rate',
-      cell: (row) => `$${row.rate}`,
-    },
-    { header: 'Min', accessorKey: 'min' },
-    { header: 'Max', accessorKey: 'max' },
-    {
-      header: '',
-      cell: () => (
-        <Button variant="outline" size="sm">
-          Create Service
-        </Button>
-      ),
-      className: 'w-32',
-    },
-  ];
-
-  const columns: Column<ProviderResponse>[] = [
-    { header: 'Name', accessorKey: 'name' },
-    {
-      header: 'Endpoint',
-      cell: (row) => (
-        <span className="text-xs font-mono truncate max-w-[200px] block">{row.apiEndpoint}</span>
-      ),
-    },
-    { header: 'Priority', accessorKey: 'priority' },
-    {
-      header: 'Status',
-      cell: (row) => (
-        <Badge variant={row.isActive ? 'default' : 'secondary'}>
-          {row.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
-    },
-    {
-      header: '',
-      cell: (row) => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" onClick={() => openEdit(row)} title="Edit">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleCheckBalance(row.providerId)}
-            disabled={checkingBalanceId === row.providerId}
-            title="Check Balance"
-          >
-            <Wallet className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setServicesProvider(row)}
-            title="View Services"
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (
-                row.isActive &&
-                !window.confirm(
-                  `Deactivate "${row.name}"? Services linked to this provider may stop working.`,
-                )
-              )
-                return;
-              if (row.isActive) {
-                deactivateMutation.mutate(row.providerId);
-              } else {
-                updateMutation.mutate({
-                  id: row.providerId,
-                  data: { isActive: true },
-                });
-              }
-            }}
-          >
-            {row.isActive ? 'Deactivate' : 'Activate'}
-          </Button>
-        </div>
-      ),
-      className: 'w-56',
-    },
-  ];
+  const columns = buildProviderColumns({
+    onEdit: openEdit,
+    onCheckBalance: handleCheckBalance,
+    checkingBalanceId,
+    onViewServices: setServicesProvider,
+    onDeactivate: (id: string) => deactivateMutation.mutate(id),
+    onActivate: (id: string) => updateMutation.mutate({ id, data: { isActive: true } }),
+  });
 
   return (
     <div className="space-y-6">
@@ -338,7 +369,7 @@ export default function AdminProvidersPage() {
                 const updateData: Record<string, unknown> = {
                   name: form.name,
                   apiEndpoint: form.apiEndpoint,
-                  priority: parseInt(form.priority) || 0,
+                  priority: Number.parseInt(form.priority, 10) || 0,
                 };
                 if (form.apiKey) {
                   updateData.apiKey = form.apiKey;
@@ -369,7 +400,7 @@ export default function AdminProvidersPage() {
             <DialogDescription>Services available from this provider's API</DialogDescription>
           </DialogHeader>
           <DataTable
-            columns={serviceColumns}
+            columns={staticServiceColumns}
             data={servicesData?.services ?? []}
             isLoading={servicesLoading}
             emptyMessage="No services available from this provider"

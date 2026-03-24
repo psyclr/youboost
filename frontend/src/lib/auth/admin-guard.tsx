@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export function AdminGuard({ children }: { children: React.ReactNode }) {
+export function AdminGuard({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
@@ -30,7 +30,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user || user.role !== 'ADMIN') return null;
+  if (user?.role !== 'ADMIN') return null;
 
   return <>{children}</>;
 }

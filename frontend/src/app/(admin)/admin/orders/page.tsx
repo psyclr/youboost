@@ -56,6 +56,106 @@ const allStatuses: OrderStatus[] = [
   'REFUNDED',
 ];
 
+interface OrderActionCallbacks {
+  onStatusClick: (order: AdminOrderResponse) => void;
+  onRefundClick: (orderId: string) => void;
+  onPause: (orderId: string) => void;
+  onResume: (orderId: string) => void;
+  pausePending: boolean;
+  resumePending: boolean;
+}
+
+function OrderActionsCell({
+  row,
+  callbacks,
+}: Readonly<{
+  row: AdminOrderResponse;
+  callbacks: OrderActionCallbacks;
+}>) {
+  return (
+    <div className="flex gap-1">
+      <Button variant="outline" size="sm" onClick={() => callbacks.onStatusClick(row)}>
+        Status
+      </Button>
+      <Button variant="outline" size="sm" onClick={() => callbacks.onRefundClick(row.orderId)}>
+        Refund
+      </Button>
+      {row.isDripFeed && row.status === 'PROCESSING' && !row.dripFeedPausedAt && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => callbacks.onPause(row.orderId)}
+          disabled={callbacks.pausePending}
+        >
+          Pause
+        </Button>
+      )}
+      {row.isDripFeed && row.status === 'PROCESSING' && row.dripFeedPausedAt && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => callbacks.onResume(row.orderId)}
+          disabled={callbacks.resumePending}
+        >
+          Resume
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function DripFeedCell({ row }: Readonly<{ row: AdminOrderResponse }>) {
+  if (!row.isDripFeed) return <>{'\u2014'}</>;
+  const progress = `${row.dripFeedRunsCompleted}/${row.dripFeedRuns} runs`;
+  if (row.dripFeedPausedAt) {
+    return <span className="text-yellow-600">{progress} (paused)</span>;
+  }
+  return <>{progress}</>;
+}
+
+const staticColumns: Column<AdminOrderResponse>[] = [
+  {
+    header: 'Order ID',
+    cell: (row: AdminOrderResponse) => (
+      <span className="font-mono text-xs">{row.orderId.slice(0, 8)}...</span>
+    ),
+  },
+  {
+    header: 'User',
+    cell: (row: AdminOrderResponse) => (
+      <span className="font-mono text-xs">{row.userId.slice(0, 8)}...</span>
+    ),
+  },
+  {
+    header: 'Status',
+    cell: (row: AdminOrderResponse) => <StatusBadge status={row.status} />,
+  },
+  { header: 'Qty', accessorKey: 'quantity' },
+  {
+    header: 'Drip-feed',
+    cell: (row: AdminOrderResponse) => <DripFeedCell row={row} />,
+  },
+  {
+    header: 'Price',
+    cell: (row: AdminOrderResponse) => formatCurrency(row.price),
+  },
+  {
+    header: 'Date',
+    cell: (row: AdminOrderResponse) => formatDate(row.createdAt),
+  },
+];
+
+function buildOrderColumns(callbacks: OrderActionCallbacks): Column<AdminOrderResponse>[] {
+  return [
+    ...staticColumns,
+    {
+      header: 'Actions',
+      cell: (row: AdminOrderResponse) => <OrderActionsCell row={row} callbacks={callbacks} />,
+      className: 'w-56',
+    },
+  ];
+}
+
 export default function AdminOrdersPage() {
   const [status, setStatus] = useState('ALL');
   const [dripFeedOnly, setDripFeedOnly] = useState(false);
@@ -123,74 +223,14 @@ export default function AdminOrdersPage() {
     },
   });
 
-  const columns: Column<AdminOrderResponse>[] = [
-    {
-      header: 'Order ID',
-      cell: (row) => <span className="font-mono text-xs">{row.orderId.slice(0, 8)}...</span>,
-    },
-    {
-      header: 'User',
-      cell: (row) => <span className="font-mono text-xs">{row.userId.slice(0, 8)}...</span>,
-    },
-    {
-      header: 'Status',
-      cell: (row) => <StatusBadge status={row.status} />,
-    },
-    { header: 'Qty', accessorKey: 'quantity' },
-    {
-      header: 'Drip-feed',
-      cell: (row) => {
-        if (!row.isDripFeed) return '\u2014';
-        const progress = `${row.dripFeedRunsCompleted}/${row.dripFeedRuns} runs`;
-        if (row.dripFeedPausedAt) {
-          return <span className="text-yellow-600">{progress} (paused)</span>;
-        }
-        return progress;
-      },
-    },
-    {
-      header: 'Price',
-      cell: (row) => formatCurrency(row.price),
-    },
-    {
-      header: 'Date',
-      cell: (row) => formatDate(row.createdAt),
-    },
-    {
-      header: 'Actions',
-      cell: (row) => (
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={() => setSelectedOrder(row)}>
-            Status
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setRefundOrderId(row.orderId)}>
-            Refund
-          </Button>
-          {row.isDripFeed && row.status === 'PROCESSING' && !row.dripFeedPausedAt && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => pauseMutation.mutate(row.orderId)}
-              disabled={pauseMutation.isPending}
-            >
-              Pause
-            </Button>
-          )}
-          {row.isDripFeed && row.status === 'PROCESSING' && row.dripFeedPausedAt && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => resumeMutation.mutate(row.orderId)}
-              disabled={resumeMutation.isPending}
-            >
-              Resume
-            </Button>
-          )}
-        </div>
-      ),
-      className: 'w-56',
-    },
-  ];
+  const columns = buildOrderColumns({
+    onStatusClick: setSelectedOrder,
+    onRefundClick: setRefundOrderId,
+    onPause: (id: string) => pauseMutation.mutate(id),
+    onResume: (id: string) => resumeMutation.mutate(id),
+    pausePending: pauseMutation.isPending,
+    resumePending: resumeMutation.isPending,
+  });
 
   return (
     <div className="space-y-6">

@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -26,7 +27,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const REFRESH_TOKEN_KEY = 'youboost_refresh_token';
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const accessTokenRef = useRef<string | null>(null);
@@ -100,13 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{ user, isLoading, login, logout, getAccessToken, refreshProfile }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const contextValue = useMemo(
+    () => ({ user, isLoading, login, logout, getAccessToken, refreshProfile }),
+    [user, isLoading, login, logout, getAccessToken, refreshProfile],
   );
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
