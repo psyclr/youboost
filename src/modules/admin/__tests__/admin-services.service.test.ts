@@ -31,10 +31,6 @@ jest.mock('../../../shared/utils/logger', () => ({
   }),
 }));
 
-jest.mock('../../billing/utils/decimal', () => ({
-  toNumber: (v: unknown): number => Number(v),
-}));
-
 const mockFindProviderById = jest.fn();
 jest.mock('../../providers/providers.repository', () => ({
   findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),

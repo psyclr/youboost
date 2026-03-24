@@ -2,7 +2,6 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as ordersRepo from '../orders/orders.repository';
 import * as billingInternal from '../billing/billing-internal.service';
-import { toNumber } from '../billing/utils/decimal';
 import type { OrderRecord } from '../orders/orders.types';
 import type { AdminOrdersQuery, AdminOrderResponse, PaginatedAdminOrders } from './admin.types';
 
@@ -32,7 +31,7 @@ function toOrderResponse(record: OrderRecord): AdminOrderResponse {
     serviceId: record.serviceId,
     status: record.status,
     quantity: record.quantity,
-    price: toNumber(record.price),
+    price: Number(record.price),
     link: record.link,
     startCount: record.startCount,
     remains: record.remains,
@@ -97,7 +96,7 @@ export async function forceOrderStatus(
 
   // Settle finances based on status transition
   if (order.status === 'PROCESSING') {
-    await settleFinances({ userId: order.userId, amount: toNumber(order.price), orderId }, status);
+    await settleFinances({ userId: order.userId, amount: Number(order.price), orderId }, status);
   }
 
   const TERMINAL = ['COMPLETED', 'PARTIAL', 'CANCELLED', 'FAILED', 'REFUNDED'];
@@ -123,7 +122,7 @@ export async function refundOrder(orderId: string): Promise<AdminOrderResponse> 
     throw new ValidationError('Order already refunded', 'ALREADY_REFUNDED');
   }
 
-  const amount = toNumber(order.price);
+  const amount = Number(order.price);
 
   // Release hold first if order was still processing
   if (order.status === 'PROCESSING') {

@@ -2,7 +2,6 @@ import Stripe from 'stripe';
 import { ValidationError } from '../../../shared/errors';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { getConfig } from '../../../shared/config';
-import { toNumber } from '../utils/decimal';
 import * as walletRepo from '../wallet.repository';
 import * as ledgerRepo from '../ledger.repository';
 import * as depositRepo from '../deposit.repository';
@@ -111,7 +110,7 @@ export async function handleWebhookEvent(payload: string, signature: string): Pr
   const event = stripe.webhooks.constructEvent(payload, signature, config.stripe.webhookSecret);
 
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
+    const session = event.data.object;
     await handleCheckoutCompleted(session);
   }
 }
@@ -136,15 +135,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     return;
   }
 
-  const amount = toNumber(deposit.amount);
+  const amount = Number(deposit.amount);
   const wallet = await walletRepo.getOrCreateWallet(userId);
-  const balanceBefore = toNumber(wallet.balance);
+  const balanceBefore = Number(wallet.balance);
   const newBalance = balanceBefore + amount;
 
   await walletRepo.updateBalance({
     walletId: wallet.id,
     newBalance,
-    newHold: toNumber(wallet.holdAmount),
+    newHold: Number(wallet.holdAmount),
   });
 
   const entry = await ledgerRepo.createLedgerEntry({

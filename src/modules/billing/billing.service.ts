@@ -1,11 +1,9 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { toNumber } from './utils/decimal';
 import { paymentGateway } from './utils/stub-payment-gateway';
 import * as walletRepo from './wallet.repository';
 import * as ledgerRepo from './ledger.repository';
 import * as depositRepo from './deposit.repository';
-import type { LedgerType, DepositStatus } from '../../generated/prisma';
 import type {
   DepositInput,
   TransactionsQuery,
@@ -27,8 +25,8 @@ const log = createServiceLogger('billing');
 
 export async function getBalance(userId: string): Promise<BalanceResponse> {
   const wallet = await walletRepo.getOrCreateWallet(userId);
-  const balance = toNumber(wallet.balance);
-  const frozen = toNumber(wallet.holdAmount);
+  const balance = Number(wallet.balance);
+  const frozen = Number(wallet.holdAmount);
 
   return {
     userId,
@@ -123,14 +121,14 @@ export async function confirmDeposit(
   }
 
   const wallet = await walletRepo.getOrCreateWallet(userId);
-  const balanceBefore = toNumber(wallet.balance);
-  const amount = toNumber(deposit.amount);
+  const balanceBefore = Number(wallet.balance);
+  const amount = Number(deposit.amount);
   const newBalance = balanceBefore + amount;
 
   await walletRepo.updateBalance({
     walletId: wallet.id,
     newBalance,
-    newHold: toNumber(wallet.holdAmount),
+    newHold: Number(wallet.holdAmount),
   });
 
   const entry = await ledgerRepo.createLedgerEntry({
@@ -156,8 +154,8 @@ export async function confirmDeposit(
 
   return {
     id: updated.id,
-    amount: toNumber(updated.amount),
-    cryptoAmount: toNumber(updated.cryptoAmount),
+    amount: Number(updated.amount),
+    cryptoAmount: Number(updated.cryptoAmount),
     cryptoCurrency: updated.cryptoCurrency,
     paymentAddress: updated.paymentAddress,
     status: updated.status,
@@ -171,8 +169,8 @@ export async function confirmDeposit(
 function mapDepositToResponse(d: DepositRecord): DepositDetailResponse {
   return {
     id: d.id,
-    amount: toNumber(d.amount),
-    cryptoAmount: toNumber(d.cryptoAmount),
+    amount: Number(d.amount),
+    cryptoAmount: Number(d.cryptoAmount),
     cryptoCurrency: d.cryptoCurrency,
     paymentAddress: d.paymentAddress,
     status: d.status,
@@ -188,7 +186,7 @@ export async function listDeposits(
   query: DepositsQuery,
 ): Promise<PaginatedDeposits> {
   const { deposits, total } = await depositRepo.findDepositsByUserId(userId, {
-    status: query.status as DepositStatus | undefined,
+    status: query.status,
     page: query.page,
     limit: query.limit,
   });
@@ -220,7 +218,7 @@ export async function getTransactions(
   query: TransactionsQuery,
 ): Promise<PaginatedTransactions> {
   const { entries, total } = await ledgerRepo.findLedgerEntries(userId, {
-    type: query.type as LedgerType | undefined,
+    type: query.type,
     page: query.page,
     limit: query.limit,
   });
@@ -229,7 +227,7 @@ export async function getTransactions(
     transactions: entries.map((e) => ({
       id: e.id,
       type: e.type,
-      amount: toNumber(e.amount),
+      amount: Number(e.amount),
       description: e.description,
       createdAt: e.createdAt,
     })),
@@ -254,11 +252,11 @@ export async function getTransactionById(
   return {
     id: entry.id,
     type: entry.type,
-    amount: toNumber(entry.amount),
+    amount: Number(entry.amount),
     description: entry.description,
     createdAt: entry.createdAt,
-    balanceBefore: toNumber(entry.balanceBefore),
-    balanceAfter: toNumber(entry.balanceAfter),
+    balanceBefore: Number(entry.balanceBefore),
+    balanceAfter: Number(entry.balanceAfter),
     metadata: entry.metadata,
     referenceType: entry.referenceType,
     referenceId: entry.referenceId,

@@ -2,8 +2,8 @@ import { z } from 'zod/v4';
 
 export const createOrderSchema = z
   .object({
-    serviceId: z.string().uuid(),
-    link: z.string().url(),
+    serviceId: z.uuid(),
+    link: z.url(),
     quantity: z.number().int().min(1),
     comments: z.string().max(500).optional(),
     isDripFeed: z.boolean().default(false),
@@ -22,23 +22,23 @@ export const ordersQuerySchema = z.object({
   status: z
     .enum(['PENDING', 'PROCESSING', 'COMPLETED', 'PARTIAL', 'CANCELLED', 'FAILED', 'REFUNDED'])
     .optional(),
-  serviceId: z.string().uuid().optional(),
+  serviceId: z.uuid().optional(),
 });
 
 export const orderIdSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: z.uuid(),
 });
 
 export const refillOrderSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: z.uuid(),
 });
 
 export const bulkOrderSchema = z.object({
-  serviceId: z.string().uuid(),
+  serviceId: z.uuid(),
   links: z
     .array(
       z.object({
-        link: z.string().url(),
+        link: z.url(),
         quantity: z.number().int().min(1).optional(),
       }),
     )

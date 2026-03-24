@@ -9,11 +9,9 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 
 export function getQueue(): Queue {
-  if (!queue) {
-    queue = new Queue(QUEUE_NAME, {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-    });
-  }
+  queue ??= new Queue(QUEUE_NAME, {
+    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
+  });
   return queue;
 }
 

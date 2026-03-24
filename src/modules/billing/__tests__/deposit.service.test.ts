@@ -43,15 +43,6 @@ jest.mock('../../../shared/utils/logger', () => ({
   }),
 }));
 
-jest.mock('../utils/decimal', () => ({
-  toNumber: (v: unknown): number => {
-    if (v !== null && v !== undefined && typeof v === 'object' && 'toNumber' in v) {
-      return (v as { toNumber: () => number }).toNumber();
-    }
-    return Number(v);
-  },
-}));
-
 const mockWallet = {
   id: 'wallet-1',
   userId: 'user-1',

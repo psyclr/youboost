@@ -8,7 +8,7 @@ export const adminUsersQuerySchema = z.object({
 });
 
 export const adminUserIdSchema = z.object({
-  userId: z.string().uuid(),
+  userId: z.uuid(),
 });
 
 export const adminUpdateUserSchema = z.object({
@@ -27,12 +27,12 @@ export const adminOrdersQuerySchema = z.object({
   status: z
     .enum(['PENDING', 'PROCESSING', 'COMPLETED', 'PARTIAL', 'CANCELLED', 'FAILED', 'REFUNDED'])
     .optional(),
-  userId: z.string().uuid().optional(),
+  userId: z.uuid().optional(),
   isDripFeed: z.coerce.boolean().optional(),
 });
 
 export const adminOrderIdSchema = z.object({
-  orderId: z.string().uuid(),
+  orderId: z.uuid(),
 });
 
 export const adminForceStatusSchema = z.object({
@@ -61,7 +61,7 @@ export const adminServiceCreateSchema = z
     pricePer1000: z.number().min(0),
     minQuantity: z.number().int().min(1),
     maxQuantity: z.number().int().min(1),
-    providerId: z.string().uuid(),
+    providerId: z.uuid(),
     externalServiceId: z.string().min(1),
   })
   .refine((data) => data.maxQuantity >= data.minQuantity, {
@@ -79,7 +79,7 @@ export const adminServiceUpdateSchema = z
     minQuantity: z.number().int().min(1).optional(),
     maxQuantity: z.number().int().min(1).optional(),
     isActive: z.boolean().optional(),
-    providerId: z.string().uuid().optional(),
+    providerId: z.uuid().optional(),
     externalServiceId: z.string().min(1).optional(),
   })
   .refine(
@@ -96,7 +96,7 @@ export const adminServiceUpdateSchema = z
   );
 
 export const adminServiceIdSchema = z.object({
-  serviceId: z.string().uuid(),
+  serviceId: z.uuid(),
 });
 
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;

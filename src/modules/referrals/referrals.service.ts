@@ -3,13 +3,12 @@ import { createServiceLogger } from '../../shared/utils/logger';
 import * as referralRepo from './referrals.repository';
 import * as walletRepo from '../billing/wallet.repository';
 import * as ledgerRepo from '../billing/ledger.repository';
-import { toNumber } from '../billing/utils/decimal';
 import { getPrisma } from '../../shared/database';
 import type { ReferralStats } from './referrals.types';
 
 const log = createServiceLogger('referrals');
 
-const REFERRAL_BONUS_AMOUNT = 1.0; // $1.00 default
+const REFERRAL_BONUS_AMOUNT = 1; // $1.00 default
 
 export async function getReferralCode(userId: string): Promise<string> {
   const existing = await referralRepo.getUserReferralCode(userId);
@@ -57,8 +56,8 @@ export async function creditPendingBonuses(referredUserId: string): Promise<void
 
   await prisma.$transaction(async (tx) => {
     const wallet = await walletRepo.getOrCreateWallet(bonus.referrerId);
-    const balance = toNumber(wallet.balance);
-    const hold = toNumber(wallet.holdAmount);
+    const balance = Number(wallet.balance);
+    const hold = Number(wallet.holdAmount);
     const newBalance = balance + amount;
 
     await walletRepo.updateBalance({

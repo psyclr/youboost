@@ -113,15 +113,16 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
           'PROVIDER_ERROR',
         );
       }
+      const toStr = (v: unknown): string => (typeof v === 'string' ? v : '');
       return (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
-        serviceId: String(s.service ?? ''),
-        name: String(s.name ?? ''),
-        category: String(s.category ?? ''),
+        serviceId: toStr(s.service),
+        name: toStr(s.name),
+        category: toStr(s.category),
         rate: Number(s.rate ?? 0),
         min: Number(s.min ?? 0),
         max: Number(s.max ?? 0),
-        type: String(s.type ?? ''),
-        description: String(s.description ?? ''),
+        type: toStr(s.type),
+        description: toStr(s.description),
       }));
     },
 
@@ -144,9 +145,11 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
           'PROVIDER_ERROR',
         );
       }
+      const rec = data as Record<string, unknown>;
+      const cur = rec.currency;
       return {
-        balance: Number((data as Record<string, unknown>).balance ?? 0),
-        currency: String((data as Record<string, unknown>).currency ?? 'USD'),
+        balance: Number(rec.balance ?? 0),
+        currency: typeof cur === 'string' ? cur : 'USD',
       };
     },
   };

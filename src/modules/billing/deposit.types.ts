@@ -10,7 +10,7 @@ export const confirmDepositSchema = z.object({
 });
 
 export const depositIdSchema = z.object({
-  depositId: z.string().uuid(),
+  depositId: z.uuid(),
 });
 
 export const depositsQuerySchema = z.object({

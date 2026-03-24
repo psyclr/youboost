@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 
 export const createProviderSchema = z.object({
   name: z.string().min(1).max(255),
-  apiEndpoint: z.string().url(),
+  apiEndpoint: z.url(),
   apiKey: z.string().min(1),
   priority: z.number().int().default(0),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -10,7 +10,7 @@ export const createProviderSchema = z.object({
 
 export const updateProviderSchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  apiEndpoint: z.string().url().optional(),
+  apiEndpoint: z.url().optional(),
   apiKey: z.string().min(1).optional(),
   priority: z.number().int().optional(),
   isActive: z.boolean().optional(),
@@ -18,7 +18,7 @@ export const updateProviderSchema = z.object({
 });
 
 export const providerIdSchema = z.object({
-  providerId: z.string().uuid(),
+  providerId: z.uuid(),
 });
 
 export const providersQuerySchema = z.object({

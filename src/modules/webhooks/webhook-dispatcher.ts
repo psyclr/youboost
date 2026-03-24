@@ -15,11 +15,9 @@ export function signPayload(payload: string, secret: string): string {
 }
 
 function getWebhookQueue(): Queue {
-  if (!queue) {
-    queue = new Queue(QUEUE_NAME, {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-    });
-  }
+  queue ??= new Queue(QUEUE_NAME, {
+    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
+  });
   return queue;
 }
 

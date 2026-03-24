@@ -5,13 +5,13 @@ const passwordSchema = z
   .min(8, 'Password must be at least 8 characters')
   .regex(/[A-Z]/, 'Password must contain an uppercase letter')
   .regex(/[a-z]/, 'Password must contain a lowercase letter')
-  .regex(/[0-9]/, 'Password must contain a digit');
+  .regex(/\d/, 'Password must contain a digit');
 
 const usernameSchema = z
   .string()
   .min(3, 'Username must be at least 3 characters')
   .max(30, 'Username must be at most 30 characters')
-  .regex(/^[a-zA-Z0-9_]+$/, 'Username must be alphanumeric or underscore');
+  .regex(/^\w+$/, 'Username must be alphanumeric or underscore');
 
 export const registerSchema = z.object({
   email: z.email(),

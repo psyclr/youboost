@@ -66,7 +66,7 @@ export async function createTicket(
     userId,
     subject: input.subject,
     description: input.description,
-    priority: input.priority as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
+    priority: input.priority,
   });
 
   log.info({ userId, ticketId: ticket.id }, 'Ticket created');

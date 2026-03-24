@@ -14,11 +14,9 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 
 function getDripFeedQueue(): Queue {
-  if (!queue) {
-    queue = new Queue(QUEUE_NAME, {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-    });
-  }
+  queue ??= new Queue(QUEUE_NAME, {
+    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
+  });
   return queue;
 }
 
@@ -32,7 +30,7 @@ async function processDripFeedRun(order: OrderRecord): Promise<void> {
   }
 
   const service = await serviceRepo.findServiceById(order.serviceId);
-  if (!service || !service.providerId || !service.externalServiceId) {
+  if (!service?.providerId || !service?.externalServiceId) {
     log.error({ orderId: order.id }, 'Service not available for drip-feed run');
     return;
   }

@@ -17,7 +17,7 @@ export const transactionsQuerySchema = z.object({
 });
 
 export const transactionIdSchema = z.object({
-  transactionId: z.string().uuid(),
+  transactionId: z.uuid(),
 });
 
 export type DepositInput = z.infer<typeof depositSchema>;

@@ -7,7 +7,7 @@ export const notificationsQuerySchema = z.object({
 });
 
 export const notificationIdSchema = z.object({
-  notificationId: z.string().uuid(),
+  notificationId: z.uuid(),
 });
 
 export type NotificationsQuery = z.infer<typeof notificationsQuerySchema>;

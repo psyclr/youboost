@@ -10,7 +10,7 @@ export const createCouponSchema = z.object({
   discountValue: z.number().positive(),
   maxUses: z.number().int().positive().optional(),
   minOrderAmount: z.number().positive().optional(),
-  expiresAt: z.string().datetime().optional(),
+  expiresAt: z.iso.datetime().optional(),
 });
 
 export const validateCouponSchema = z.object({
@@ -25,7 +25,7 @@ export const couponQuerySchema = z.object({
 });
 
 export const couponIdSchema = z.object({
-  couponId: z.string().uuid(),
+  couponId: z.uuid(),
 });
 
 export type CreateCouponInput = z.infer<typeof createCouponSchema>;

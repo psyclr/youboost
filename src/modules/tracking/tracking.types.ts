@@ -10,7 +10,7 @@ export const createTrackingLinkSchema = z.object({
 });
 
 export const trackingLinkIdSchema = z.object({
-  linkId: z.string().uuid(),
+  linkId: z.uuid(),
 });
 
 export type CreateTrackingLinkInput = z.infer<typeof createTrackingLinkSchema>;

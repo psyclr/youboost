@@ -38,7 +38,7 @@ async function consumeEmailToken(
   const tokenHash = hashToken(token);
 
   const stored = await prisma.emailToken.findUnique({ where: { tokenHash } });
-  if (!stored || stored.type !== expectedType || stored.expiresAt < new Date() || stored.usedAt) {
+  if (stored?.type !== expectedType || stored.expiresAt < new Date() || stored.usedAt) {
     throw new ValidationError('Invalid or expired token', 'INVALID_TOKEN');
   }
 

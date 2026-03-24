@@ -1,9 +1,8 @@
 import { chargeFunds, releaseFunds } from '../../billing';
-import { toNumber } from '../../billing/utils/decimal';
 import type { OrderRecord } from '../orders.types';
 
 export async function settleFunds(order: OrderRecord, newStatus: string): Promise<void> {
-  const price = toNumber(order.price);
+  const price = Number(order.price);
 
   if (newStatus === 'COMPLETED') {
     await chargeFunds(order.userId, price, order.id);

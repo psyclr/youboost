@@ -17,7 +17,7 @@ export const ticketQuerySchema = z.object({
 });
 
 export const ticketIdSchema = z.object({
-  ticketId: z.string().uuid(),
+  ticketId: z.uuid(),
 });
 
 export const updateTicketStatusSchema = z.object({

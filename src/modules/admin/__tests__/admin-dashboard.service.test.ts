@@ -27,10 +27,6 @@ jest.mock('../../../shared/utils/logger', () => ({
   }),
 }));
 
-jest.mock('../../billing/utils/decimal', () => ({
-  toNumber: (v: unknown): number => Number(v),
-}));
-
 const mockOrderRecord = {
   id: 'order-1',
   userId: 'user-1',

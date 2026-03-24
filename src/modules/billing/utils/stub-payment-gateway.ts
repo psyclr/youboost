@@ -7,7 +7,7 @@ const STUB_ADDRESSES: Record<string, string> = {
 };
 
 const STUB_RATES: Record<string, number> = {
-  USDT: 1.0,
+  USDT: 1,
   BTC: 0.000015,
   ETH: 0.00035,
 };

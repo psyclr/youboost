@@ -26,7 +26,7 @@ const envSchema = z.object({
     .transform((val) => {
       const parsed = Number.parseInt(val, 10);
       if (Number.isNaN(parsed)) {
-        throw new Error(`Invalid PORT: ${val}`);
+        throw new TypeError(`Invalid PORT: ${val}`);
       }
       return parsed;
     }),
@@ -191,9 +191,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 let _config: AppConfig | null = null;
 
 export function getConfig(): AppConfig {
-  if (!_config) {
-    _config = loadConfig();
-  }
+  _config ??= loadConfig();
   return _config;
 }
 

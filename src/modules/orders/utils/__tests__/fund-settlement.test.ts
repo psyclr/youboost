@@ -9,10 +9,6 @@ jest.mock('../../../billing', () => ({
   releaseFunds: (...args: unknown[]): unknown => mockReleaseFunds(...args),
 }));
 
-jest.mock('../../../billing/utils/decimal', () => ({
-  toNumber: (val: unknown): number => Number(val),
-}));
-
 function makeOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
   return {
     id: 'order-1',

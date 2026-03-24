@@ -22,7 +22,7 @@ export const updateWebhookSchema = z.object({
 });
 
 export const webhookIdSchema = z.object({
-  webhookId: z.string().uuid(),
+  webhookId: z.uuid(),
 });
 
 export const webhooksQuerySchema = z.object({

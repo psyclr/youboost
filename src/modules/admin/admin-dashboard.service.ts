@@ -1,6 +1,5 @@
 import { getPrisma } from '../../shared/database';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { toNumber } from '../billing/utils/decimal';
 import type { DashboardStats } from './admin.types';
 
 const log = createServiceLogger('admin-dashboard');
@@ -23,7 +22,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       }),
     ]);
 
-  const totalRevenue = revenueResult._sum.price ? toNumber(revenueResult._sum.price) : 0;
+  const totalRevenue = revenueResult._sum.price ? Number(revenueResult._sum.price) : 0;
 
   const recentOrders = recentOrderRecords.map((r) => ({
     orderId: r.id,
@@ -31,7 +30,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     serviceId: r.serviceId,
     status: r.status,
     quantity: r.quantity,
-    price: toNumber(r.price),
+    price: Number(r.price),
     link: r.link,
     startCount: r.startCount,
     remains: r.remains,

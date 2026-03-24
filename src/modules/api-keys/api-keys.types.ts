@@ -8,7 +8,7 @@ export const createApiKeySchema = z.object({
 });
 
 export const apiKeyIdSchema = z.object({
-  keyId: z.string().uuid(),
+  keyId: z.uuid(),
 });
 
 export const apiKeysQuerySchema = z.object({

@@ -40,7 +40,7 @@ class StubProviderClient implements ProviderClient {
   }
 
   async checkBalance(): Promise<ProviderBalanceInfo> {
-    return { balance: 100.0, currency: 'USD' };
+    return { balance: 100, currency: 'USD' };
   }
 }
 

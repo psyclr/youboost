@@ -2,7 +2,6 @@ import { NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as userRepo from '../auth/user.repository';
 import * as walletRepo from '../billing/wallet.repository';
-import { toNumber } from '../billing/utils/decimal';
 import type {
   AdminUsersQuery,
   AdminUpdateUserInput,
@@ -68,8 +67,8 @@ export async function getUser(userId: string): Promise<AdminUserDetailResponse> 
 
   let walletInfo: AdminUserDetailResponse['wallet'] = null;
   if (wallet) {
-    const balance = toNumber(wallet.balance);
-    const frozen = toNumber(wallet.holdAmount);
+    const balance = Number(wallet.balance);
+    const frozen = Number(wallet.holdAmount);
     walletInfo = { balance, frozen, available: balance - frozen };
   }
 

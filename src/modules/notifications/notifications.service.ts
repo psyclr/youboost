@@ -2,7 +2,6 @@ import { NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as notificationRepo from './notification.repository';
 import { enqueueNotification } from './notification-dispatcher';
-import type { NotificationStatus } from '../../generated/prisma';
 import type {
   SendNotificationInput,
   NotificationsQuery,
@@ -36,7 +35,7 @@ export async function listNotifications(
   query: NotificationsQuery,
 ): Promise<PaginatedNotifications> {
   const { notifications, total } = await notificationRepo.findNotificationsByUserId(userId, {
-    status: query.status as NotificationStatus | undefined,
+    status: query.status,
     page: query.page,
     limit: query.limit,
   });

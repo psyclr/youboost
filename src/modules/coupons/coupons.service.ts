@@ -30,7 +30,7 @@ function toCouponResponse(coupon: {
     discountValue: Number(coupon.discountValue),
     maxUses: coupon.maxUses,
     usedCount: coupon.usedCount,
-    minOrderAmount: coupon.minOrderAmount != null ? Number(coupon.minOrderAmount) : null,
+    minOrderAmount: coupon.minOrderAmount == null ? null : Number(coupon.minOrderAmount),
     expiresAt: coupon.expiresAt,
     isActive: coupon.isActive,
     createdAt: coupon.createdAt,
@@ -95,7 +95,7 @@ function checkCouponAvailability(
     return 'Coupon usage limit reached';
   }
 
-  const minOrder = coupon.minOrderAmount != null ? Number(coupon.minOrderAmount) : null;
+  const minOrder = coupon.minOrderAmount == null ? null : Number(coupon.minOrderAmount);
   if (minOrder != null && orderAmount != null && orderAmount < minOrder) {
     return `Minimum order amount is $${minOrder.toFixed(2)}`;
   }

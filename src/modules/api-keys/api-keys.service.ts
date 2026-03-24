@@ -51,7 +51,7 @@ export async function generateApiKey(
 
 export async function listApiKeys(userId: string, query: ApiKeysQuery): Promise<PaginatedApiKeys> {
   const { apiKeys, total } = await repo.findApiKeysByUserId(userId, {
-    ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+    ...(query.isActive === undefined ? {} : { isActive: query.isActive }),
     page: query.page,
     limit: query.limit,
   });

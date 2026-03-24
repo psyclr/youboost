@@ -53,6 +53,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
+  // NOSONAR — top-level await requires ESM migration
   log.error({ err: error }, 'Fatal startup error');
   process.exit(1);
 });

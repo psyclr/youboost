@@ -15,11 +15,9 @@ interface NotificationJobData {
 }
 
 function getNotificationQueue(): Queue {
-  if (!queue) {
-    queue = new Queue(QUEUE_NAME, {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-    });
-  }
+  queue ??= new Queue(QUEUE_NAME, {
+    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
+  });
   return queue;
 }
 

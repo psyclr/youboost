@@ -47,7 +47,7 @@ export async function listWebhooks(
   query: WebhooksQuery,
 ): Promise<PaginatedWebhooks> {
   const { webhooks, total } = await repo.findWebhooksByUserId(userId, {
-    ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+    ...(query.isActive === undefined ? {} : { isActive: query.isActive }),
     page: query.page,
     limit: query.limit,
   });
@@ -82,9 +82,9 @@ export async function updateWebhook(
   }
 
   const record = await repo.updateWebhook(webhookId, userId, {
-    ...(input.url !== undefined ? { url: input.url } : {}),
-    ...(input.events !== undefined ? { events: input.events } : {}),
-    ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+    ...(input.url === undefined ? {} : { url: input.url }),
+    ...(input.events === undefined ? {} : { events: input.events }),
+    ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
   });
 
   log.info({ userId, webhookId }, 'Webhook updated');

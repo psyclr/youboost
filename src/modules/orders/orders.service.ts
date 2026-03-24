@@ -1,6 +1,5 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { toNumber } from '../billing/utils/decimal';
 import { holdFunds, releaseFunds } from '../billing';
 import { selectProviderById } from '../providers';
 import { applyCoupon } from '../coupons';
@@ -65,7 +64,7 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
   const validatedService = service as ServiceRecord;
   validateQuantity(input.quantity, validatedService.minQuantity, validatedService.maxQuantity);
 
-  const basePrice = calculatePrice(input.quantity, toNumber(validatedService.pricePer1000));
+  const basePrice = calculatePrice(input.quantity, Number(validatedService.pricePer1000));
   const { finalPrice, couponId, discount } = await applyOrderCoupon(input.couponCode, basePrice);
 
   const isDripFeed = input.isDripFeed ?? false;
@@ -150,7 +149,7 @@ export async function listOrders(userId: string, query: OrdersQuery): Promise<Pa
       status: o.status,
       quantity: o.quantity,
       completed: o.quantity - (o.remains ?? o.quantity),
-      price: toNumber(o.price),
+      price: Number(o.price),
       createdAt: o.createdAt,
       isDripFeed: o.isDripFeed,
     })),
@@ -173,7 +172,7 @@ export async function cancelOrder(userId: string, orderId: string): Promise<Canc
     throw new ValidationError('Order cannot be cancelled', 'ORDER_NOT_CANCELLABLE');
   }
 
-  const refundAmount = toNumber(order.price);
+  const refundAmount = Number(order.price);
   await releaseFunds(userId, refundAmount, orderId);
 
   const updated = await ordersRepo.updateOrderStatus(orderId, {
@@ -212,7 +211,7 @@ export async function refillOrder(userId: string, orderId: string): Promise<Orde
   }
 
   const service = await serviceRepo.findServiceById(order.serviceId);
-  if (!service || !service.providerId || !service.externalServiceId) {
+  if (!service?.providerId || !service?.externalServiceId) {
     throw new ValidationError('Service is no longer available for refill', 'SERVICE_UNAVAILABLE');
   }
 

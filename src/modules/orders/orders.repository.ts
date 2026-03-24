@@ -189,9 +189,4 @@ export async function findAllOrders(filters: {
   return { orders, total };
 }
 
-export async function findOrderByIdAdmin(orderId: string): Promise<OrderRecord | null> {
-  const prisma = getPrisma();
-  return prisma.order.findUnique({
-    where: { id: orderId },
-  });
-}
+export { findOrderByIdAnyUser as findOrderByIdAdmin };

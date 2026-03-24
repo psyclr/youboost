@@ -6,7 +6,7 @@ import type { EmailProvider } from './email-provider';
 const log = createServiceLogger('nodemailer-email');
 
 export class NodemailerEmailProvider implements EmailProvider {
-  private transporter: Transporter;
+  private readonly transporter: Transporter;
 
   constructor(config: {
     host: string;
@@ -24,7 +24,7 @@ export class NodemailerEmailProvider implements EmailProvider {
     this.from = config.from;
   }
 
-  private from: string;
+  private readonly from: string;
 
   async send(params: { to: string; subject: string; body: string }): Promise<void> {
     const info = await this.transporter.sendMail({

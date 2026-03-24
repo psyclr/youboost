@@ -2,7 +2,6 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as serviceRepo from '../orders/service.repository';
 import { findProviderById } from '../providers/providers.repository';
-import { toNumber } from '../billing/utils/decimal';
 import type { ServiceRecord } from '../orders/orders.types';
 import type {
   AdminServicesQuery,
@@ -24,7 +23,7 @@ function toServiceResponse(record: ServiceWithProvider): AdminServiceResponse {
     description: record.description,
     platform: record.platform,
     type: record.type,
-    pricePer1000: toNumber(record.pricePer1000),
+    pricePer1000: Number(record.pricePer1000),
     minQuantity: record.minQuantity,
     maxQuantity: record.maxQuantity,
     isActive: record.isActive,

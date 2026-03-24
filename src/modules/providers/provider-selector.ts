@@ -50,7 +50,7 @@ export async function selectProviderById(providerId: string): Promise<SelectedPr
   }
 
   const provider = await findProviderById(providerId);
-  if (!provider || !provider.isActive) {
+  if (!provider?.isActive) {
     throw new ValidationError('Linked provider is not available', 'PROVIDER_UNAVAILABLE');
   }
 

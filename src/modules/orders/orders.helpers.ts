@@ -1,6 +1,5 @@
 import { ValidationError, NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import { toNumber } from '../billing/utils/decimal';
 import { releaseFunds } from '../billing';
 import { validateCoupon } from '../coupons';
 import { enqueueWebhookDelivery } from '../webhooks';
@@ -160,7 +159,7 @@ export function mapOrderToDetailed(order: OrderRecord): {
     status: order.status,
     quantity: order.quantity,
     completed: order.quantity - (order.remains ?? order.quantity),
-    price: toNumber(order.price),
+    price: Number(order.price),
     createdAt: order.createdAt,
     link: order.link,
     startCount: order.startCount,

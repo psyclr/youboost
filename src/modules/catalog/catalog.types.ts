@@ -8,7 +8,7 @@ export const catalogQuerySchema = z.object({
 });
 
 export const catalogServiceIdSchema = z.object({
-  serviceId: z.string().uuid(),
+  serviceId: z.uuid(),
 });
 
 export type CatalogQuery = z.infer<typeof catalogQuerySchema>;

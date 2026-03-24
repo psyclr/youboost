@@ -49,10 +49,6 @@ jest.mock('../../billing/ledger.repository', () => ({
   createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
 }));
 
-jest.mock('../../billing/utils/decimal', () => ({
-  toNumber: (v: unknown): number => Number(v),
-}));
-
 const mockTransaction = jest.fn();
 
 jest.mock('../../../shared/database', () => ({
