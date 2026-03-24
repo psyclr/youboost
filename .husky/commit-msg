@@ -1,6 +1,3 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 # Проверка Conventional Commits
 npx commitlint --edit $1
 
