@@ -7,6 +7,7 @@ export async function truncateAllTables(): Promise<void> {
   const prisma = getPrisma();
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE
+      tracking_links,
       notifications,
       deposits,
       webhooks,
