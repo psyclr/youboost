@@ -18,3 +18,7 @@ frontend/.next/
 frontend/.env.local
 frontend/test-screenshots/
 tests/screenshots/
+
+# Tool artifacts
+.scannerwork/
+test-results/
