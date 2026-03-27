@@ -65,6 +65,7 @@ function RegisterFormContent() {
       await registerApi({
         ...data,
         username: sanitizeInput(data.username),
+        referralCode: data.referralCode || undefined,
       });
       router.push('/login');
     } catch (err) {

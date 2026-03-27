@@ -17,7 +17,6 @@ import {
   defaultServiceForm,
   type ServiceFormData,
 } from '@/components/admin/service-form';
-import { DataTable, type Column } from '@/components/shared/data-table';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,52 +30,12 @@ import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminServiceResponse, ProviderServiceItem } from '@/lib/api/types';
 
-function BrowseSelectCell({
-  row,
-  onSelect,
-}: Readonly<{
-  row: ProviderServiceItem;
-  onSelect: (svc: ProviderServiceItem) => void;
-}>) {
-  return (
-    <Button variant="outline" size="sm" onClick={() => onSelect(row)}>
-      Select
-    </Button>
-  );
-}
-
-const staticBrowseColumns: Column<ProviderServiceItem>[] = [
-  { header: 'ID', accessorKey: 'serviceId' },
-  { header: 'Name', accessorKey: 'name' },
-  { header: 'Category', accessorKey: 'category' },
-  {
-    header: 'Rate',
-    cell: (row: ProviderServiceItem) => `$${row.rate}`,
-  },
-  { header: 'Min', accessorKey: 'min' },
-  { header: 'Max', accessorKey: 'max' },
-];
-
-function buildBrowseColumns(
-  onSelect: (svc: ProviderServiceItem) => void,
-): Column<ProviderServiceItem>[] {
-  return [
-    ...staticBrowseColumns,
-    {
-      header: '',
-      cell: (row: ProviderServiceItem) => <BrowseSelectCell row={row} onSelect={onSelect} />,
-      className: 'w-24',
-    },
-  ];
-}
-
 export default function AdminServicesPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editService, setEditService] = useState<AdminServiceResponse | null>(null);
   const [form, setForm] = useState<ServiceFormData>(defaultServiceForm);
-  const [browseOpen, setBrowseOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'services', { page }],
@@ -88,14 +47,10 @@ export default function AdminServicesPage() {
     queryFn: () => getProviders({ limit: 100 }),
   });
 
-  const {
-    data: providerServicesData,
-    isLoading: providerServicesLoading,
-    error: providerServicesError,
-  } = useQuery({
+  const { data: providerServicesData, isLoading: providerServicesLoading } = useQuery({
     queryKey: ['provider-services', form.providerId],
     queryFn: () => getProviderServices(form.providerId),
-    enabled: !!form.providerId && browseOpen,
+    enabled: !!form.providerId,
     retry: false,
   });
 
@@ -177,7 +132,6 @@ export default function AdminServicesPage() {
       maxQuantity: String(svc.max),
       pricePer1000: String(svc.rate),
     }));
-    setBrowseOpen(false);
   };
 
   const handleCreateSubmit = () => {
@@ -221,7 +175,14 @@ export default function AdminServicesPage() {
     updateMutation.mutate({ id: editService.serviceId, data: updates });
   };
 
-  const browseColumns = buildBrowseColumns(selectProviderService);
+  const formProps = {
+    form,
+    onUpdateField: updateField,
+    onSelectProviderService: selectProviderService,
+    providers: providersData?.providers,
+    providerServices: providerServicesData?.services,
+    providerServicesLoading,
+  };
 
   return (
     <div className="space-y-6">
@@ -243,10 +204,7 @@ export default function AdminServicesPage() {
               <DialogDescription>Add a new service offering</DialogDescription>
             </DialogHeader>
             <ServiceForm
-              form={form}
-              onUpdateField={updateField}
-              onBrowseProviderServices={() => setBrowseOpen(true)}
-              providers={providersData?.providers}
+              {...formProps}
               isSubmitting={createMutation.isPending}
               onSubmit={handleCreateSubmit}
               onCancel={() => {
@@ -283,10 +241,7 @@ export default function AdminServicesPage() {
             <DialogDescription>Update service details</DialogDescription>
           </DialogHeader>
           <ServiceForm
-            form={form}
-            onUpdateField={updateField}
-            onBrowseProviderServices={() => setBrowseOpen(true)}
-            providers={providersData?.providers}
+            {...formProps}
             isSubmitting={updateMutation.isPending}
             onSubmit={handleEditSubmit}
             onCancel={() => {
@@ -295,39 +250,6 @@ export default function AdminServicesPage() {
             }}
             submitLabel="Update"
           />
-        </DialogContent>
-      </Dialog>
-
-      {/* Browse Provider Services Dialog */}
-      <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle>Browse Provider Services</DialogTitle>
-            <DialogDescription>
-              Select a service from{' '}
-              {providersData?.providers.find((p) => p.providerId === form.providerId)?.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="overflow-auto">
-            {providerServicesError ? (
-              <div className="text-sm text-destructive bg-destructive/10 p-4 rounded-md space-y-2">
-                <p className="font-medium">Failed to fetch services from provider</p>
-                {providerServicesError instanceof ApiError && (
-                  <p className="text-muted-foreground">{providerServicesError.message}</p>
-                )}
-                <p className="text-muted-foreground">
-                  Make sure the provider has a valid API key configured. You can close this dialog
-                  and enter the External Service ID manually.
-                </p>
-              </div>
-            ) : (
-              <DataTable
-                columns={browseColumns}
-                data={providerServicesData?.services ?? []}
-                isLoading={providerServicesLoading}
-              />
-            )}
-          </div>
         </DialogContent>
       </Dialog>
     </div>

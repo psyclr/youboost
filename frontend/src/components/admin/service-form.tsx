@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo, useState } from 'react';
+import { ChevronsUpDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +13,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Platform, ServiceType } from '@/lib/api/types';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import type { Platform, ServiceType, ProviderServiceItem } from '@/lib/api/types';
 
 const platformOptions: Platform[] = ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK'];
 const typeOptions: ServiceType[] = ['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES'];
@@ -43,19 +55,167 @@ export const defaultServiceForm: ServiceFormData = {
 interface ServiceFormProps {
   form: ServiceFormData;
   onUpdateField: (key: keyof ServiceFormData, value: string) => void;
-  onBrowseProviderServices: () => void;
+  onSelectProviderService: (svc: ProviderServiceItem) => void;
   providers?: Array<{ providerId: string; name: string }>;
+  providerServices?: ProviderServiceItem[];
+  providerServicesLoading?: boolean;
   isSubmitting?: boolean;
   onSubmit: () => void;
   onCancel: () => void;
   submitLabel?: string;
 }
 
+const MAX_VISIBLE_ITEMS = 50;
+
+function filterAndGroup(
+  services: ProviderServiceItem[],
+  query: string,
+): [string, ProviderServiceItem[]][] {
+  const q = query.toLowerCase().trim();
+  const filtered = services.filter(
+    (svc) => svc.name.toLowerCase().includes(q) || svc.category.toLowerCase().includes(q),
+  );
+  const map = new Map<string, ProviderServiceItem[]>();
+  let count = 0;
+  for (const svc of filtered) {
+    if (count >= MAX_VISIBLE_ITEMS) break;
+    const cat = svc.category || 'Other';
+    const list = map.get(cat);
+    if (list) list.push(svc);
+    else map.set(cat, [svc]);
+    count++;
+  }
+  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+}
+
+function ProviderServiceCombobox({
+  providerId,
+  externalServiceId,
+  providerServices,
+  providerServicesLoading,
+  onSelectProviderService,
+}: {
+  providerId: string;
+  externalServiceId: string;
+  providerServices?: ProviderServiceItem[];
+  providerServicesLoading: boolean;
+  onSelectProviderService: (svc: ProviderServiceItem) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const grouped = useMemo(() => {
+    if (!providerServices?.length || search.length < 2) return [];
+    return filterAndGroup(providerServices, search);
+  }, [providerServices, search]);
+
+  const selectedService = providerServices?.find((s) => s.serviceId === externalServiceId);
+
+  if (!providerId) {
+    return (
+      <div className="space-y-2">
+        <Label>Provider Service</Label>
+        <p className="text-sm text-muted-foreground">Select a provider first</p>
+      </div>
+    );
+  }
+
+  if (providerServicesLoading) {
+    return (
+      <div className="space-y-2">
+        <Label>Provider Service</Label>
+        <p className="text-sm text-muted-foreground">Loading services...</p>
+      </div>
+    );
+  }
+
+  if (!providerServices?.length) {
+    return (
+      <div className="space-y-2">
+        <Label>Provider Service</Label>
+        <p className="text-sm text-destructive">
+          Could not load services from provider. Check API key and endpoint.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label>Provider Service ({providerServices.length} services)</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between font-normal"
+          >
+            <span className="truncate">
+              {selectedService ? selectedService.name : 'Search services...'}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput
+              placeholder="Search by name or category..."
+              value={search}
+              onValueChange={setSearch}
+            />
+            <CommandList className="max-h-[400px]">
+              {search.length < 2 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Type at least 2 characters to search...
+                </p>
+              ) : grouped.length === 0 ? (
+                <CommandEmpty>No services found.</CommandEmpty>
+              ) : (
+                grouped.map(([category, services]) => (
+                  <CommandGroup key={category} heading={category}>
+                    {services.map((svc) => (
+                      <CommandItem
+                        key={svc.serviceId}
+                        value={svc.serviceId}
+                        onSelect={() => {
+                          onSelectProviderService(svc);
+                          setOpen(false);
+                          setSearch('');
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            'mr-2 h-4 w-4',
+                            externalServiceId === svc.serviceId ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm">{svc.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ${svc.rate}/1k | Min: {svc.min} | Max: {svc.max}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export function ServiceForm({
   form,
   onUpdateField,
-  onBrowseProviderServices,
+  onSelectProviderService,
   providers = [],
+  providerServices,
+  providerServicesLoading = false,
   isSubmitting = false,
   onSubmit,
   onCancel,
@@ -63,6 +223,30 @@ export function ServiceForm({
 }: Readonly<ServiceFormProps>) {
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Provider</Label>
+        <Select value={form.providerId} onValueChange={(v) => onUpdateField('providerId', v)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {providers.map((p) => (
+              <SelectItem key={p.providerId} value={p.providerId}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <ProviderServiceCombobox
+        providerId={form.providerId}
+        externalServiceId={form.externalServiceId}
+        providerServices={providerServices}
+        providerServicesLoading={providerServicesLoading}
+        onSelectProviderService={onSelectProviderService}
+      />
+
       <div className="space-y-2">
         <Label>Name</Label>
         <Input value={form.name} onChange={(e) => onUpdateField('name', e.target.value)} />
@@ -108,45 +292,6 @@ export function ServiceForm({
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label>Provider</Label>
-        <Select value={form.providerId} onValueChange={(v) => onUpdateField('providerId', v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select provider" />
-          </SelectTrigger>
-          <SelectContent>
-            {providers.map((p) => (
-              <SelectItem key={p.providerId} value={p.providerId}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <Label>External Service ID</Label>
-        <div className="flex gap-2">
-          <Input
-            value={form.externalServiceId}
-            onChange={(e) => onUpdateField('externalServiceId', e.target.value)}
-            placeholder="e.g. 1, 2, 3..."
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onBrowseProviderServices}
-            disabled={!form.providerId}
-          >
-            Browse
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          The service ID from the provider&apos;s panel. Use Browse to fetch available services, or
-          enter manually.
-        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
