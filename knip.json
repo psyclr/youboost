@@ -1,0 +1,26 @@
+{
+  "workspaces": {
+    ".": {
+      "entry": ["src/shared/health/index.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@prisma/client", "pino-pretty"],
+      "ignoreBinaries": ["docker-compose"]
+    },
+    "frontend": {
+      "entry": ["src/app/**/page.tsx", "src/app/**/layout.tsx"],
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["@testing-library/*", "tw-animate-css", "shadcn", "tailwindcss"]
+    }
+  },
+  "ignore": ["frontend/src/components/ui/**"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "src/modules/**/*.types.ts": ["exports", "types"],
+    "src/modules/notifications/utils/email-templates.ts": ["exports"],
+    "src/modules/notifications/utils/email-provider-factory.ts": ["exports"],
+    "frontend/src/lib/api/**": ["exports", "types"]
+  },
+  "rules": {
+    "unlisted": "off"
+  }
+}

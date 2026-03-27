@@ -1,15 +1,18 @@
-echo "🔍 Running pre-commit checks..."
+echo "Running pre-commit checks..."
 
-# Линтинг staged файлов
-echo "📝 Linting..."
+echo "Linting..."
 npm run lint-staged
 
-# Проверка типов TypeScript
-echo "🔧 Type checking..."
+echo "Type checking..."
 npm run typecheck
 
-# Обновление документации
-echo "📚 Checking documentation..."
+echo "Checking circular dependencies..."
+npx madge --circular --extensions ts src/
+
+echo "Checking for unused code..."
+npx knip --no-progress
+
+echo "Checking documentation..."
 ./scripts/update-claude-docs.sh pre-commit
 
-echo "✅ All pre-commit checks passed!"
+echo "All pre-commit checks passed!"
