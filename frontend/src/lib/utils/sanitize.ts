@@ -17,18 +17,3 @@ export function sanitizeInput(str: string | undefined | null): string {
   // Trim whitespace
   return sanitized.trim();
 }
-
-/**
- * Sanitize multiple inputs at once
- */
-export function sanitizeInputs<T extends Record<string, any>>(data: T): T {
-  const sanitized = { ...data };
-
-  for (const key in sanitized) {
-    if (typeof sanitized[key] === 'string') {
-      sanitized[key] = sanitizeInput(sanitized[key]) as T[typeof key];
-    }
-  }
-
-  return sanitized;
-}

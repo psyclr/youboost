@@ -72,12 +72,6 @@ export async function revokeApiKey(userId: string, keyId: string): Promise<void>
   log.info({ userId, keyId }, 'API key revoked');
 }
 
-export async function findByHash(
-  keyHash: string,
-): Promise<(ApiKeyRecord & { user?: { role: string; email: string } }) | null> {
-  return repo.findApiKeyByHash(keyHash);
-}
-
 export async function getApiKeyByHash(keyHash: string): Promise<ApiKeyRecord> {
   const record = await repo.findApiKeyByHash(keyHash);
   if (!record) {

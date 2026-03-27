@@ -28,13 +28,6 @@ export async function findOrderById(orderId: string, userId: string): Promise<Or
   });
 }
 
-export async function findOrderByIdAnyUser(orderId: string): Promise<OrderRecord | null> {
-  const prisma = getPrisma();
-  return prisma.order.findUnique({
-    where: { id: orderId },
-  });
-}
-
 interface OrderFilters {
   status?: string | undefined;
   serviceId?: string | undefined;
@@ -189,4 +182,9 @@ export async function findAllOrders(filters: {
   return { orders, total };
 }
 
-export { findOrderByIdAnyUser as findOrderByIdAdmin };
+export async function findOrderByIdAdmin(orderId: string): Promise<OrderRecord | null> {
+  const prisma = getPrisma();
+  return prisma.order.findUnique({
+    where: { id: orderId },
+  });
+}

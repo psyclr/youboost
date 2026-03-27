@@ -46,5 +46,3 @@ export function createServiceLogger(serviceName: string): Logger {
 export function createRequestLogger(requestId: string): Logger {
   return logger.child({ requestId });
 }
-
-export default logger;

@@ -42,18 +42,6 @@ export async function findAllServices(filters?: { isActive?: boolean }): Promise
   });
 }
 
-export async function findAllServicesPaginated(
-  page: number,
-  limit: number,
-): Promise<{ services: ServiceRecord[]; total: number }> {
-  const prisma = getPrisma();
-  const [services, total] = await Promise.all([
-    prisma.service.findMany({ skip: (page - 1) * limit, take: limit, orderBy: { name: 'asc' } }),
-    prisma.service.count(),
-  ]);
-  return { services, total };
-}
-
 export async function findAllServicesPaginatedWithProvider(
   page: number,
   limit: number,
