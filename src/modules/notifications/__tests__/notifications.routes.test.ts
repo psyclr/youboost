@@ -64,7 +64,7 @@ describe('Notification Routes', () => {
     jest.clearAllMocks();
   });
 
-  describe('GET /notifications/notifications', () => {
+  describe('GET /notifications', () => {
     it('should return 200 with paginated notifications', async () => {
       const headers = withAuth();
       mockListNotifications.mockResolvedValue({
@@ -84,7 +84,7 @@ describe('Notification Routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/notifications',
+        url: '/notifications',
         headers,
       });
 
@@ -103,7 +103,7 @@ describe('Notification Routes', () => {
 
       await app.inject({
         method: 'GET',
-        url: '/notifications/notifications?page=2&limit=10&status=SENT',
+        url: '/notifications?page=2&limit=10&status=SENT',
         headers,
       });
 
@@ -118,7 +118,7 @@ describe('Notification Routes', () => {
       const headers = withAuth();
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/notifications?page=0',
+        url: '/notifications?page=0',
         headers,
       });
       expect(res.statusCode).toBe(422);
@@ -128,7 +128,7 @@ describe('Notification Routes', () => {
       const headers = withAuth();
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/notifications?status=INVALID',
+        url: '/notifications?status=INVALID',
         headers,
       });
       expect(res.statusCode).toBe(422);
@@ -137,13 +137,13 @@ describe('Notification Routes', () => {
     it('should return 401 without token', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/notifications',
+        url: '/notifications',
       });
       expect(res.statusCode).toBe(401);
     });
   });
 
-  describe('GET /notifications/notifications/:notificationId', () => {
+  describe('GET /notifications/:notificationId', () => {
     const notifId = '550e8400-e29b-41d4-a716-446655440000';
 
     it('should return 200 with notification detail', async () => {
@@ -167,7 +167,7 @@ describe('Notification Routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: `/notifications/notifications/${notifId}`,
+        url: `/notifications/${notifId}`,
         headers,
       });
 
@@ -179,7 +179,7 @@ describe('Notification Routes', () => {
       const headers = withAuth();
       const res = await app.inject({
         method: 'GET',
-        url: '/notifications/notifications/not-a-uuid',
+        url: '/notifications/not-a-uuid',
         headers,
       });
       expect(res.statusCode).toBe(422);
@@ -188,7 +188,7 @@ describe('Notification Routes', () => {
     it('should return 401 without token', async () => {
       const res = await app.inject({
         method: 'GET',
-        url: `/notifications/notifications/${notifId}`,
+        url: `/notifications/${notifId}`,
       });
       expect(res.statusCode).toBe(401);
     });
@@ -201,7 +201,7 @@ describe('Notification Routes', () => {
 
       const res = await app.inject({
         method: 'GET',
-        url: `/notifications/notifications/${notifId}`,
+        url: `/notifications/${notifId}`,
         headers,
       });
 

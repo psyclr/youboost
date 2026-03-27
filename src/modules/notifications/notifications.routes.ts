@@ -43,20 +43,17 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
 
-  app.get('/notifications', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const user = getAuthUser(request);
     const query = validateQuery(notificationsQuerySchema, request.query);
     const result = await notificationsService.listNotifications(user.userId, query);
     return reply.status(StatusCodes.OK).send(result);
   });
 
-  app.get(
-    '/notifications/:notificationId',
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const user = getAuthUser(request);
-      const params = validateParams(notificationIdSchema, request.params);
-      const result = await notificationsService.getNotification(params.notificationId, user.userId);
-      return reply.status(StatusCodes.OK).send(result);
-    },
-  );
+  app.get('/:notificationId', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = getAuthUser(request);
+    const params = validateParams(notificationIdSchema, request.params);
+    const result = await notificationsService.getNotification(params.notificationId, user.userId);
+    return reply.status(StatusCodes.OK).send(result);
+  });
 }

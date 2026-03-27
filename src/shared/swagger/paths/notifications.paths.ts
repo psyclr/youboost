@@ -3,7 +3,7 @@ import type { OpenAPIV3 } from 'openapi-types';
 const auth: OpenAPIV3.SecurityRequirementObject[] = [{ bearerAuth: [] }];
 
 export const notificationsPaths: OpenAPIV3.PathsObject = {
-  '/notifications/notifications': {
+  '/notifications': {
     get: {
       tags: ['Notifications'],
       summary: 'List user notifications',
@@ -42,7 +42,7 @@ export const notificationsPaths: OpenAPIV3.PathsObject = {
       },
     },
   },
-  '/notifications/notifications/{notificationId}': {
+  '/notifications/{notificationId}': {
     get: {
       tags: ['Notifications'],
       summary: 'Get notification detail',

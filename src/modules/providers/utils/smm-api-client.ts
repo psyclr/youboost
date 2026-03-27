@@ -113,7 +113,7 @@ export function createSmmApiClient(opts: SmmApiClientOptions): ProviderClient {
           'PROVIDER_ERROR',
         );
       }
-      const toStr = (v: unknown): string => (typeof v === 'string' ? v : '');
+      const toStr = (v: unknown): string => (v == null ? '' : String(v));
       return (Array.isArray(data) ? data : []).map((s: Record<string, unknown>) => ({
         serviceId: toStr(s.service),
         name: toStr(s.name),

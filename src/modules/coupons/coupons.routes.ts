@@ -66,7 +66,7 @@ export async function couponRoutes(app: FastifyInstance): Promise<void> {
 // Admin routes
 export async function adminCouponRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requireAdmin);
+  app.addHook('preHandler', async (req) => requireAdmin(req));
 
   app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const body = validateBody(createCouponSchema, request.body);

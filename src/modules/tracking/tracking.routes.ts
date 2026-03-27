@@ -34,7 +34,7 @@ function validateParams<T>(
 
 export async function adminTrackingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', requireAdmin);
+  app.addHook('preHandler', async (req) => requireAdmin(req));
 
   app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
     const body = validateBody(createTrackingLinkSchema, request.body);
