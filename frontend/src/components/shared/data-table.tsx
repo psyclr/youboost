@@ -125,6 +125,17 @@ export function DataTable<T>({
                 <TableRow
                   key={resolveRowId(row, i)}
                   onClick={() => onRowClick?.(row)}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onRowClick(row);
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={onRowClick ? 0 : undefined}
                   className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : undefined}
                 >
                   {columns.map((col, j) => (
@@ -145,6 +156,7 @@ export function DataTable<T>({
             size="sm"
             onClick={() => pagination.onPageChange(pagination.page - 1)}
             disabled={pagination.page <= 1}
+            aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -156,6 +168,7 @@ export function DataTable<T>({
             size="sm"
             onClick={() => pagination.onPageChange(pagination.page + 1)}
             disabled={pagination.page >= pagination.totalPages}
+            aria-label="Next page"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

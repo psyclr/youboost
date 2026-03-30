@@ -188,12 +188,17 @@ export default function TicketDetailPage({
                 className="flex gap-2"
               >
                 <Textarea
-                  placeholder="Type your message..."
+                  placeholder="Type your message…"
                   rows={2}
                   className="flex-1"
                   {...register('body', { required: true, minLength: 1 })}
                 />
-                <Button type="submit" size="icon" disabled={sendMutation.isPending}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={sendMutation.isPending}
+                  aria-label="Send message"
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </form>

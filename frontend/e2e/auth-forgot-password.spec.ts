@@ -42,7 +42,7 @@ test.describe.serial('Forgot Password Page', () => {
     await page.getByPlaceholder('you@example.com').fill('admin@youboost.dev');
     await page.getByRole('button', { name: 'Send Reset Link' }).click();
 
-    await expect(page.getByRole('button', { name: 'Sending...' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sending…' })).toBeVisible();
     await expect(page.locator('[data-slot="card-title"]')).toHaveText('Check Your Email', {
       timeout: 10_000,
     });

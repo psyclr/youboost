@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PlatformBadge } from '@/components/shared/platform-badge';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle, XCircle, Eye } from 'lucide-react';
 import Link from 'next/link';
@@ -55,6 +56,7 @@ export default function BulkOrderPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [result, setResult] = useState<BulkOrderResult | null>(null);
   const [selectedService, setSelectedService] = useState<CatalogService | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
   const bulkOrders = useBulkOrders();
 
   const { data: catalogData } = useCatalog({ limit: 100 });
@@ -89,15 +91,19 @@ export default function BulkOrderPage() {
     setResult(null);
   };
 
-  const onSubmit = async (data: BulkForm) => {
+  const onSubmit = () => {
     const validLinks = parsedLinks.filter((l) => l.valid);
     if (validLinks.length === 0) {
       toast.error('No valid links to submit');
       return;
     }
+    setShowConfirm(true);
+  };
 
+  const handleConfirmedSubmit = async () => {
+    const data = form.getValues();
+    const validLinks = parsedLinks.filter((l) => l.valid);
     try {
-      // Sanitize comments before sending
       const sanitizedComments = sanitizeInput(data.comments);
 
       const res = await bulkOrders.mutateAsync({
@@ -114,6 +120,8 @@ export default function BulkOrderPage() {
       } else {
         toast.error('Failed to create bulk orders');
       }
+    } finally {
+      setShowConfirm(false);
     }
   };
 
@@ -128,7 +136,7 @@ export default function BulkOrderPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
+        <Button variant="ghost" size="icon" asChild aria-label="Back to orders">
           <Link href="/orders">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -189,7 +197,7 @@ export default function BulkOrderPage() {
                   <FormItem>
                     <FormLabel>Default Quantity (per link)</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} />
+                      <Input type="number" inputMode="numeric" {...field} />
                     </FormControl>
                     {selectedService && (
                       <FormDescription>
@@ -230,7 +238,7 @@ export default function BulkOrderPage() {
                   <FormItem>
                     <FormLabel>Comments (optional)</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Any special instructions..." rows={2} {...field} />
+                      <Textarea placeholder="Any special instructions…" rows={2} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -244,7 +252,7 @@ export default function BulkOrderPage() {
                 </Button>
                 {showPreview && validCount > 0 && !result && (
                   <Button type="submit" disabled={bulkOrders.isPending}>
-                    {bulkOrders.isPending ? 'Creating Orders...' : `Create ${validCount} Orders`}
+                    {bulkOrders.isPending ? 'Creating Orders…' : `Create ${validCount} Orders`}
                   </Button>
                 )}
               </div>
@@ -323,7 +331,7 @@ export default function BulkOrderPage() {
                       href={`/orders/${item.orderId}`}
                       className="text-primary hover:underline text-xs font-mono shrink-0"
                     >
-                      {item.orderId.slice(0, 8)}...
+                      {item.orderId.slice(0, 8)}…
                     </Link>
                   )}
                   {item.error && (
@@ -335,6 +343,17 @@ export default function BulkOrderPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        title="Confirm Bulk Order"
+        description={`You're about to create ${validCount} orders for an estimated total of ${formatCurrency(estimatedTotal)}.`}
+        confirmLabel="Create Orders"
+        variant="default"
+        onConfirm={handleConfirmedSubmit}
+        isLoading={bulkOrders.isPending}
+      />
     </div>
   );
 }

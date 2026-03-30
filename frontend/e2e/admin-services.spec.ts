@@ -38,7 +38,7 @@ test.describe.serial('Admin Services Page', () => {
   test('should load provider services after selecting provider', async () => {
     await page.getByRole('combobox').filter({ hasText: 'Select provider' }).click();
     await page.getByRole('option').first().click();
-    await expect(page.getByText('Loading services...')).toBeHidden({ timeout: 15_000 });
+    await expect(page.getByText('Loading services…')).toBeHidden({ timeout: 15_000 });
     await expect(page.getByText(/Provider Service \(\d+ services\)/)).toBeVisible();
   });
 
@@ -46,11 +46,11 @@ test.describe.serial('Admin Services Page', () => {
     const trigger = serviceCombobox();
     await expect(trigger).toBeVisible();
     await trigger.click();
-    await expect(page.getByText('Type at least 2 characters to search...')).toBeVisible();
+    await expect(page.getByText('Type at least 2 characters to search…')).toBeVisible();
   });
 
   test('should show grouped results after typing search query', async () => {
-    const searchInput = page.getByPlaceholder('Search by name or category...');
+    const searchInput = page.getByPlaceholder('Search by name or category…');
     await searchInput.fill('telegram');
     await page.waitForTimeout(300);
 
@@ -65,14 +65,14 @@ test.describe.serial('Admin Services Page', () => {
   });
 
   test('should show "No services found" for nonsense search', async () => {
-    const searchInput = page.getByPlaceholder('Search by name or category...');
+    const searchInput = page.getByPlaceholder('Search by name or category…');
     await searchInput.fill('zzzzxxxxxqqqq');
     await page.waitForTimeout(300);
     await expect(page.getByText('No services found.')).toBeVisible();
   });
 
   test('should select a service and fill form fields', async () => {
-    const searchInput = page.getByPlaceholder('Search by name or category...');
+    const searchInput = page.getByPlaceholder('Search by name or category…');
     await searchInput.fill('telegram');
     await page.waitForTimeout(300);
 
@@ -81,7 +81,7 @@ test.describe.serial('Admin Services Page', () => {
     // Form fields should be auto-filled
     // Verify the combobox trigger now shows a service name (not placeholder)
     const trigger = serviceCombobox();
-    await expect(trigger).not.toHaveText('Search services...');
+    await expect(trigger).not.toHaveText('Search services…');
 
     // Verify price was filled (number input after "Price per 1000" label)
     const priceInput = page.locator('input[type="number"]').first();

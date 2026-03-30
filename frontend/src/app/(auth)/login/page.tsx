@@ -86,7 +86,13 @@ export default function LoginPage() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="you@example.com" type="email" {...field} />
+                    <Input
+                      placeholder="you@example.com"
+                      type="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -99,7 +105,12 @@ export default function LoginPage() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your password" type="password" {...field} />
+                    <Input
+                      placeholder="Enter your password"
+                      type="password"
+                      autoComplete="current-password"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -111,7 +122,7 @@ export default function LoginPage() {
               </Link>
             </div>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Signing in...' : 'Sign In'}
+              {form.formState.isSubmitting ? 'Signing in…' : 'Sign In'}
             </Button>
           </form>
         </Form>

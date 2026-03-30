@@ -41,7 +41,7 @@ test.describe.serial('Dashboard Page', () => {
 
   test('should display balance widget with Add Funds button', async () => {
     await expect(page.getByText('Balance')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Add Funds' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Add Funds', exact: true })).toBeVisible();
   });
 
   test('should display stat cards', async () => {
@@ -59,7 +59,7 @@ test.describe.serial('Dashboard Page', () => {
   });
 
   test('should navigate to deposit page via Add Funds', async () => {
-    await page.getByRole('link', { name: 'Add Funds' }).click();
+    await page.getByRole('link', { name: 'Add Funds', exact: true }).click();
     await page.waitForURL('/billing/deposit');
     await expect(page).toHaveURL('/billing/deposit');
     await page.goto('/dashboard');

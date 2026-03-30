@@ -124,7 +124,7 @@ function ProviderServiceCombobox({
     return (
       <div className="space-y-2">
         <Label>Provider Service</Label>
-        <p className="text-sm text-muted-foreground">Loading services...</p>
+        <p className="text-sm text-muted-foreground">Loading services…</p>
       </div>
     );
   }
@@ -152,7 +152,7 @@ function ProviderServiceCombobox({
             className="w-full justify-between font-normal"
           >
             <span className="truncate">
-              {selectedService ? selectedService.name : 'Search services...'}
+              {selectedService ? selectedService.name : 'Search services…'}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -160,14 +160,14 @@ function ProviderServiceCombobox({
         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Search by name or category..."
+              placeholder="Search by name or category…"
               value={search}
               onValueChange={setSearch}
             />
             <CommandList className="max-h-[400px]">
               {search.length < 2 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  Type at least 2 characters to search...
+                  Type at least 2 characters to search…
                 </p>
               ) : grouped.length === 0 ? (
                 <CommandEmpty>No services found.</CommandEmpty>
@@ -329,7 +329,7 @@ export function ServiceForm({
           Cancel
         </Button>
         <Button onClick={onSubmit} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving...' : submitLabel}
+          {isSubmitting ? 'Saving…' : submitLabel}
         </Button>
       </div>
     </div>

@@ -55,13 +55,13 @@ export default function BillingPage() {
         <div className="flex flex-col gap-2">
           <Button asChild size="lg">
             <Link href="/billing/deposit">
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
               Deposit Funds
             </Link>
           </Button>
           <Button asChild variant="outline" size="lg">
             <Link href="/billing/transactions">
-              <List className="h-4 w-4 mr-2" />
+              <List className="h-4 w-4 mr-2" aria-hidden="true" />
               View All Transactions
             </Link>
           </Button>
@@ -78,8 +78,8 @@ export default function BillingPage() {
         />
       </div>
 
-      <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 flex items-center justify-center h-24">
-        <span className="text-sm text-muted-foreground">Advertisement</span>
+      <div className="rounded-lg bg-muted/50 flex items-center justify-center h-24">
+        <span className="text-xs text-muted-foreground/60">Sponsored</span>
       </div>
     </div>
   );

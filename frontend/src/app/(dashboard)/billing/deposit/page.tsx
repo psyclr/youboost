@@ -124,7 +124,7 @@ export default function DepositPage() {
     return (
       <div className="max-w-lg mx-auto space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => setDeposit(null)}>
+          <Button variant="ghost" size="icon" onClick={() => setDeposit(null)} aria-label="Close">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-2xl font-bold">Complete Payment</h1>
@@ -159,6 +159,7 @@ export default function DepositPage() {
                   variant="outline"
                   size="icon"
                   onClick={() => copyToClipboard(deposit.paymentAddress)}
+                  aria-label="Copy address"
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
@@ -187,7 +188,7 @@ export default function DepositPage() {
                   )}
                 />
                 <Button type="submit" className="w-full" disabled={confirmMutation.isPending}>
-                  {confirmMutation.isPending ? 'Confirming...' : 'Confirm Payment'}
+                  {confirmMutation.isPending ? 'Confirming…' : 'Confirm Payment'}
                 </Button>
               </form>
             </Form>
@@ -263,7 +264,7 @@ export default function DepositPage() {
                   </div>
                   <Button type="submit" className="w-full" disabled={stripeMutation.isPending}>
                     {stripeMutation.isPending
-                      ? 'Redirecting...'
+                      ? 'Redirecting…'
                       : `Pay $${stripeForm.watch('amount')?.toFixed(2) ?? '0.00'}`}
                   </Button>
                 </form>
@@ -321,7 +322,7 @@ export default function DepositPage() {
                     )}
                   />
                   <Button type="submit" className="w-full" disabled={cryptoMutation.isPending}>
-                    {cryptoMutation.isPending ? 'Creating...' : 'Continue to Payment'}
+                    {cryptoMutation.isPending ? 'Creating…' : 'Continue to Payment'}
                   </Button>
                 </form>
               </Form>

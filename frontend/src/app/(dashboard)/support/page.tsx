@@ -246,7 +246,7 @@ export default function SupportPage() {
               <Textarea
                 id="description"
                 rows={5}
-                placeholder="Describe your issue in detail..."
+                placeholder="Describe your issue in detail…"
                 {...register('description', {
                   required: 'Description is required',
                   minLength: { value: 10, message: 'At least 10 characters' },
@@ -263,7 +263,7 @@ export default function SupportPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Creating...' : 'Create Ticket'}
+                {createMutation.isPending ? 'Creating…' : 'Create Ticket'}
               </Button>
             </DialogFooter>
           </form>

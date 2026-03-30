@@ -12,9 +12,9 @@ import {
   ShoppingCart,
   Package,
   Wallet,
-  Key,
-  Webhook,
   Settings,
+  BookOpen,
+  MessageSquare,
   Zap,
 } from 'lucide-react';
 
@@ -23,8 +23,8 @@ const navItems = [
   { href: '/catalog', label: 'Catalog', icon: Package },
   { href: '/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/billing', label: 'Billing', icon: Wallet },
-  { href: '/api-keys', label: 'API Keys', icon: Key },
-  { href: '/webhooks', label: 'Webhooks', icon: Webhook },
+  { href: '/support', label: 'Support', icon: MessageSquare },
+  { href: '/guide', label: 'Guide', icon: BookOpen },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -35,14 +35,14 @@ export function MobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation">
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-64 p-0">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div className="flex items-center gap-2 h-16 px-6 border-b">
-          <Zap className="h-6 w-6 text-primary" />
+          <Zap className="h-6 w-6 text-primary" aria-hidden="true" />
           <span className="text-lg font-bold">youboost</span>
         </div>
         <nav className="px-3 py-4 space-y-1">
@@ -60,7 +60,7 @@ export function MobileNav() {
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-4 w-4" aria-hidden="true" />
                 {item.label}
               </Link>
             );

@@ -90,10 +90,15 @@ function buildColumns(
       header: 'Actions',
       cell: (row) => (
         <div className="flex gap-2">
-          <Button variant="ghost" size="icon" onClick={() => onEdit(row)}>
+          <Button variant="ghost" size="icon" onClick={() => onEdit(row)} aria-label="Edit service">
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => onToggleStatus(row)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onToggleStatus(row)}
+            aria-label="Toggle service status"
+          >
             {row.isActive ? (
               <ToggleRight className="h-4 w-4 text-green-600" />
             ) : (

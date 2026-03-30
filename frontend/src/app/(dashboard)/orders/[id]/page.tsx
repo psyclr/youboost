@@ -92,7 +92,7 @@ export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-4">
-        <Button asChild variant="ghost" size="icon">
+        <Button asChild variant="ghost" size="icon" aria-label="Back to orders">
           <Link href="/orders">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -105,7 +105,7 @@ export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{
           {canRefill && (
             <Button variant="outline" onClick={handleRefill} disabled={refillMutation.isPending}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              {refillMutation.isPending ? 'Requesting...' : 'Request Refill'}
+              {refillMutation.isPending ? 'Requesting…' : 'Request Refill'}
             </Button>
           )}
           {canCancel && (

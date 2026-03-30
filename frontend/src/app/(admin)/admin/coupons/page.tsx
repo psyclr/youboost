@@ -68,6 +68,7 @@ function CouponDeleteCell({
         e.stopPropagation();
         onDelete(row.id);
       }}
+      aria-label="Delete coupon"
     >
       <Trash2 className="h-4 w-4 text-destructive" />
     </Button>
@@ -280,7 +281,7 @@ export default function AdminCouponsPage() {
                 onClick={() => createMutation.mutate(form)}
                 disabled={!form.code || !form.discountValue || createMutation.isPending}
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? 'Creating…' : 'Create'}
               </Button>
             </DialogFooter>
           </DialogContent>

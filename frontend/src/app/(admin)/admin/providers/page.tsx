@@ -83,7 +83,12 @@ function ProviderActionsCell({
 }>) {
   return (
     <div className="flex gap-1">
-      <Button variant="ghost" size="icon" onClick={() => callbacks.onEdit(row)} title="Edit">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => callbacks.onEdit(row)}
+        aria-label="Edit provider"
+      >
         <Pencil className="h-4 w-4" />
       </Button>
       <Button
@@ -91,7 +96,7 @@ function ProviderActionsCell({
         size="icon"
         onClick={() => callbacks.onCheckBalance(row.providerId)}
         disabled={callbacks.checkingBalanceId === row.providerId}
-        title="Check Balance"
+        aria-label="Check balance"
       >
         <Wallet className="h-4 w-4" />
       </Button>
@@ -99,7 +104,7 @@ function ProviderActionsCell({
         variant="ghost"
         size="icon"
         onClick={() => callbacks.onViewServices(row)}
-        title="View Services"
+        aria-label="View services"
       >
         <List className="h-4 w-4" />
       </Button>
@@ -324,7 +329,7 @@ export default function AdminProvidersPage() {
                   !form.name || !form.apiEndpoint || !form.apiKey || createMutation.isPending
                 }
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? 'Creating…' : 'Create'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -381,7 +386,7 @@ export default function AdminProvidersPage() {
               }}
               disabled={!form.name || !form.apiEndpoint || updateMutation.isPending}
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

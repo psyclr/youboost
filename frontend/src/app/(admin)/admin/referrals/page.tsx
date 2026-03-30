@@ -57,6 +57,7 @@ function TrackingLinkCopyCell({
           e.stopPropagation();
           onCopy(row.code);
         }}
+        aria-label="Copy referral code"
       >
         <Copy className="h-3.5 w-3.5" />
       </Button>
@@ -79,6 +80,7 @@ function TrackingLinkDeleteCell({
         e.stopPropagation();
         onDelete(row.id);
       }}
+      aria-label="Delete referral"
     >
       <Trash2 className="h-4 w-4 text-destructive" />
     </Button>
@@ -250,7 +252,7 @@ export default function AdminTrackingLinksPage() {
                 onClick={() => createMutation.mutate(form)}
                 disabled={!form.code || !form.name || createMutation.isPending}
               >
-                {createMutation.isPending ? 'Creating...' : 'Create'}
+                {createMutation.isPending ? 'Creating…' : 'Create'}
               </Button>
             </DialogFooter>
           </DialogContent>

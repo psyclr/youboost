@@ -117,27 +117,32 @@ const staticColumns: Column<AdminOrderResponse>[] = [
   {
     header: 'Order ID',
     cell: (row: AdminOrderResponse) => (
-      <span className="font-mono text-xs">{row.orderId.slice(0, 8)}...</span>
+      <span className="font-mono text-xs">{row.orderId.slice(0, 8)}…</span>
     ),
   },
   {
     header: 'User',
     cell: (row: AdminOrderResponse) => (
-      <span className="font-mono text-xs">{row.userId.slice(0, 8)}...</span>
+      <span className="font-mono text-xs">{row.userId.slice(0, 8)}…</span>
     ),
   },
   {
     header: 'Status',
     cell: (row: AdminOrderResponse) => <StatusBadge status={row.status} />,
   },
-  { header: 'Qty', accessorKey: 'quantity' },
+  {
+    header: 'Qty',
+    cell: (row: AdminOrderResponse) => <span className="tabular-nums">{row.quantity}</span>,
+  },
   {
     header: 'Drip-feed',
     cell: (row: AdminOrderResponse) => <DripFeedCell row={row} />,
   },
   {
     header: 'Price',
-    cell: (row: AdminOrderResponse) => formatCurrency(row.price),
+    cell: (row: AdminOrderResponse) => (
+      <span className="tabular-nums">{formatCurrency(row.price)}</span>
+    ),
   },
   {
     header: 'Date',
@@ -278,7 +283,7 @@ export default function AdminOrdersPage() {
           <DialogHeader>
             <DialogTitle>Force Order Status</DialogTitle>
             <DialogDescription>
-              Change status for order {selectedOrder?.orderId.slice(0, 8)}...
+              Change status for order {selectedOrder?.orderId.slice(0, 8)}…
             </DialogDescription>
           </DialogHeader>
           <Select value={newStatus} onValueChange={(v) => setNewStatus(v as OrderStatus)}>
@@ -304,7 +309,7 @@ export default function AdminOrdersPage() {
               }
               disabled={forceStatusMutation.isPending}
             >
-              {forceStatusMutation.isPending ? 'Updating...' : 'Update Status'}
+              {forceStatusMutation.isPending ? 'Updating…' : 'Update Status'}
             </Button>
           </DialogFooter>
         </DialogContent>

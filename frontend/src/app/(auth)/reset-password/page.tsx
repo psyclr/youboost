@@ -84,7 +84,7 @@ function ResetPasswordForm() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Validating...</CardTitle>
+          <CardTitle>Validating…</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -163,7 +163,12 @@ function ResetPasswordForm() {
                 <FormItem>
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter new password" type="password" {...field} />
+                    <Input
+                      placeholder="Enter new password"
+                      type="password"
+                      autoComplete="new-password"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -176,14 +181,19 @@ function ResetPasswordForm() {
                 <FormItem>
                   <FormLabel>Confirm Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="Confirm new password" type="password" {...field} />
+                    <Input
+                      placeholder="Confirm new password"
+                      type="password"
+                      autoComplete="new-password"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Resetting...' : 'Reset Password'}
+              {form.formState.isSubmitting ? 'Resetting…' : 'Reset Password'}
             </Button>
           </form>
         </Form>

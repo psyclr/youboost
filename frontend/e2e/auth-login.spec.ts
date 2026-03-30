@@ -62,7 +62,7 @@ test.describe.serial('Login Page', () => {
     await page.getByPlaceholder('Enter your password').fill('WrongPass1');
     await page.getByRole('button', { name: 'Sign In' }).click();
 
-    await expect(page.getByRole('button', { name: 'Signing in...' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Signing in…' })).toBeVisible();
 
     const errorBox = page.locator('div.rounded-md.text-destructive');
     await expect(errorBox).toBeVisible({ timeout: 10_000 });

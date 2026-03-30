@@ -61,7 +61,7 @@ const columns: Column<TicketResponse>[] = [
   {
     header: 'User',
     cell: (row: TicketResponse) => (
-      <span className="text-xs">{row.username ?? row.userId.slice(0, 8) + '...'}</span>
+      <span className="text-xs">{row.username ?? row.userId.slice(0, 8) + '…'}</span>
     ),
   },
   {

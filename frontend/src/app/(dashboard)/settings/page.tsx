@@ -166,14 +166,14 @@ export default function SettingsPage() {
                   <FormItem>
                     <FormLabel>Username</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input autoComplete="username" spellCheck={false} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <Button type="submit" disabled={usernameForm.formState.isSubmitting}>
-                {usernameForm.formState.isSubmitting ? 'Saving...' : 'Update Username'}
+                {usernameForm.formState.isSubmitting ? 'Saving…' : 'Update Username'}
               </Button>
             </form>
           </Form>
@@ -200,7 +200,12 @@ export default function SettingsPage() {
                   <FormItem>
                     <FormLabel>Current Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Enter current password" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="Enter current password"
+                        autoComplete="current-password"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -213,7 +218,12 @@ export default function SettingsPage() {
                   <FormItem>
                     <FormLabel>New Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Enter new password" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="Enter new password"
+                        autoComplete="new-password"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -226,14 +236,19 @@ export default function SettingsPage() {
                   <FormItem>
                     <FormLabel>Confirm New Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Confirm new password" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="Confirm new password"
+                        autoComplete="new-password"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <Button type="submit" disabled={passwordForm.formState.isSubmitting}>
-                {passwordForm.formState.isSubmitting ? 'Saving...' : 'Change Password'}
+                {passwordForm.formState.isSubmitting ? 'Saving…' : 'Change Password'}
               </Button>
             </form>
           </Form>

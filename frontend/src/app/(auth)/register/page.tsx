@@ -98,7 +98,13 @@ function RegisterFormContent() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="you@example.com" type="email" {...field} />
+                    <Input
+                      placeholder="you@example.com"
+                      type="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -111,7 +117,12 @@ function RegisterFormContent() {
                 <FormItem>
                   <FormLabel>Username</FormLabel>
                   <FormControl>
-                    <Input placeholder="your_username" {...field} />
+                    <Input
+                      placeholder="your_username"
+                      autoComplete="username"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -124,7 +135,12 @@ function RegisterFormContent() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input placeholder="Create a strong password" type="password" {...field} />
+                    <Input
+                      placeholder="Create a strong password"
+                      type="password"
+                      autoComplete="new-password"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -137,7 +153,12 @@ function RegisterFormContent() {
                 <FormItem>
                   <FormLabel>Referral Code (optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter referral code" {...field} />
+                    <Input
+                      placeholder="Enter referral code"
+                      autoComplete="off"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormDescription>Got a referral code? Enter it for a bonus.</FormDescription>
                   <FormMessage />
@@ -145,7 +166,7 @@ function RegisterFormContent() {
               )}
             />
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Creating account...' : 'Create Account'}
+              {form.formState.isSubmitting ? 'Creating account…' : 'Create Account'}
             </Button>
           </form>
         </Form>

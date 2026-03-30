@@ -94,14 +94,20 @@ export default function ForgotPasswordPage() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="you@example.com" type="email" {...field} />
+                    <Input
+                      placeholder="you@example.com"
+                      type="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Sending...' : 'Send Reset Link'}
+              {form.formState.isSubmitting ? 'Sending…' : 'Send Reset Link'}
             </Button>
           </form>
         </Form>

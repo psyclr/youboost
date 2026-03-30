@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Form,
@@ -32,6 +33,8 @@ import {
 } from '@/components/ui/select';
 import { PlatformBadge } from '@/components/shared/platform-badge';
 import { toast } from 'sonner';
+import { ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 import { Suspense, useState, useMemo } from 'react';
 
 const dripFeedIntervals = [
@@ -62,6 +65,8 @@ function NewOrderForm() {
   const router = useRouter();
   const preselectedServiceId = searchParams.get('serviceId') ?? '';
   const [selectedServiceId, setSelectedServiceId] = useState(preselectedServiceId);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pendingData, setPendingData] = useState<OrderForm | null>(null);
   const createOrder = useCreateOrder();
 
   const { data: service } = useService(selectedServiceId);
@@ -94,27 +99,32 @@ function NewOrderForm() {
     return watchDripFeedRuns ? Math.ceil(watchQuantity / watchDripFeedRuns) : 0;
   }, [watchQuantity, watchDripFeedRuns]);
 
-  const onSubmit = async (data: OrderForm) => {
+  const onSubmit = (data: OrderForm) => {
     if (data.isDripFeed && (!data.dripFeedRuns || !data.dripFeedInterval)) {
       form.setError('dripFeedRuns', { message: 'Drip-feed requires runs and interval' });
       return;
     }
+    setPendingData(data);
+    setShowConfirm(true);
+  };
+
+  const handleConfirmedSubmit = async () => {
+    if (!pendingData) return;
     try {
-      // Sanitize user inputs before sending to API
-      const sanitizedLink = sanitizeInput(data.link);
-      const sanitizedComments = sanitizeInput(data.comments);
+      const sanitizedLink = sanitizeInput(pendingData.link);
+      const sanitizedComments = sanitizeInput(pendingData.comments);
 
       const payload = {
-        serviceId: data.serviceId,
+        serviceId: pendingData.serviceId,
         link: sanitizedLink,
-        quantity: data.quantity,
+        quantity: pendingData.quantity,
         comments: sanitizedComments,
-        ...(data.couponCode ? { couponCode: data.couponCode } : {}),
-        ...(data.isDripFeed
+        ...(pendingData.couponCode ? { couponCode: pendingData.couponCode } : {}),
+        ...(pendingData.isDripFeed
           ? {
               isDripFeed: true,
-              dripFeedRuns: data.dripFeedRuns,
-              dripFeedInterval: data.dripFeedInterval,
+              dripFeedRuns: pendingData.dripFeedRuns,
+              dripFeedInterval: pendingData.dripFeedInterval,
             }
           : {}),
       };
@@ -127,6 +137,9 @@ function NewOrderForm() {
       } else {
         toast.error('Failed to create order');
       }
+    } finally {
+      setShowConfirm(false);
+      setPendingData(null);
     }
   };
 
@@ -137,9 +150,16 @@ function NewOrderForm() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">New Order</h1>
-        <p className="text-muted-foreground">Create a new service order</p>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild aria-label="Back to orders">
+          <Link href="/orders">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-2xl font-bold">New Order</h1>
+          <p className="text-muted-foreground">Create a new service order</p>
+        </div>
       </div>
 
       <Card>
@@ -191,7 +211,7 @@ function NewOrderForm() {
                   <FormItem>
                     <FormLabel>Link</FormLabel>
                     <FormControl>
-                      <Input placeholder="https://youtube.com/watch?v=..." {...field} />
+                      <Input placeholder="https://youtube.com/watch?v=…" {...field} />
                     </FormControl>
                     <FormDescription>URL of the content to promote</FormDescription>
                     <FormMessage />
@@ -206,7 +226,7 @@ function NewOrderForm() {
                   <FormItem>
                     <FormLabel>Quantity</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} />
+                      <Input type="number" inputMode="numeric" {...field} />
                     </FormControl>
                     {service && (
                       <FormDescription>
@@ -226,7 +246,7 @@ function NewOrderForm() {
                   <FormItem>
                     <FormLabel>Comments (optional)</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Any special instructions..." {...field} />
+                      <Textarea placeholder="Any special instructions…" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -255,7 +275,8 @@ function NewOrderForm() {
                     <div className="space-y-0.5">
                       <FormLabel className="text-base">Drip-feed</FormLabel>
                       <FormDescription>
-                        Gradually deliver the order in multiple runs
+                        Splits your order into smaller batches delivered over time, making growth
+                        look more natural
                       </FormDescription>
                     </div>
                     <FormControl>
@@ -276,6 +297,7 @@ function NewOrderForm() {
                         <FormControl>
                           <Input
                             type="number"
+                            inputMode="numeric"
                             min={2}
                             max={100}
                             placeholder="e.g. 5"
@@ -341,12 +363,23 @@ function NewOrderForm() {
               )}
 
               <Button type="submit" className="w-full" disabled={createOrder.isPending}>
-                {createOrder.isPending ? 'Creating...' : 'Create Order'}
+                {createOrder.isPending ? 'Creating…' : 'Create Order'}
               </Button>
             </form>
           </Form>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        title="Confirm Order"
+        description={`You're about to order ${pendingData?.quantity?.toLocaleString() ?? 0} units for ${formatCurrency(estimatedPrice)}. This will be deducted from your balance.`}
+        confirmLabel="Place Order"
+        variant="default"
+        onConfirm={handleConfirmedSubmit}
+        isLoading={createOrder.isPending}
+      />
     </div>
   );
 }

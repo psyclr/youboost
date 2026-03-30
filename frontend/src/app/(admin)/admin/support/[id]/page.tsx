@@ -224,12 +224,17 @@ export default function AdminTicketDetailPage({
             className="flex gap-2"
           >
             <Textarea
-              placeholder="Type admin reply..."
+              placeholder="Type admin reply…"
               rows={2}
               className="flex-1"
               {...register('body', { required: true, minLength: 1 })}
             />
-            <Button type="submit" size="icon" disabled={sendMutation.isPending}>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={sendMutation.isPending}
+              aria-label="Send reply"
+            >
               <Send className="h-4 w-4" />
             </Button>
           </form>

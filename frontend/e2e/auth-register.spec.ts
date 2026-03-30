@@ -108,7 +108,7 @@ test.describe.serial('Registration Page', () => {
     await page.getByPlaceholder('Create a strong password').fill('TestPass1');
     await page.getByRole('button', { name: 'Create Account' }).click();
 
-    await expect(page.getByRole('button', { name: 'Creating account...' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Creating account…' })).toBeVisible();
     await page.waitForURL('/login', { timeout: 10_000 });
     await expect(page).toHaveURL('/login');
   });

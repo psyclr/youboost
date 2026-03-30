@@ -33,7 +33,11 @@ export function Header() {
         <div className="flex-1" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+            <Button
+              variant="ghost"
+              className="relative h-9 w-9 rounded-full"
+              aria-label="User menu"
+            >
               <Avatar className="h-9 w-9">
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
@@ -47,21 +51,21 @@ export function Header() {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings">
-                <User className="mr-2 h-4 w-4" />
+                <User className="mr-2 h-4 w-4" aria-hidden="true" />
                 Settings
               </Link>
             </DropdownMenuItem>
             {user?.role === 'ADMIN' && (
               <DropdownMenuItem asChild>
                 <Link href="/admin">
-                  <Shield className="mr-2 h-4 w-4" />
+                  <Shield className="mr-2 h-4 w-4" aria-hidden="true" />
                   Admin Panel
                 </Link>
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -202,7 +202,7 @@ export default function AdminUserDetailPage({
                 disabled={!adjustAmount || !adjustReason || balanceMutation.isPending}
                 className="w-full"
               >
-                {balanceMutation.isPending ? 'Adjusting...' : 'Adjust Balance'}
+                {balanceMutation.isPending ? 'Adjusting…' : 'Adjust Balance'}
               </Button>
             </div>
           </CardContent>

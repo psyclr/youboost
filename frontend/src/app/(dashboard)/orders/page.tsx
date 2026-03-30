@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense } from 'react';
 import { useOrders } from '@/hooks/use-orders';
 import { usePagination } from '@/hooks/use-pagination';
+import { useSearchParams } from 'next/navigation';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -34,20 +35,22 @@ const statuses: { value: string; label: string }[] = [
 const columns: Column<OrderResponse>[] = [
   {
     header: 'Order ID',
-    cell: (row) => <span className="font-mono text-xs">{row.orderId.slice(0, 8)}...</span>,
+    cell: (row) => <span className="font-mono text-xs">{row.orderId.slice(0, 8)}…</span>,
   },
   {
     header: 'Status',
     cell: (row) => <StatusBadge status={row.status} />,
   },
-  { header: 'Quantity', accessorKey: 'quantity' },
+  { header: 'Quantity', accessorKey: 'quantity', className: 'tabular-nums' },
   {
     header: 'Completed',
     accessorKey: 'completed',
+    className: 'tabular-nums',
   },
   {
     header: 'Price',
     cell: (row) => formatCurrency(row.price),
+    className: 'tabular-nums',
   },
   {
     header: 'Date',
@@ -55,10 +58,22 @@ const columns: Column<OrderResponse>[] = [
   },
 ];
 
-export default function OrdersPage() {
-  const [status, setStatus] = useState('ALL');
+function OrdersContent() {
+  const searchParams = useSearchParams();
+  const status = searchParams.get('status') ?? 'ALL';
   const { page, setPage } = usePagination();
   const router = useRouter();
+
+  const handleStatusChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === 'ALL') {
+      params.delete('status');
+    } else {
+      params.set('status', value);
+    }
+    params.delete('page');
+    router.push(`/orders?${params.toString()}`);
+  };
 
   const { data, isLoading } = useOrders({
     page,
@@ -90,7 +105,7 @@ export default function OrdersPage() {
       </div>
 
       <div className="flex gap-4">
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-48">
             <SelectValue />
           </SelectTrigger>
@@ -129,5 +144,13 @@ export default function OrdersPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense>
+      <OrdersContent />
+    </Suspense>
   );
 }
