@@ -4,15 +4,15 @@ services:
     container_name: youboost-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: youboost_dev
-      POSTGRES_USER: youboost
-      POSTGRES_PASSWORD: youboost_dev_password
+      POSTGRES_DB: ${POSTGRES_DB:-youboost_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-youboost}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-youboost_dev_password}
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U youboost']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-youboost}']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -39,12 +39,25 @@ services:
     restart: unless-stopped
     ports:
       - '3000:3000'
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: postgresql://youboost:youboost_dev_password@postgres:5432/youboost_dev
+      # Overridden: inside Docker network, hosts are service names, not localhost
+      DATABASE_URL: postgresql://${POSTGRES_USER:-youboost}:${POSTGRES_PASSWORD:-youboost_dev_password}@postgres:5432/${POSTGRES_DB:-youboost_dev}
       REDIS_URL: redis://redis:6379
       NODE_TLS_REJECT_UNAUTHORIZED: '0'
+      # All other config from .env
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-10}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PROVIDER_ENCRYPTION_KEY: ${PROVIDER_ENCRYPTION_KEY}
+      PROVIDER_MODE: ${PROVIDER_MODE:-stub}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +70,7 @@ services:
       dockerfile: Dockerfile
     container_name: youboost-migrate
     environment:
-      DATABASE_URL: postgresql://youboost:youboost_dev_password@postgres:5432/youboost_dev
+      DATABASE_URL: postgresql://${POSTGRES_USER:-youboost}:${POSTGRES_PASSWORD:-youboost_dev_password}@postgres:5432/${POSTGRES_DB:-youboost_dev}
     command: npx prisma migrate deploy
     depends_on:
       postgres:
@@ -69,7 +82,7 @@ services:
       dockerfile: Dockerfile
     container_name: youboost-seed
     environment:
-      DATABASE_URL: postgresql://youboost:youboost_dev_password@postgres:5432/youboost_dev
+      DATABASE_URL: postgresql://${POSTGRES_USER:-youboost}:${POSTGRES_PASSWORD:-youboost_dev_password}@postgres:5432/${POSTGRES_DB:-youboost_dev}
     entrypoint: npx ts-node prisma/seed.ts
     depends_on:
       migrate:
