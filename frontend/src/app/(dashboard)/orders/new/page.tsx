@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useService, useCatalog } from '@/hooks/use-catalog';
 import { useCreateOrder } from '@/hooks/use-orders';
+import { useBalance } from '@/hooks/use-balance';
 import { ApiError } from '@/lib/api/client';
 import { formatCurrency } from '@/lib/utils';
 import { sanitizeInput } from '@/lib/utils/sanitize';
@@ -71,6 +72,7 @@ function NewOrderForm() {
 
   const { data: service } = useService(selectedServiceId);
   const { data: catalogData } = useCatalog({ limit: 100 });
+  const { data: balance } = useBalance();
 
   const form = useForm<OrderForm>({
     resolver: zodResolver(orderSchema),
@@ -98,6 +100,8 @@ function NewOrderForm() {
   const chunkSize = useMemo(() => {
     return watchDripFeedRuns ? Math.ceil(watchQuantity / watchDripFeedRuns) : 0;
   }, [watchQuantity, watchDripFeedRuns]);
+
+  const insufficientBalance = balance ? estimatedPrice > balance.available : false;
 
   const onSubmit = (data: OrderForm) => {
     if (data.isDripFeed && (!data.dripFeedRuns || !data.dripFeedInterval)) {
@@ -226,7 +230,18 @@ function NewOrderForm() {
                   <FormItem>
                     <FormLabel>Quantity</FormLabel>
                     <FormControl>
-                      <Input type="number" inputMode="numeric" {...field} />
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.valueAsNumber;
+                          field.onChange(Number.isNaN(v) ? undefined : v);
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     {service && (
                       <FormDescription>
@@ -302,7 +317,10 @@ function NewOrderForm() {
                             max={100}
                             placeholder="e.g. 5"
                             value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.valueAsNumber || undefined)}
+                            onChange={(e) => {
+                              const v = e.target.valueAsNumber;
+                              field.onChange(Number.isNaN(v) ? undefined : v);
+                            }}
                             onBlur={field.onBlur}
                             name={field.name}
                             ref={field.ref}
@@ -353,6 +371,24 @@ function NewOrderForm() {
                   <p className="text-xs text-muted-foreground">
                     {formatCurrency(service.pricePer1000)} per 1,000
                   </p>
+                  {balance && (
+                    <div className="flex justify-between items-center border-t pt-2 mt-2">
+                      <span className="text-xs text-muted-foreground">Available Balance</span>
+                      <span
+                        className={`text-sm font-medium ${insufficientBalance ? 'text-destructive' : ''}`}
+                      >
+                        {formatCurrency(balance.available)}
+                      </span>
+                    </div>
+                  )}
+                  {insufficientBalance && (
+                    <p className="text-xs text-destructive">
+                      Insufficient balance.{' '}
+                      <Link href="/billing/deposit" className="underline">
+                        Add funds
+                      </Link>
+                    </p>
+                  )}
                   {watchIsDripFeed && watchDripFeedRuns && form.watch('dripFeedInterval') && (
                     <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
                       {watchDripFeedRuns} runs of {chunkSize.toLocaleString()} every{' '}
@@ -362,7 +398,11 @@ function NewOrderForm() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" disabled={createOrder.isPending}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createOrder.isPending || insufficientBalance}
+              >
                 {createOrder.isPending ? 'Creating…' : 'Create Order'}
               </Button>
             </form>
@@ -374,7 +414,7 @@ function NewOrderForm() {
         open={showConfirm}
         onOpenChange={setShowConfirm}
         title="Confirm Order"
-        description={`You're about to order ${pendingData?.quantity?.toLocaleString() ?? 0} units for ${formatCurrency(estimatedPrice)}. This will be deducted from your balance.`}
+        description={`You're about to order ${pendingData?.quantity?.toLocaleString() ?? 0} units for ${formatCurrency(estimatedPrice)}.${balance ? ` Your balance after: ${formatCurrency(balance.available - estimatedPrice)}.` : ''}`}
         confirmLabel="Place Order"
         variant="default"
         onConfirm={handleConfirmedSubmit}

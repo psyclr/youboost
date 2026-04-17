@@ -3,6 +3,7 @@
 import { AdminGuard } from '@/lib/auth/admin-guard';
 import { AdminSidebar } from '@/components/layout/admin-sidebar';
 import { Header } from '@/components/layout/header';
+import { adminNavItems, adminFooterLink } from '@/lib/nav-items';
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -10,7 +11,11 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
       <div className="min-h-screen">
         <AdminSidebar />
         <div className="md:pl-64">
-          <Header />
+          <Header
+            mobileNavItems={adminNavItems}
+            mobileFooterLink={adminFooterLink}
+            mobileNavBadge="Admin"
+          />
           <main className="p-4 md:p-6 max-w-7xl mx-auto">{children}</main>
         </div>
       </div>

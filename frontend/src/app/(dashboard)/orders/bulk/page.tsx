@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useCatalog } from '@/hooks/use-catalog';
 import { useBulkOrders } from '@/hooks/use-orders';
+import { useBalance } from '@/hooks/use-balance';
 import { ApiError } from '@/lib/api/client';
 import { formatCurrency } from '@/lib/utils';
 import { sanitizeInput } from '@/lib/utils/sanitize';
@@ -60,6 +61,7 @@ export default function BulkOrderPage() {
   const bulkOrders = useBulkOrders();
 
   const { data: catalogData } = useCatalog({ limit: 100 });
+  const { data: balance } = useBalance();
 
   const form = useForm<BulkForm>({
     resolver: zodResolver(bulkSchema),
@@ -133,6 +135,8 @@ export default function BulkOrderPage() {
     return selectedService ? (watchQuantity / 1000) * selectedService.pricePer1000 * validCount : 0;
   }, [selectedService, watchQuantity, validCount]);
 
+  const insufficientBalance = balance ? estimatedTotal > balance.available : false;
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
@@ -197,7 +201,18 @@ export default function BulkOrderPage() {
                   <FormItem>
                     <FormLabel>Default Quantity (per link)</FormLabel>
                     <FormControl>
-                      <Input type="number" inputMode="numeric" {...field} />
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.valueAsNumber;
+                          field.onChange(Number.isNaN(v) ? undefined : v);
+                        }}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     {selectedService && (
                       <FormDescription>
@@ -251,7 +266,7 @@ export default function BulkOrderPage() {
                   Preview
                 </Button>
                 {showPreview && validCount > 0 && !result && (
-                  <Button type="submit" disabled={bulkOrders.isPending}>
+                  <Button type="submit" disabled={bulkOrders.isPending || insufficientBalance}>
                     {bulkOrders.isPending ? 'Creating Orders…' : `Create ${validCount} Orders`}
                   </Button>
                 )}
@@ -274,9 +289,29 @@ export default function BulkOrderPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {selectedService && (
-              <div className="rounded-md bg-muted p-3 flex justify-between items-center">
-                <span className="text-sm text-muted-foreground">Estimated Total</span>
-                <span className="text-lg font-bold">{formatCurrency(estimatedTotal)}</span>
+              <div className="rounded-md bg-muted p-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Estimated Total</span>
+                  <span className="text-lg font-bold">{formatCurrency(estimatedTotal)}</span>
+                </div>
+                {balance && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Available Balance</span>
+                    <span
+                      className={`text-sm font-medium ${insufficientBalance ? 'text-destructive' : ''}`}
+                    >
+                      {formatCurrency(balance.available)}
+                    </span>
+                  </div>
+                )}
+                {insufficientBalance && (
+                  <p className="text-xs text-destructive">
+                    Insufficient balance.{' '}
+                    <Link href="/billing/deposit" className="underline">
+                      Add funds
+                    </Link>
+                  </p>
+                )}
               </div>
             )}
             <div className="max-h-64 overflow-y-auto space-y-1">
@@ -348,7 +383,7 @@ export default function BulkOrderPage() {
         open={showConfirm}
         onOpenChange={setShowConfirm}
         title="Confirm Bulk Order"
-        description={`You're about to create ${validCount} orders for an estimated total of ${formatCurrency(estimatedTotal)}.`}
+        description={`You're about to create ${validCount} orders for an estimated total of ${formatCurrency(estimatedTotal)}.${balance ? ` Your balance after: ${formatCurrency(balance.available - estimatedTotal)}.` : ''}`}
         confirmLabel="Create Orders"
         variant="default"
         onConfirm={handleConfirmedSubmit}

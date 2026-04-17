@@ -4,6 +4,7 @@ import { createServiceLogger } from '../../../shared/utils/logger';
 import { pollOrderStatuses } from './status-poll.worker';
 
 export { startDripFeedWorker, stopDripFeedWorker } from './drip-feed.worker';
+export { startOrderTimeoutWorker, stopOrderTimeoutWorker } from './order-timeout.worker';
 
 const log = createServiceLogger('order-polling');
 

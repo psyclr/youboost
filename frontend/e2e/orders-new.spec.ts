@@ -15,6 +15,14 @@ test.describe.serial('New Order Page', () => {
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL(/\/admin/, { timeout: 10_000 });
 
+    await page.route('**/api/billing/balance', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ balance: 1000, currency: 'USD' }),
+      }),
+    );
+
     await page.goto('/orders/new');
     await page.waitForURL('/orders/new');
   });
@@ -134,5 +142,59 @@ test.describe.serial('New Order Page', () => {
 
     await page.waitForURL(/\/orders\/mock-order-id/, { timeout: 10_000 });
     await expect(page).toHaveURL(/\/orders\/mock-order-id/);
+  });
+
+  test('should reject quantity of 0 on fresh form', async () => {
+    await page.goto('/orders/new');
+    await page.waitForURL('/orders/new');
+
+    // Select a service first
+    const serviceSelect = page.getByRole('combobox', { name: 'Service' }).first();
+    await serviceSelect.click();
+    await page.getByRole('option').first().click();
+    await expect(page.getByText(/Min:.*Max:/)).toBeVisible({ timeout: 5_000 });
+
+    // Set quantity to 0
+    const quantityInput = page.getByLabel('Quantity');
+    await quantityInput.fill('0');
+
+    await page
+      .getByPlaceholder('https://youtube.com/watch?v=…')
+      .fill('https://youtube.com/watch?v=test');
+    await page.getByRole('button', { name: 'Create Order' }).click();
+
+    await expect(page.getByText('Minimum quantity is 1')).toBeVisible();
+  });
+
+  test('should reject negative quantity', async () => {
+    const quantityInput = page.getByLabel('Quantity');
+    await quantityInput.fill('-5');
+
+    await page.getByRole('button', { name: 'Create Order' }).click();
+    await expect(page.getByText('Minimum quantity is 1')).toBeVisible();
+  });
+
+  test('should accept manually typed quantity and submit', async () => {
+    // Mock order creation
+    await page.route('**/api/orders', (route) => {
+      if (route.request().method() === 'POST') {
+        return route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ orderId: 'mock-typed-qty-order' }),
+        });
+      }
+      return route.continue();
+    });
+
+    const quantityInput = page.getByLabel('Quantity');
+    await quantityInput.fill('500');
+
+    await page.getByRole('button', { name: 'Create Order' }).click();
+
+    // Should reach confirm dialog (no validation error)
+    await expect(page.getByRole('heading', { name: 'Confirm Order' })).toBeVisible();
+    await page.getByRole('button', { name: 'Place Order' }).click();
+    await page.waitForURL(/\/orders\/mock-typed-qty/, { timeout: 10_000 });
   });
 });

@@ -1,4 +1,9 @@
-import { createOrderSchema, ordersQuerySchema, orderIdSchema } from '../orders.types';
+import {
+  createOrderSchema,
+  ordersQuerySchema,
+  orderIdSchema,
+  bulkOrderSchema,
+} from '../orders.types';
 
 describe('Order Validation Schemas', () => {
   describe('createOrderSchema', () => {
@@ -52,6 +57,61 @@ describe('Order Validation Schemas', () => {
     it('should accept input without comments', () => {
       const result = createOrderSchema.parse(valid);
       expect(result.comments).toBeUndefined();
+    });
+  });
+
+  describe('createOrderSchema — string coercion', () => {
+    const base = {
+      serviceId: '550e8400-e29b-41d4-a716-446655440000',
+      link: 'https://youtube.com/watch?v=dQw4w9WgXcQ',
+    };
+
+    it('should coerce string quantity to number', () => {
+      const result = createOrderSchema.parse({ ...base, quantity: '500' });
+      expect(result.quantity).toBe(500);
+      expect(typeof result.quantity).toBe('number');
+    });
+
+    it('should coerce string dripFeed fields to numbers', () => {
+      const result = createOrderSchema.parse({
+        ...base,
+        quantity: '100',
+        isDripFeed: true,
+        dripFeedRuns: '5',
+        dripFeedInterval: '60',
+      });
+      expect(result.dripFeedRuns).toBe(5);
+      expect(result.dripFeedInterval).toBe(60);
+    });
+
+    it('should still reject non-numeric strings', () => {
+      expect(() => createOrderSchema.parse({ ...base, quantity: 'abc' })).toThrow();
+    });
+
+    it('should still reject string "0"', () => {
+      expect(() => createOrderSchema.parse({ ...base, quantity: '0' })).toThrow();
+    });
+  });
+
+  describe('bulkOrderSchema — string coercion', () => {
+    const base = {
+      serviceId: '550e8400-e29b-41d4-a716-446655440000',
+      links: [{ link: 'https://youtube.com/watch?v=abc' }],
+    };
+
+    it('should coerce string defaultQuantity to number', () => {
+      const result = bulkOrderSchema.parse({ ...base, defaultQuantity: '1000' });
+      expect(result.defaultQuantity).toBe(1000);
+      expect(typeof result.defaultQuantity).toBe('number');
+    });
+
+    it('should coerce nested link quantity from string', () => {
+      const result = bulkOrderSchema.parse({
+        ...base,
+        defaultQuantity: 100,
+        links: [{ link: 'https://youtube.com/watch?v=abc', quantity: '200' }],
+      });
+      expect(result.links[0]?.quantity).toBe(200);
     });
   });
 

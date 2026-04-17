@@ -59,6 +59,42 @@ export async function findDepositsByUserId(
   return { deposits, total };
 }
 
+export async function findAllDeposits(filters: {
+  status?: DepositStatus | undefined;
+  userId?: string | undefined;
+  page: number;
+  limit: number;
+}): Promise<{ deposits: DepositRecord[]; total: number }> {
+  const prisma = getPrisma();
+  const where: Record<string, unknown> = {};
+  if (filters.status) where.status = filters.status;
+  if (filters.userId) where.userId = filters.userId;
+
+  const [deposits, total] = await Promise.all([
+    prisma.deposit.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (filters.page - 1) * filters.limit,
+      take: filters.limit,
+    }),
+    prisma.deposit.count({ where }),
+  ]);
+
+  return { deposits, total };
+}
+
+export async function findExpiredPendingDeposits(): Promise<DepositRecord[]> {
+  const prisma = getPrisma();
+  return prisma.deposit.findMany({
+    where: {
+      status: 'PENDING' as DepositStatus,
+      expiresAt: { lt: new Date() },
+    },
+    orderBy: { expiresAt: 'asc' },
+    take: 200,
+  });
+}
+
 export async function updateDepositStripeSession(
   depositId: string,
   stripeSessionId: string,

@@ -10,6 +10,7 @@ import {
   validateService,
   validateQuantity,
   applyOrderCoupon,
+  warnIfProviderBalanceLow,
   handleOrderCreationFailure,
   dispatchOrderNotifications,
   dispatchCancelNotifications,
@@ -70,6 +71,8 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
   const isDripFeed = input.isDripFeed ?? false;
   const dripFeedRuns = isDripFeed ? input.dripFeedRuns : undefined;
   const dripFeedInterval = isDripFeed ? input.dripFeedInterval : undefined;
+
+  await warnIfProviderBalanceLow(validatedService.providerId, finalPrice);
 
   const order = await ordersRepo.createOrder({
     userId,
@@ -283,18 +286,9 @@ export async function createBulkOrders(
     }
   }
 
-  log.info(
-    {
-      userId,
-      totalCreated: results.filter((r) => r.status === 'success').length,
-      totalFailed: results.filter((r) => r.status === 'error').length,
-    },
-    'Bulk orders created',
-  );
+  const totalCreated = results.filter((r) => r.status === 'success').length;
+  const totalFailed = results.length - totalCreated;
+  log.info({ userId, totalCreated, totalFailed }, 'Bulk orders created');
 
-  return {
-    results,
-    totalCreated: results.filter((r) => r.status === 'success').length,
-    totalFailed: results.filter((r) => r.status === 'error').length,
-  };
+  return { results, totalCreated, totalFailed };
 }

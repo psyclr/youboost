@@ -123,6 +123,28 @@ describe('Admin Types - Zod Schemas', () => {
       const result = adminBalanceAdjustSchema.safeParse({ reason: 'test' });
       expect(result.success).toBe(false);
     });
+
+    it('should coerce string amount to number', () => {
+      const result = adminBalanceAdjustSchema.safeParse({ amount: '100', reason: 'Bonus' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.amount).toBe(100);
+        expect(typeof result.data.amount).toBe('number');
+      }
+    });
+
+    it('should coerce negative string amount', () => {
+      const result = adminBalanceAdjustSchema.safeParse({ amount: '-50', reason: 'Penalty' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.amount).toBe(-50);
+      }
+    });
+
+    it('should reject non-numeric string amount', () => {
+      const result = adminBalanceAdjustSchema.safeParse({ amount: 'abc', reason: 'test' });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('adminOrdersQuerySchema', () => {
@@ -262,6 +284,27 @@ describe('Admin Types - Zod Schemas', () => {
       const result = adminServiceCreateSchema.safeParse({ ...validService, externalServiceId: '' });
       expect(result.success).toBe(false);
     });
+
+    it('should coerce string number fields', () => {
+      const result = adminServiceCreateSchema.safeParse({
+        ...validService,
+        pricePer1000: '5.99',
+        minQuantity: '100',
+        maxQuantity: '100000',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.pricePer1000).toBe(5.99);
+        expect(result.data.minQuantity).toBe(100);
+        expect(result.data.maxQuantity).toBe(100000);
+        expect(typeof result.data.pricePer1000).toBe('number');
+      }
+    });
+
+    it('should reject non-numeric string for pricePer1000', () => {
+      const result = adminServiceCreateSchema.safeParse({ ...validService, pricePer1000: 'abc' });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe('adminServiceUpdateSchema', () => {
@@ -283,6 +326,20 @@ describe('Admin Types - Zod Schemas', () => {
     it('should reject invalid platform', () => {
       const result = adminServiceUpdateSchema.safeParse({ platform: 'BADPLATFORM' });
       expect(result.success).toBe(false);
+    });
+
+    it('should coerce string number fields in update', () => {
+      const result = adminServiceUpdateSchema.safeParse({
+        pricePer1000: '2.50',
+        minQuantity: '50',
+        maxQuantity: '5000',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.pricePer1000).toBe(2.5);
+        expect(result.data.minQuantity).toBe(50);
+        expect(result.data.maxQuantity).toBe(5000);
+      }
     });
   });
 

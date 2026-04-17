@@ -7,15 +7,15 @@ export const createCouponSchema = z.object({
     .max(50)
     .regex(/^[A-Z0-9_-]+$/i),
   discountType: z.enum(['PERCENTAGE', 'FIXED']),
-  discountValue: z.number().positive(),
-  maxUses: z.number().int().positive().optional(),
-  minOrderAmount: z.number().positive().optional(),
+  discountValue: z.coerce.number().positive(),
+  maxUses: z.coerce.number().int().positive().optional(),
+  minOrderAmount: z.coerce.number().positive().optional(),
   expiresAt: z.iso.datetime().optional(),
 });
 
 export const validateCouponSchema = z.object({
   code: z.string().min(1),
-  orderAmount: z.number().positive().optional(),
+  orderAmount: z.coerce.number().positive().optional(),
 });
 
 export const couponQuerySchema = z.object({

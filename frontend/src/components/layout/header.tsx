@@ -12,10 +12,21 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LogOut, User, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { NavItem, FooterLink } from '@/lib/nav-items';
 import { MobileNav } from './mobile-nav';
 import Link from 'next/link';
 
-export function Header() {
+interface HeaderProps {
+  mobileNavItems: NavItem[];
+  mobileFooterLink?: FooterLink;
+  mobileNavBadge?: string;
+}
+
+export function Header({
+  mobileNavItems,
+  mobileFooterLink,
+  mobileNavBadge,
+}: Readonly<HeaderProps>) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -29,7 +40,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-between h-full px-4 md:px-6">
-        <MobileNav />
+        <MobileNav items={mobileNavItems} footerLink={mobileFooterLink} badge={mobileNavBadge} />
         <div className="flex-1" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

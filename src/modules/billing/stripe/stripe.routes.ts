@@ -14,7 +14,7 @@ declare module 'fastify' {
 }
 
 const checkoutSchema = z.object({
-  amount: z.number().min(5).max(10_000),
+  amount: z.coerce.number().min(5).max(10_000),
 });
 
 function validateBody<T>(

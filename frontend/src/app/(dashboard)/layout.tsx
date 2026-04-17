@@ -3,6 +3,7 @@
 import { AuthGuard } from '@/lib/auth/auth-guard';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { userNavItems } from '@/lib/nav-items';
 
 export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -10,7 +11,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
       <div className="min-h-screen">
         <Sidebar />
         <div className="md:pl-64">
-          <Header />
+          <Header mobileNavItems={userNavItems} />
           <main className="p-4 md:p-6 max-w-7xl mx-auto">{children}</main>
         </div>
       </div>

@@ -27,7 +27,7 @@ Monorepo with modular services under `src/modules/`:
 ## Development vs Docker
 
 - **Development and tests** — run locally, NOT in Docker
-  - Backend: `npm run dev` (port 3000)
+  - Backend: `npm run start:dev` (port 3000)
   - Frontend: `cd frontend && npm run dev` (port 3001)
   - E2E tests: `cd frontend && npx playwright test` (against local dev servers)
 - **Manual testing and deploy** — in Docker
@@ -44,7 +44,7 @@ Monorepo with modular services under `src/modules/`:
 - Selectors: prefer `getByRole('combobox')` over `[data-slot="select-trigger"]` — data-slot causes 30s timeouts
 - **IMPORTANT:** Run `npx playwright test` from `frontend/` dir, NOT from project root — root dir picks up Jest test files from `src/`
 - **IMPORTANT:** Before running tests, stop Docker frontend (`docker compose stop frontend`) and start local dev server (`cd frontend && npx next dev -p 3001`)
-- If rate limited: `docker compose restart backend` clears in-memory limits
+- If rate limited: restart backend (kill + `npm run start:dev`, or `docker compose restart backend` if using Docker) — clears in-memory limits
 - Unicode: use actual `…` character in JSX, NOT `\u2026` — JSX attribute strings and JSX text do NOT interpret JS escape sequences
 
 ## Ports

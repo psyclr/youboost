@@ -8,6 +8,7 @@ import * as adminOrdersService from './admin-orders.service';
 import * as adminServicesService from './admin-services.service';
 import * as adminBillingService from './admin-billing.service';
 import * as adminDashboardService from './admin-dashboard.service';
+import * as adminDepositsService from './admin-deposits.service';
 import {
   adminUsersQuerySchema,
   adminUserIdSchema,
@@ -20,6 +21,8 @@ import {
   adminServiceCreateSchema,
   adminServiceUpdateSchema,
   adminServiceIdSchema,
+  adminDepositsQuerySchema,
+  adminDepositIdSchema,
 } from './admin.types';
 
 function validateBody<T>(
@@ -176,6 +179,28 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const params = validateParams(adminServiceIdSchema, request.params);
     await adminServicesService.deactivateService(params.serviceId);
     return reply.status(StatusCodes.NO_CONTENT).send();
+  });
+
+  // Deposits
+  app.get('/deposits', async (request: FastifyRequest, reply: FastifyReply) => {
+    requireAdmin(request);
+    const query = validateQuery(adminDepositsQuerySchema, request.query);
+    const result = await adminDepositsService.listAllDeposits(query);
+    return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.post('/deposits/:depositId/confirm', async (request: FastifyRequest, reply: FastifyReply) => {
+    requireAdmin(request);
+    const params = validateParams(adminDepositIdSchema, request.params);
+    const result = await adminDepositsService.adminConfirmDeposit(params.depositId);
+    return reply.status(StatusCodes.OK).send(result);
+  });
+
+  app.post('/deposits/:depositId/expire', async (request: FastifyRequest, reply: FastifyReply) => {
+    requireAdmin(request);
+    const params = validateParams(adminDepositIdSchema, request.params);
+    const result = await adminDepositsService.adminExpireDeposit(params.depositId);
+    return reply.status(StatusCodes.OK).send(result);
   });
 
   // Dashboard

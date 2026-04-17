@@ -2,12 +2,32 @@ import { ValidationError, NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { releaseFunds } from '../billing';
 import { validateCoupon } from '../coupons';
+import { selectProviderById } from '../providers';
 import { enqueueWebhookDelivery } from '../webhooks';
 import { enqueueNotification } from '../notifications';
 import * as ordersRepo from './orders.repository';
 import type { ServiceRecord, OrderRecord } from './orders.types';
 
 const log = createServiceLogger('orders');
+
+export async function warnIfProviderBalanceLow(
+  providerId: string | null,
+  orderPrice: number,
+): Promise<void> {
+  if (!providerId) return;
+  try {
+    const { client } = await selectProviderById(providerId);
+    const providerBalance = await client.checkBalance();
+    if (providerBalance.balance < orderPrice) {
+      log.warn(
+        { providerId, providerBalance: providerBalance.balance, orderPrice },
+        'Provider balance may be insufficient for order',
+      );
+    }
+  } catch {
+    // Non-blocking — provider balance check failure should never prevent orders
+  }
+}
 
 export function calculatePrice(quantity: number, pricePer1000: number): number {
   const priceInCents = Math.round((quantity * pricePer1000 * 100) / 1000);

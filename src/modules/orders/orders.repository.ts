@@ -150,6 +150,19 @@ export async function resumeDripFeed(orderId: string): Promise<OrderRecord> {
   });
 }
 
+export async function findTimedOutOrders(timeoutHours: number): Promise<OrderRecord[]> {
+  const prisma = getPrisma();
+  const cutoff = new Date(Date.now() - timeoutHours * 60 * 60 * 1000);
+  return prisma.order.findMany({
+    where: {
+      status: 'PROCESSING' as OrderStatus,
+      updatedAt: { lt: cutoff },
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: 100,
+  });
+}
+
 export async function findAllOrders(filters: {
   status?: string | undefined;
   userId?: string | undefined;

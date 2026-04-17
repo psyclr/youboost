@@ -8,9 +8,12 @@ import {
   stopOrderPolling,
   startDripFeedWorker,
   stopDripFeedWorker,
+  startOrderTimeoutWorker,
+  stopOrderTimeoutWorker,
 } from './modules/orders/workers';
 import { startWebhookWorker, stopWebhookWorker } from './modules/webhooks';
 import { startNotificationWorker, stopNotificationWorker } from './modules/notifications';
+import { startDepositExpiryWorker, stopDepositExpiryWorker } from './modules/billing';
 import { createApp } from './app';
 
 const log = createServiceLogger('main');
@@ -28,6 +31,8 @@ async function main(): Promise<void> {
 
   await startOrderPolling();
   await startDripFeedWorker();
+  await startOrderTimeoutWorker();
+  await startDepositExpiryWorker();
   await startWebhookWorker();
   await startNotificationWorker();
 
@@ -36,6 +41,8 @@ async function main(): Promise<void> {
     await app.close();
     await stopNotificationWorker();
     await stopWebhookWorker();
+    await stopDepositExpiryWorker();
+    await stopOrderTimeoutWorker();
     await stopDripFeedWorker();
     await stopOrderPolling();
     await disconnectRedis();

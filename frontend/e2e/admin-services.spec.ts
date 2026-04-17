@@ -6,10 +6,63 @@ let page: Page;
 // Locator for the provider service combobox trigger
 const serviceCombobox = () => page.locator('[data-slot="popover-trigger"]');
 
+const mockProviderServices = {
+  services: [
+    {
+      serviceId: '1001',
+      name: 'Telegram Channel Subscribers',
+      category: 'Telegram',
+      rate: 0.5,
+      min: 100,
+      max: 100000,
+      type: 'default',
+      description: 'Real Telegram subscribers',
+    },
+    {
+      serviceId: '1002',
+      name: 'Telegram Post Views',
+      category: 'Telegram',
+      rate: 0.01,
+      min: 100,
+      max: 1000000,
+      type: 'default',
+      description: 'Telegram post views',
+    },
+    {
+      serviceId: '2001',
+      name: 'YouTube Views',
+      category: 'YouTube',
+      rate: 0.3,
+      min: 100,
+      max: 1000000,
+      type: 'default',
+      description: 'YouTube video views',
+    },
+    {
+      serviceId: '2002',
+      name: 'YouTube Likes',
+      category: 'YouTube',
+      rate: 1.2,
+      min: 50,
+      max: 50000,
+      type: 'default',
+      description: 'YouTube video likes',
+    },
+  ],
+};
+
 test.describe.serial('Admin Services Page', () => {
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext();
     page = await context.newPage();
+
+    await page.route('**/providers/*/services', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockProviderServices),
+      }),
+    );
 
     // Login once for all tests
     await page.goto('/login');

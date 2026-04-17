@@ -4,11 +4,11 @@ export const createOrderSchema = z
   .object({
     serviceId: z.uuid(),
     link: z.url(),
-    quantity: z.number().int().min(1),
+    quantity: z.coerce.number().int().min(1),
     comments: z.string().max(500).optional(),
     isDripFeed: z.boolean().default(false),
-    dripFeedRuns: z.number().int().min(2).max(100).optional(),
-    dripFeedInterval: z.number().int().min(10).max(10080).optional(),
+    dripFeedRuns: z.coerce.number().int().min(2).max(100).optional(),
+    dripFeedInterval: z.coerce.number().int().min(10).max(10080).optional(),
     couponCode: z.string().min(1).optional(),
   })
   .refine((data) => !data.isDripFeed || (data.dripFeedRuns && data.dripFeedInterval), {
@@ -39,12 +39,12 @@ export const bulkOrderSchema = z.object({
     .array(
       z.object({
         link: z.url(),
-        quantity: z.number().int().min(1).optional(),
+        quantity: z.coerce.number().int().min(1).optional(),
       }),
     )
     .min(1)
     .max(500),
-  defaultQuantity: z.number().int().min(1),
+  defaultQuantity: z.coerce.number().int().min(1),
   comments: z.string().max(500).optional(),
 });
 

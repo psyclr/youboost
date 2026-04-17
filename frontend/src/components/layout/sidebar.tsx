@@ -3,26 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Wallet,
-  Settings,
-  BookOpen,
-  Zap,
-  MessageSquare,
-} from 'lucide-react';
-
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/catalog', label: 'Catalog', icon: Package },
-  { href: '/orders', label: 'Orders', icon: ShoppingCart },
-  { href: '/billing', label: 'Billing', icon: Wallet },
-  { href: '/support', label: 'Support', icon: MessageSquare },
-  { href: '/guide', label: 'Guide', icon: BookOpen },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
+import { Zap } from 'lucide-react';
+import { userNavItems } from '@/lib/nav-items';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -34,7 +16,7 @@ export function Sidebar() {
         <span className="text-lg font-bold">youboost</span>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map((item) => {
+        {userNavItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
             <Link

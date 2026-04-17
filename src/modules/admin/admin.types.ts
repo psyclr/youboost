@@ -17,7 +17,7 @@ export const adminUpdateUserSchema = z.object({
 });
 
 export const adminBalanceAdjustSchema = z.object({
-  amount: z.number(),
+  amount: z.coerce.number(),
   reason: z.string().min(1).max(500),
 });
 
@@ -58,9 +58,9 @@ export const adminServiceCreateSchema = z
     description: z.string().max(1000).optional(),
     platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']),
     type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']),
-    pricePer1000: z.number().min(0),
-    minQuantity: z.number().int().min(1),
-    maxQuantity: z.number().int().min(1),
+    pricePer1000: z.coerce.number().min(0),
+    minQuantity: z.coerce.number().int().min(1),
+    maxQuantity: z.coerce.number().int().min(1),
     providerId: z.uuid(),
     externalServiceId: z.string().min(1),
   })
@@ -75,9 +75,9 @@ export const adminServiceUpdateSchema = z
     description: z.string().max(1000).optional(),
     platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']).optional(),
     type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']).optional(),
-    pricePer1000: z.number().min(0).optional(),
-    minQuantity: z.number().int().min(1).optional(),
-    maxQuantity: z.number().int().min(1).optional(),
+    pricePer1000: z.coerce.number().min(0).optional(),
+    minQuantity: z.coerce.number().int().min(1).optional(),
+    maxQuantity: z.coerce.number().int().min(1).optional(),
     isActive: z.boolean().optional(),
     providerId: z.uuid().optional(),
     externalServiceId: z.string().min(1).optional(),
@@ -109,6 +109,19 @@ export type AdminForceStatusInput = z.infer<typeof adminForceStatusSchema>;
 export type AdminServicesQuery = z.infer<typeof adminServicesQuerySchema>;
 export type AdminServiceCreateInput = z.infer<typeof adminServiceCreateSchema>;
 export type AdminServiceUpdateInput = z.infer<typeof adminServiceUpdateSchema>;
+export const adminDepositsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(['PENDING', 'CONFIRMED', 'EXPIRED', 'FAILED']).optional(),
+  userId: z.uuid().optional(),
+});
+
+export const adminDepositIdSchema = z.object({
+  depositId: z.uuid(),
+});
+
+export type AdminDepositsQuery = z.infer<typeof adminDepositsQuerySchema>;
+export type AdminDepositIdParam = z.infer<typeof adminDepositIdSchema>;
 export type AdminServiceIdParam = z.infer<typeof adminServiceIdSchema>;
 
 export interface AdminUserResponse {

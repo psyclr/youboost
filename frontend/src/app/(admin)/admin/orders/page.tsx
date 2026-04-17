@@ -39,12 +39,15 @@ const statuses = [
   { value: 'ALL', label: 'All Statuses' },
   { value: 'PENDING', label: 'Pending' },
   { value: 'PROCESSING', label: 'Processing' },
+  { value: 'STUCK', label: 'Stuck (>24h)' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'PARTIAL', label: 'Partial' },
   { value: 'CANCELLED', label: 'Cancelled' },
   { value: 'FAILED', label: 'Failed' },
   { value: 'REFUNDED', label: 'Refunded' },
 ];
+
+const STUCK_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const allStatuses: OrderStatus[] = [
   'PENDING',
@@ -170,16 +173,29 @@ export default function AdminOrdersPage() {
   const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<OrderStatus>('COMPLETED');
 
-  const { data, isLoading } = useQuery({
+  const apiStatus = status === 'STUCK' ? 'PROCESSING' : status;
+
+  const { data: rawData, isLoading } = useQuery({
     queryKey: ['admin', 'orders', { page, status, dripFeedOnly }],
     queryFn: () =>
       getAdminOrders({
         page,
-        limit: 20,
-        status: status === 'ALL' ? undefined : (status as OrderStatus),
+        limit: status === 'STUCK' ? 100 : 20,
+        status: apiStatus === 'ALL' ? undefined : (apiStatus as OrderStatus),
         isDripFeed: dripFeedOnly ? true : undefined,
       }),
   });
+
+  // Client-side filter for "stuck" — PROCESSING orders older than 24h
+  const data =
+    status === 'STUCK' && rawData
+      ? {
+          ...rawData,
+          orders: rawData.orders.filter(
+            (o) => new Date(o.updatedAt).getTime() < Date.now() - STUCK_THRESHOLD_MS,
+          ),
+        }
+      : rawData;
 
   const forceStatusMutation = useMutation({
     mutationFn: ({ orderId, status }: { orderId: string; status: string }) =>

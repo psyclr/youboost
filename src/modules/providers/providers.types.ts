@@ -4,7 +4,7 @@ export const createProviderSchema = z.object({
   name: z.string().min(1).max(255),
   apiEndpoint: z.url(),
   apiKey: z.string().min(1),
-  priority: z.number().int().default(0),
+  priority: z.coerce.number().int().default(0),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -12,7 +12,7 @@ export const updateProviderSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   apiEndpoint: z.url().optional(),
   apiKey: z.string().min(1).optional(),
-  priority: z.number().int().optional(),
+  priority: z.coerce.number().int().optional(),
   isActive: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });

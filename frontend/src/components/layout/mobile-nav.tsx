@@ -4,31 +4,18 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import type { NavItem, FooterLink } from '@/lib/nav-items';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
-import {
-  Menu,
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Wallet,
-  Settings,
-  BookOpen,
-  MessageSquare,
-  Zap,
-} from 'lucide-react';
+import { Menu, Zap } from 'lucide-react';
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/catalog', label: 'Catalog', icon: Package },
-  { href: '/orders', label: 'Orders', icon: ShoppingCart },
-  { href: '/billing', label: 'Billing', icon: Wallet },
-  { href: '/support', label: 'Support', icon: MessageSquare },
-  { href: '/guide', label: 'Guide', icon: BookOpen },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
+interface MobileNavProps {
+  items: NavItem[];
+  footerLink?: FooterLink;
+  badge?: string;
+}
 
-export function MobileNav() {
+export function MobileNav({ items, footerLink, badge }: Readonly<MobileNavProps>) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -44,10 +31,17 @@ export function MobileNav() {
         <div className="flex items-center gap-2 h-16 px-6 border-b">
           <Zap className="h-6 w-6 text-primary" aria-hidden="true" />
           <span className="text-lg font-bold">youboost</span>
+          {badge && (
+            <span className="text-xs font-medium bg-primary text-primary-foreground px-2 py-0.5 rounded-full ml-1">
+              {badge}
+            </span>
+          )}
         </div>
-        <nav className="px-3 py-4 space-y-1">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {items.map((item) => {
+            const isActive = item.exact
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <Link
                 key={item.href}
@@ -66,6 +60,18 @@ export function MobileNav() {
             );
           })}
         </nav>
+        {footerLink && (
+          <div className="px-3 py-4 border-t">
+            <Link
+              href={footerLink.href}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <footerLink.icon className="h-4 w-4" aria-hidden="true" />
+              {footerLink.label}
+            </Link>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -15,6 +15,14 @@ test.describe.serial('Bulk Order Page', () => {
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL(/\/admin/, { timeout: 10_000 });
 
+    await page.route('**/api/billing/balance', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ balance: 1000, currency: 'USD' }),
+      }),
+    );
+
     await page.goto('/orders/bulk');
     await page.waitForURL('/orders/bulk');
   });
@@ -126,5 +134,29 @@ test.describe.serial('Bulk Order Page', () => {
     // Check success and failed badges
     await expect(page.getByText('Success').first()).toBeVisible();
     await expect(page.getByText('Failed').first()).toBeVisible();
+  });
+
+  test('should reject default quantity of 0 on fresh form', async () => {
+    await page.goto('/orders/bulk');
+    await page.waitForURL('/orders/bulk');
+
+    // Select a service
+    const serviceSelect = page.getByRole('combobox', { name: 'Service' });
+    await serviceSelect.click();
+    await page.getByRole('option').first().click();
+
+    // Set quantity to 0
+    const quantityInput = page.getByLabel('Default Quantity (per link)');
+    await quantityInput.fill('0');
+
+    // Add link and preview
+    const linksTextarea = page.getByLabel('Links', { exact: true });
+    await linksTextarea.fill('https://youtube.com/watch?v=test');
+    await page.getByRole('button', { name: 'Preview' }).click();
+    await expect(page.getByText(/1 valid link/)).toBeVisible();
+
+    // Submit triggers zodResolver validation
+    await page.getByRole('button', { name: /Create \d+ Orders/ }).click();
+    await expect(page.getByText('Minimum quantity is 1')).toBeVisible();
   });
 });

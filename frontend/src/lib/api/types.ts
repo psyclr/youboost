@@ -86,22 +86,6 @@ export interface BalanceResponse {
   currency: string;
 }
 
-export interface DepositInput {
-  amount: number;
-  cryptoCurrency: 'USDT' | 'BTC' | 'ETH';
-}
-
-export interface DepositResponse {
-  depositId: string;
-  paymentAddress: string;
-  amount: number;
-  cryptoAmount: number;
-  cryptoCurrency: string;
-  expiresAt: string;
-  status: string;
-  qrCode: string;
-}
-
 export interface DepositDetail {
   id: string;
   amount: number;
@@ -113,6 +97,10 @@ export interface DepositDetail {
   expiresAt: string;
   confirmedAt: string | null;
   createdAt: string;
+}
+
+export interface AdminDepositResponse extends DepositDetail {
+  userId: string;
 }
 
 export interface TransactionSummary {
