@@ -54,7 +54,7 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
   const token = getAccessToken();
   let response = await doFetch(token);
 
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       response = await doFetch(newToken);
