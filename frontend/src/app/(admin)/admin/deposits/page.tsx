@@ -83,29 +83,27 @@ export default function AdminDepositsPage() {
   const columns: Column<AdminDepositResponse>[] = [
     {
       header: 'ID',
-      accessor: (row) => <span className="font-mono text-xs">{row.id.slice(0, 8)}…</span>,
+      cell: (row) => <span className="font-mono text-xs">{row.id.slice(0, 8)}…</span>,
     },
     {
       header: 'User',
-      accessor: (row) => <span className="font-mono text-xs">{row.userId.slice(0, 8)}…</span>,
+      cell: (row) => <span className="font-mono text-xs">{row.userId.slice(0, 8)}…</span>,
     },
     {
       header: 'Amount',
-      accessor: (row) => (
-        <span className="tabular-nums font-medium">{formatCurrency(row.amount)}</span>
-      ),
+      cell: (row) => <span className="tabular-nums font-medium">{formatCurrency(row.amount)}</span>,
     },
     {
       header: 'Status',
-      accessor: (row) => <StatusBadge status={row.status as DepositStatus} />,
+      cell: (row) => <StatusBadge status={row.status as DepositStatus} />,
     },
     {
       header: 'Created',
-      accessor: (row) => <span className="text-sm">{formatDate(row.createdAt)}</span>,
+      cell: (row) => <span className="text-sm">{formatDate(row.createdAt)}</span>,
     },
     {
       header: 'Actions',
-      accessor: (row) =>
+      cell: (row) =>
         row.status === 'PENDING' ? (
           <div className="flex gap-1">
             <Button
@@ -165,8 +163,15 @@ export default function AdminDepositsPage() {
         columns={columns}
         data={data?.deposits ?? []}
         isLoading={isLoading}
-        pagination={data?.pagination}
-        onPageChange={setPage}
+        pagination={
+          data
+            ? {
+                page: data.pagination.page,
+                totalPages: data.pagination.totalPages,
+                onPageChange: setPage,
+              }
+            : undefined
+        }
         emptyMessage="No deposits found"
       />
 
