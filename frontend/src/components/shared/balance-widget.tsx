@@ -10,9 +10,41 @@ import type { BalanceResponse } from '@/lib/api/types';
 interface BalanceWidgetProps {
   balance: BalanceResponse | undefined;
   isLoading: boolean;
+  variant?: 'compact' | 'hero';
 }
 
-export function BalanceWidget({ balance, isLoading }: Readonly<BalanceWidgetProps>) {
+export function BalanceWidget({
+  balance,
+  isLoading,
+  variant = 'compact',
+}: Readonly<BalanceWidgetProps>) {
+  if (variant === 'hero') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-8">
+        {isLoading ? (
+          <div className="h-12 w-48 bg-muted animate-pulse rounded" />
+        ) : (
+          <>
+            <div className="text-4xl font-bold tracking-tight">
+              {formatCurrency(balance?.available ?? 0)}
+            </div>
+            <p className="text-sm text-muted-foreground">Available balance</p>
+            <div className="flex gap-6 text-sm text-muted-foreground">
+              <span>Total: {formatCurrency(balance?.balance ?? 0)}</span>
+              <span>Frozen: {formatCurrency(balance?.frozen ?? 0)}</span>
+            </div>
+          </>
+        )}
+        <Button asChild size="lg">
+          <Link href="/billing/deposit">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Funds
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">

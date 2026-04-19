@@ -6,16 +6,32 @@ import { getTransactions } from '@/lib/api/billing';
 import { BalanceWidget } from '@/components/shared/balance-widget';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, List } from 'lucide-react';
-import type { TransactionSummary } from '@/lib/api/types';
+import { ArrowRight } from 'lucide-react';
+import type { TransactionSummary, LedgerType } from '@/lib/api/types';
 import Link from 'next/link';
+
+function txBadgeVariant(type: LedgerType): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (type) {
+    case 'DEPOSIT':
+    case 'REFUND':
+      return 'default';
+    case 'HOLD':
+    case 'WITHDRAW':
+    case 'FEE':
+      return 'destructive';
+    case 'RELEASE':
+      return 'secondary';
+    default:
+      return 'outline';
+  }
+}
 
 const txColumns: Column<TransactionSummary>[] = [
   {
     header: 'Type',
-    cell: (row) => <Badge variant="outline">{row.type}</Badge>,
+    cell: (row) => <Badge variant={txBadgeVariant(row.type)}>{row.type}</Badge>,
   },
   {
     header: 'Amount',
@@ -39,8 +55,8 @@ const txColumns: Column<TransactionSummary>[] = [
 export default function BillingPage() {
   const { data: balance, isLoading: balanceLoading } = useBalance();
   const { data: txData, isLoading: txLoading } = useQuery({
-    queryKey: ['transactions', { limit: 10 }],
-    queryFn: () => getTransactions({ limit: 10 }),
+    queryKey: ['transactions', { limit: 5 }],
+    queryFn: () => getTransactions({ limit: 5 }),
   });
 
   return (
@@ -50,26 +66,21 @@ export default function BillingPage() {
         <p className="text-muted-foreground">Manage your balance and transactions</p>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-        <BalanceWidget balance={balance} isLoading={balanceLoading} />
-        <div className="flex flex-col gap-2">
-          <Button asChild size="lg">
-            <Link href="/billing/deposit">
-              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
-              Deposit Funds
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link href="/billing/transactions">
-              <List className="h-4 w-4 mr-2" aria-hidden="true" />
-              View All Transactions
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <Card>
+        <BalanceWidget balance={balance} isLoading={balanceLoading} variant="hero" />
+      </Card>
 
       <div>
-        <h2 className="text-lg font-semibold mb-4">Recent Transactions</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Recent Activity</h2>
+          <Link
+            href="/billing/transactions"
+            className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            View all
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
         <DataTable
           columns={txColumns}
           data={txData?.transactions ?? []}
