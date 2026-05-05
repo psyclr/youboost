@@ -1,23 +1,24 @@
 import { ValidationError } from '../../../shared/errors';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { getConfig } from '../../../shared/config';
-import { getPrisma } from '../../../shared/database';
-import * as walletRepo from '../wallet.repository';
-import * as ledgerRepo from '../ledger.repository';
 import * as depositRepo from '../deposit.repository';
+import {
+  prepareDepositCheckout,
+  confirmDepositTransaction,
+  failDepositTransaction,
+} from '../deposit-lifecycle.service';
+import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
 import { signRequestBody, verifyWebhookSignature, extractSignFromBody } from './cryptomus.crypto';
 
 const log = createServiceLogger('cryptomus');
 
 const CRYPTOMUS_API = 'https://api.cryptomus.com/v1/payment';
-
-export interface CreateCheckoutInput {
-  amount: number;
-}
+const PROVIDER_LABEL = 'Cryptomus';
 
 export interface CheckoutSessionResponse {
   orderId: string;
   url: string;
+  depositId: string;
 }
 
 interface CryptomusCreatePaymentResult {
@@ -58,15 +59,8 @@ function getCreds(): { merchantId: string; paymentKey: string } {
 
 export async function createCheckoutSession(
   userId: string,
-  input: CreateCheckoutInput,
+  input: { amount: number },
 ): Promise<CheckoutSessionResponse> {
-  if (input.amount < 5) {
-    throw new ValidationError('Minimum deposit is $5.00', 'MIN_DEPOSIT');
-  }
-  if (input.amount > 10_000) {
-    throw new ValidationError('Maximum deposit is $10,000.00', 'MAX_DEPOSIT');
-  }
-
   const { merchantId, paymentKey } = getCreds();
   const config = getConfig();
   const callbackUrl = config.cryptomus.callbackUrl;
@@ -77,16 +71,7 @@ export async function createCheckoutSession(
     );
   }
 
-  await walletRepo.getOrCreateWallet(userId);
-
-  const deposit = await depositRepo.createDeposit({
-    userId,
-    amount: input.amount,
-    cryptoAmount: 0,
-    cryptoCurrency: '',
-    paymentAddress: '',
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+  const deposit = await prepareDepositCheckout(userId, input.amount);
 
   const body = {
     amount: input.amount.toFixed(2),
@@ -145,6 +130,7 @@ export async function createCheckoutSession(
   return {
     orderId: parsed.result.order_id,
     url: parsed.result.url,
+    depositId: deposit.id,
   };
 }
 
@@ -158,7 +144,6 @@ export async function handleWebhookEvent(rawBody: string): Promise<void> {
     );
   }
 
-  // Body is already validated; parse the payload without the sign field.
   const { unsignedJson } = extractSignFromBody(rawBody);
   const payload = JSON.parse(unsignedJson) as CryptomusWebhookBody;
 
@@ -176,86 +161,33 @@ export async function handleWebhookEvent(rawBody: string): Promise<void> {
   }
 
   if (CONFIRMED_STATUSES.has(status)) {
-    await confirmDeposit(deposit.id, deposit.userId);
+    await confirmDepositTransaction(deposit.id, deposit.userId, PROVIDER_LABEL);
     return;
   }
 
   if (FAILED_STATUSES.has(status)) {
-    const prisma = getPrisma();
-    await prisma.$transaction(async (tx) => {
-      const fresh = await depositRepo.findDepositById(deposit.id, undefined, tx);
-      if (fresh?.status !== 'PENDING') return;
-      await depositRepo.updateDepositStatus(
-        deposit.id,
-        {
-          status: 'FAILED',
-          confirmedAt: null,
-          ledgerEntryId: null,
-        },
-        tx,
-      );
-      log.info({ depositId: deposit.id, status }, 'Cryptomus deposit marked FAILED');
-    });
+    await failDepositTransaction(deposit.id, PROVIDER_LABEL, status);
     return;
   }
 
   log.debug({ orderId, status }, 'Cryptomus webhook non-terminal status');
 }
 
-async function confirmDeposit(depositId: string, userId: string): Promise<void> {
-  const prisma = getPrisma();
-  const result = await prisma.$transaction(async (tx) => {
-    const deposit = await depositRepo.findDepositById(depositId, userId, tx);
-    if (!deposit) {
-      log.warn({ depositId, userId }, 'Deposit not found during Cryptomus confirm');
-      return null;
-    }
-    if (deposit.status !== 'PENDING') {
-      log.debug({ depositId, status: deposit.status }, 'Deposit already processed');
-      return null;
-    }
-
-    const amount = Number(deposit.amount);
-    const wallet = await walletRepo.getOrCreateWallet(userId, 'USD', tx);
-    const balanceBefore = Number(wallet.balance);
-    const newBalance = balanceBefore + amount;
-
-    await walletRepo.updateBalance({
-      walletId: wallet.id,
-      newBalance,
-      newHold: Number(wallet.holdAmount),
-      tx,
-    });
-
-    const entry = await ledgerRepo.createLedgerEntry(
-      {
-        userId,
-        walletId: wallet.id,
-        type: 'DEPOSIT',
-        amount,
-        balanceBefore,
-        balanceAfter: newBalance,
-        referenceType: 'deposit',
-        referenceId: depositId,
-        description: `Cryptomus deposit $${amount.toFixed(2)}`,
-      },
-      tx,
-    );
-
-    await depositRepo.updateDepositStatus(
-      depositId,
-      {
-        status: 'CONFIRMED',
-        confirmedAt: new Date(),
-        ledgerEntryId: entry.id,
-      },
-      tx,
-    );
-
-    return { amount };
-  });
-
-  if (result) {
-    log.info({ userId, depositId, amount: result.amount }, 'Cryptomus deposit confirmed');
-  }
-}
+export const cryptomusProvider: PaymentProvider = {
+  id: 'cryptomus',
+  async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
+    const res = await createCheckoutSession(input.userId, { amount: input.amount });
+    return {
+      checkoutId: res.orderId,
+      url: res.url,
+      depositId: res.depositId,
+    };
+  },
+  async handleWebhook(rawBody: string): Promise<void> {
+    await handleWebhookEvent(rawBody);
+  },
+  isConfigured(): boolean {
+    const { cryptomus } = getConfig();
+    return Boolean(cryptomus.merchantId) && Boolean(cryptomus.paymentKey);
+  },
+};

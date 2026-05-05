@@ -2,10 +2,9 @@ import Stripe from 'stripe';
 import { ValidationError } from '../../../shared/errors';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { getConfig } from '../../../shared/config';
-import { getPrisma } from '../../../shared/database';
-import * as walletRepo from '../wallet.repository';
-import * as ledgerRepo from '../ledger.repository';
 import * as depositRepo from '../deposit.repository';
+import { prepareDepositCheckout, confirmDepositTransaction } from '../deposit-lifecycle.service';
+import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
 
 const log = createServiceLogger('stripe');
 
@@ -21,39 +20,20 @@ function getStripe(): Stripe {
   return stripeClient;
 }
 
-export interface CreateCheckoutInput {
-  amount: number; // USD amount
-}
-
 export interface CheckoutSessionResponse {
   sessionId: string;
   url: string;
+  depositId: string;
 }
 
 export async function createCheckoutSession(
   userId: string,
-  input: CreateCheckoutInput,
+  input: { amount: number },
 ): Promise<CheckoutSessionResponse> {
   const stripe = getStripe();
   const config = getConfig();
 
-  if (input.amount < 5) {
-    throw new ValidationError('Minimum deposit is $5.00', 'MIN_DEPOSIT');
-  }
-  if (input.amount > 10_000) {
-    throw new ValidationError('Maximum deposit is $10,000.00', 'MAX_DEPOSIT');
-  }
-
-  await walletRepo.getOrCreateWallet(userId);
-
-  const deposit = await depositRepo.createDeposit({
-    userId,
-    amount: input.amount,
-    cryptoAmount: 0,
-    cryptoCurrency: '',
-    paymentAddress: '',
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
-  });
+  const deposit = await prepareDepositCheckout(userId, input.amount);
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -65,7 +45,7 @@ export async function createCheckoutSession(
             name: 'YouBoost Wallet Deposit',
             description: `Add $${input.amount.toFixed(2)} to your YouBoost balance`,
           },
-          unit_amount: Math.round(input.amount * 100), // cents
+          unit_amount: Math.round(input.amount * 100),
         },
         quantity: 1,
       },
@@ -79,7 +59,6 @@ export async function createCheckoutSession(
     },
   });
 
-  // Update deposit with stripe session ID
   await depositRepo.updateDepositStripeSession(deposit.id, session.id);
 
   log.info(
@@ -94,6 +73,7 @@ export async function createCheckoutSession(
   return {
     sessionId: session.id,
     url: session.url,
+    depositId: deposit.id,
   };
 }
 
@@ -112,73 +92,33 @@ export async function handleWebhookEvent(payload: string, signature: string): Pr
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    await handleCheckoutCompleted(session);
+    const userId = session.metadata?.['userId'];
+    const depositId = session.metadata?.['depositId'];
+
+    if (!userId || !depositId) {
+      log.warn({ sessionId: session.id }, 'Missing metadata in Stripe session');
+      return;
+    }
+
+    await confirmDepositTransaction(depositId, userId, 'Stripe');
   }
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
-  const userId = session.metadata?.['userId'];
-  const depositId = session.metadata?.['depositId'];
-
-  if (!userId || !depositId) {
-    log.warn({ sessionId: session.id }, 'Missing metadata in Stripe session');
-    return;
-  }
-
-  const prisma = getPrisma();
-  const result = await prisma.$transaction(async (tx) => {
-    const deposit = await depositRepo.findDepositById(depositId, userId, tx);
-    if (!deposit) {
-      log.warn({ depositId, userId }, 'Deposit not found for Stripe session');
-      return null;
-    }
-
-    if (deposit.status !== 'PENDING') {
-      log.debug({ depositId, status: deposit.status }, 'Deposit already processed');
-      return null;
-    }
-
-    const amount = Number(deposit.amount);
-    const wallet = await walletRepo.getOrCreateWallet(userId, 'USD', tx);
-    const balanceBefore = Number(wallet.balance);
-    const newBalance = balanceBefore + amount;
-
-    await walletRepo.updateBalance({
-      walletId: wallet.id,
-      newBalance,
-      newHold: Number(wallet.holdAmount),
-      tx,
-    });
-
-    const entry = await ledgerRepo.createLedgerEntry(
-      {
-        userId,
-        walletId: wallet.id,
-        type: 'DEPOSIT',
-        amount,
-        balanceBefore,
-        balanceAfter: newBalance,
-        referenceType: 'deposit',
-        referenceId: depositId,
-        description: `Stripe deposit $${amount.toFixed(2)}`,
-      },
-      tx,
-    );
-
-    await depositRepo.updateDepositStatus(
-      depositId,
-      {
-        status: 'CONFIRMED',
-        confirmedAt: new Date(),
-        ledgerEntryId: entry.id,
-      },
-      tx,
-    );
-
-    return { amount };
-  });
-
-  if (result) {
-    log.info({ userId, depositId, amount: result.amount }, 'Stripe deposit confirmed');
-  }
-}
+export const stripeProvider: PaymentProvider = {
+  id: 'stripe',
+  async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
+    const res = await createCheckoutSession(input.userId, { amount: input.amount });
+    return {
+      checkoutId: res.sessionId,
+      url: res.url,
+      depositId: res.depositId,
+    };
+  },
+  async handleWebhook(rawBody: string, signature: string): Promise<void> {
+    await handleWebhookEvent(rawBody, signature);
+  },
+  isConfigured(): boolean {
+    const { stripe } = getConfig();
+    return Boolean(stripe.secretKey) && Boolean(stripe.webhookSecret);
+  },
+};

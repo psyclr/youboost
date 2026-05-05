@@ -92,6 +92,18 @@ const envSchema = z.object({
     .string()
     .default('2000')
     .transform((val) => Number.parseInt(val, 10)),
+  BILLING_MIN_DEPOSIT: z
+    .string()
+    .default('5')
+    .transform((val) => Number.parseInt(val, 10)),
+  BILLING_MAX_DEPOSIT: z
+    .string()
+    .default('10000')
+    .transform((val) => Number.parseInt(val, 10)),
+  BILLING_DEPOSIT_EXPIRY_MS: z
+    .string()
+    .default('3600000')
+    .transform((val) => Number.parseInt(val, 10)),
 });
 
 export interface AppConfig {
@@ -146,6 +158,11 @@ export interface AppConfig {
     rateBasic: number;
     ratePro: number;
     rateEnterprise: number;
+  };
+  billing: {
+    minDeposit: number;
+    maxDeposit: number;
+    depositExpiryMs: number;
   };
 }
 
@@ -204,6 +221,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       rateBasic: parsed.API_KEY_RATE_BASIC,
       ratePro: parsed.API_KEY_RATE_PRO,
       rateEnterprise: parsed.API_KEY_RATE_ENTERPRISE,
+    },
+    billing: {
+      minDeposit: parsed.BILLING_MIN_DEPOSIT,
+      maxDeposit: parsed.BILLING_MAX_DEPOSIT,
+      depositExpiryMs: parsed.BILLING_DEPOSIT_EXPIRY_MS,
     },
   };
 

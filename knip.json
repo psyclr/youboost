@@ -12,10 +12,11 @@
       "ignoreDependencies": ["@testing-library/*", "tw-animate-css", "shadcn", "tailwindcss"]
     }
   },
-  "ignore": ["frontend/src/components/ui/**", "src/modules/billing/providers/**"],
+  "ignore": ["frontend/src/components/ui/**"],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
     "src/modules/**/*.types.ts": ["exports", "types"],
+    "src/modules/billing/providers/registry.ts": ["exports"],
     "src/modules/notifications/utils/email-templates.ts": ["exports"],
     "src/modules/notifications/utils/email-provider-factory.ts": ["exports"],
     "frontend/src/lib/api/**": ["exports", "types"]
