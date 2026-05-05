@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/jest.env.ts'],
 
   // ОБЯЗАТЕЛЬНОЕ покрытие 80%
   coverageThreshold: {

@@ -51,6 +51,7 @@ describe('Environment Config', () => {
       JWT_SECRET: validEnv.JWT_SECRET,
       JWT_REFRESH_SECRET: validEnv.JWT_REFRESH_SECRET,
       PROVIDER_ENCRYPTION_KEY: validEnv.PROVIDER_ENCRYPTION_KEY,
+      CORS_ORIGIN: 'http://localhost:3000',
     };
 
     const config = loadConfig(minimal);
@@ -60,10 +61,10 @@ describe('Environment Config', () => {
     expect(config.app.logLevel).toBe('info');
     expect(config.jwt.expiresIn).toBe('7d');
     expect(config.jwt.refreshExpiresIn).toBe('30d');
-    expect(config.security.bcryptRounds).toBe(10);
+    expect(config.security.bcryptRounds).toBe(12);
     expect(config.security.rateLimitMax).toBe(100);
     expect(config.security.rateLimitWindowMs).toBe(60000);
-    expect(config.security.corsOrigin).toBe('*');
+    expect(config.security.corsOrigin).toBe('http://localhost:3000');
     expect(config.provider.mode).toBe('stub');
   });
 
@@ -80,6 +81,23 @@ describe('Environment Config', () => {
   it('should throw on missing JWT_SECRET', () => {
     const { JWT_SECRET: _, ...env } = validEnv;
     expect(() => loadConfig(env)).toThrow();
+  });
+
+  it('should throw on JWT_SECRET shorter than 32 chars', () => {
+    expect(() => loadConfig({ ...validEnv, JWT_SECRET: 'too-short' })).toThrow();
+  });
+
+  it('should throw on JWT_REFRESH_SECRET shorter than 32 chars', () => {
+    expect(() => loadConfig({ ...validEnv, JWT_REFRESH_SECRET: 'too-short' })).toThrow();
+  });
+
+  it('should throw on missing CORS_ORIGIN (no default)', () => {
+    const { CORS_ORIGIN: _, ...env } = validEnv;
+    expect(() => loadConfig(env)).toThrow();
+  });
+
+  it('should throw on empty CORS_ORIGIN', () => {
+    expect(() => loadConfig({ ...validEnv, CORS_ORIGIN: '' })).toThrow();
   });
 
   it('should throw on invalid NODE_ENV', () => {

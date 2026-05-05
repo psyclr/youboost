@@ -1,3 +1,4 @@
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { encryptApiKey, decryptApiKey } from '../encryption';
 
 jest.mock('../../../../shared/config', () => ({
@@ -9,58 +10,75 @@ jest.mock('../../../../shared/config', () => ({
   }),
 }));
 
+const TEST_KEY = 'test-encryption-key-at-least-32-chars!';
+
 describe('Encryption Utility', () => {
-  it('should encrypt and decrypt a string roundtrip', () => {
+  it('encrypts and decrypts a string roundtrip', () => {
     const plaintext = 'my-secret-api-key-12345';
     const encrypted = encryptApiKey(plaintext);
     const decrypted = decryptApiKey(encrypted);
     expect(decrypted).toBe(plaintext);
   });
 
-  it('should produce different ciphertexts for same plaintext (random IV)', () => {
+  it('produces different ciphertexts for same plaintext (random IV)', () => {
     const plaintext = 'same-key';
     const encrypted1 = encryptApiKey(plaintext);
     const encrypted2 = encryptApiKey(plaintext);
     expect(encrypted1).not.toBe(encrypted2);
   });
 
-  it('should return format iv:authTag:ciphertext in hex', () => {
+  it('writes v2: prefix and iv:authTag:ciphertext in hex', () => {
     const encrypted = encryptApiKey('test');
-    const parts = encrypted.split(':');
+    expect(encrypted.startsWith('v2:')).toBe(true);
+    const parts = encrypted.slice(3).split(':');
     expect(parts).toHaveLength(3);
     expect(parts[0]).toMatch(/^[0-9a-f]{24}$/);
     expect(parts[1]).toMatch(/^[0-9a-f]{32}$/);
     expect((parts[2] ?? '').length).toBeGreaterThan(0);
   });
 
-  it('should handle empty string', () => {
+  it('handles empty string', () => {
     const encrypted = encryptApiKey('');
     const decrypted = decryptApiKey(encrypted);
     expect(decrypted).toBe('');
   });
 
-  it('should handle long strings', () => {
+  it('handles long strings', () => {
     const plaintext = 'a'.repeat(1000);
     const encrypted = encryptApiKey(plaintext);
     const decrypted = decryptApiKey(encrypted);
     expect(decrypted).toBe(plaintext);
   });
 
-  it('should handle unicode strings', () => {
+  it('handles unicode strings', () => {
     const plaintext = 'ключ-апи-🔑';
     const encrypted = encryptApiKey(plaintext);
     const decrypted = decryptApiKey(encrypted);
     expect(decrypted).toBe(plaintext);
   });
 
-  it('should throw on invalid format', () => {
+  it('throws on invalid format', () => {
     expect(() => decryptApiKey('invalid-data')).toThrow('Invalid encrypted data format');
   });
 
-  it('should throw on tampered ciphertext', () => {
+  it('throws on tampered ciphertext', () => {
     const encrypted = encryptApiKey('secret');
-    const parts = encrypted.split(':');
-    const tampered = `${parts[0]}:${parts[1]}:ff${(parts[2] ?? '').slice(2)}`;
+    // v2:iv:authTag:cipher — tamper the cipher part
+    const parts = encrypted.slice(3).split(':');
+    const tampered = `v2:${parts[0]}:${parts[1]}:ff${(parts[2] ?? '').slice(2)}`;
     expect(() => decryptApiKey(tampered)).toThrow();
+  });
+
+  it('decrypts legacy (pre-v2) ciphertext written with padEnd key derivation', () => {
+    // Simulate the old encryption scheme: key.slice(0, 32).padEnd(32, '0')
+    const legacyKey = Buffer.from(TEST_KEY.slice(0, 32).padEnd(32, '0'));
+    const plaintext = 'legacy-provider-key-xyz';
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', legacyKey, iv, { authTagLength: 16 });
+    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    const legacyCiphertext = `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
+
+    expect(decryptApiKey(legacyCiphertext)).toBe(plaintext);
   });
 });

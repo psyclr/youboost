@@ -9,6 +9,7 @@ import { openapiSpec } from './shared/swagger/openapi-spec';
 import { AppError } from './shared/errors/app-error';
 import { checkHealth } from './shared/health/health';
 import { createServiceLogger } from './shared/utils/logger';
+import { getConfig } from './shared/config';
 import { authRoutes } from './modules/auth';
 import { billingRoutes } from './modules/billing';
 import { stripeRoutes } from './modules/billing/stripe';
@@ -28,21 +29,27 @@ import { adminTrackingRoutes } from './modules/tracking';
 const log = createServiceLogger('http');
 
 export async function createApp(): Promise<FastifyInstance> {
+  const config = getConfig();
   const app = Fastify({
     logger: false,
     requestIdHeader: 'x-request-id',
     genReqId: () => crypto.randomUUID(),
   });
 
+  const corsOrigins = config.security.corsOrigin
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+
   await app.register(cors, {
-    origin: process.env['CORS_ORIGIN'] ?? '*',
+    origin: corsOrigins,
   });
 
   await app.register(helmet);
 
   await app.register(rateLimit, {
-    max: Number(process.env['RATE_LIMIT_MAX'] ?? '100'),
-    timeWindow: Number(process.env['RATE_LIMIT_WINDOW_MS'] ?? '60000'),
+    max: config.security.rateLimitMax,
+    timeWindow: config.security.rateLimitWindowMs,
   });
 
   await app.register(swagger, {

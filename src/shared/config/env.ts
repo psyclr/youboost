@@ -38,14 +38,14 @@ const envSchema = z.object({
     }),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('7d'),
-  JWT_REFRESH_SECRET: z.string().min(16),
+  JWT_REFRESH_SECRET: z.string().min(32),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
   BCRYPT_ROUNDS: z
     .string()
-    .default('10')
+    .default('12')
     .transform((val) => Number.parseInt(val, 10)),
   RATE_LIMIT_MAX: z
     .string()
@@ -55,7 +55,7 @@ const envSchema = z.object({
     .string()
     .default('60000')
     .transform((val) => Number.parseInt(val, 10)),
-  CORS_ORIGIN: z.string().default('*'),
+  CORS_ORIGIN: z.string().min(1),
 
   PROVIDER_ENCRYPTION_KEY: z.string().min(32),
   PROVIDER_MODE: z.enum(['stub', 'real']).default('stub'),
