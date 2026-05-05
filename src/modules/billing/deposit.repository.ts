@@ -2,6 +2,10 @@ import { getPrisma } from '../../shared/database';
 import type { DepositStatus } from '../../generated/prisma';
 import type { DepositRecord } from './deposit.types';
 
+type PrismaTransactionClient = Parameters<
+  Parameters<ReturnType<typeof getPrisma>['$transaction']>[0]
+>[0];
+
 export async function createDeposit(data: {
   userId: string;
   amount: number;
@@ -27,13 +31,14 @@ export async function createDeposit(data: {
 export async function findDepositById(
   depositId: string,
   userId?: string | undefined,
+  tx?: PrismaTransactionClient,
 ): Promise<DepositRecord | null> {
-  const prisma = getPrisma();
+  const client = tx ?? getPrisma();
   const where: { id: string; userId?: string } = { id: depositId };
   if (userId) {
     where.userId = userId;
   }
-  return prisma.deposit.findFirst({ where });
+  return client.deposit.findFirst({ where });
 }
 
 export async function findDepositsByUserId(
@@ -106,6 +111,29 @@ export async function updateDepositStripeSession(
   });
 }
 
+export async function updateDepositCryptomusOrder(
+  depositId: string,
+  data: { cryptomusOrderId: string; cryptomusCheckoutUrl: string },
+): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.deposit.update({
+    where: { id: depositId },
+    data: {
+      cryptomusOrderId: data.cryptomusOrderId,
+      cryptomusCheckoutUrl: data.cryptomusCheckoutUrl,
+      paymentMethod: 'CRYPTOMUS',
+    },
+  });
+}
+
+export async function findDepositByCryptomusOrderId(
+  cryptomusOrderId: string,
+  tx?: PrismaTransactionClient,
+): Promise<DepositRecord | null> {
+  const client = tx ?? getPrisma();
+  return client.deposit.findUnique({ where: { cryptomusOrderId } });
+}
+
 export async function updateDepositStatus(
   depositId: string,
   data: {
@@ -114,9 +142,10 @@ export async function updateDepositStatus(
     confirmedAt?: Date | null;
     ledgerEntryId?: string | null;
   },
+  tx?: PrismaTransactionClient,
 ): Promise<DepositRecord> {
-  const prisma = getPrisma();
-  return prisma.deposit.update({
+  const client = tx ?? getPrisma();
+  return client.deposit.update({
     where: { id: depositId },
     data,
   });

@@ -14,16 +14,20 @@ interface UpdateBalanceOptions {
   tx?: PrismaTransactionClient;
 }
 
-export async function getOrCreateWallet(userId: string, currency = 'USD'): Promise<WalletRecord> {
-  const prisma = getPrisma();
+export async function getOrCreateWallet(
+  userId: string,
+  currency = 'USD',
+  tx?: PrismaTransactionClient,
+): Promise<WalletRecord> {
+  const client = tx ?? getPrisma();
   try {
-    return await prisma.wallet.upsert({
+    return await client.wallet.upsert({
       where: { userId_currency: { userId, currency } },
       create: { userId, currency },
       update: {},
     });
   } catch {
-    const existing = await prisma.wallet.findUnique({
+    const existing = await client.wallet.findUnique({
       where: { userId_currency: { userId, currency } },
     });
     if (existing) return existing;

@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { ValidationError } from '../../../shared/errors';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { getConfig } from '../../../shared/config';
+import { getPrisma } from '../../../shared/database';
 import * as walletRepo from '../wallet.repository';
 import * as ledgerRepo from '../ledger.repository';
 import * as depositRepo from '../deposit.repository';
@@ -124,45 +125,60 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     return;
   }
 
-  const deposit = await depositRepo.findDepositById(depositId, userId);
-  if (!deposit) {
-    log.warn({ depositId, userId }, 'Deposit not found for Stripe session');
-    return;
+  const prisma = getPrisma();
+  const result = await prisma.$transaction(async (tx) => {
+    const deposit = await depositRepo.findDepositById(depositId, userId, tx);
+    if (!deposit) {
+      log.warn({ depositId, userId }, 'Deposit not found for Stripe session');
+      return null;
+    }
+
+    if (deposit.status !== 'PENDING') {
+      log.debug({ depositId, status: deposit.status }, 'Deposit already processed');
+      return null;
+    }
+
+    const amount = Number(deposit.amount);
+    const wallet = await walletRepo.getOrCreateWallet(userId, 'USD', tx);
+    const balanceBefore = Number(wallet.balance);
+    const newBalance = balanceBefore + amount;
+
+    await walletRepo.updateBalance({
+      walletId: wallet.id,
+      newBalance,
+      newHold: Number(wallet.holdAmount),
+      tx,
+    });
+
+    const entry = await ledgerRepo.createLedgerEntry(
+      {
+        userId,
+        walletId: wallet.id,
+        type: 'DEPOSIT',
+        amount,
+        balanceBefore,
+        balanceAfter: newBalance,
+        referenceType: 'deposit',
+        referenceId: depositId,
+        description: `Stripe deposit $${amount.toFixed(2)}`,
+      },
+      tx,
+    );
+
+    await depositRepo.updateDepositStatus(
+      depositId,
+      {
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        ledgerEntryId: entry.id,
+      },
+      tx,
+    );
+
+    return { amount };
+  });
+
+  if (result) {
+    log.info({ userId, depositId, amount: result.amount }, 'Stripe deposit confirmed');
   }
-
-  if (deposit.status !== 'PENDING') {
-    log.debug({ depositId, status: deposit.status }, 'Deposit already processed');
-    return;
-  }
-
-  const amount = Number(deposit.amount);
-  const wallet = await walletRepo.getOrCreateWallet(userId);
-  const balanceBefore = Number(wallet.balance);
-  const newBalance = balanceBefore + amount;
-
-  await walletRepo.updateBalance({
-    walletId: wallet.id,
-    newBalance,
-    newHold: Number(wallet.holdAmount),
-  });
-
-  const entry = await ledgerRepo.createLedgerEntry({
-    userId,
-    walletId: wallet.id,
-    type: 'DEPOSIT',
-    amount,
-    balanceBefore,
-    balanceAfter: newBalance,
-    referenceType: 'deposit',
-    referenceId: depositId,
-    description: `Stripe deposit $${amount.toFixed(2)}`,
-  });
-
-  await depositRepo.updateDepositStatus(depositId, {
-    status: 'CONFIRMED',
-    confirmedAt: new Date(),
-    ledgerEntryId: entry.id,
-  });
-
-  log.info({ userId, depositId, amount }, 'Stripe deposit confirmed');
 }
