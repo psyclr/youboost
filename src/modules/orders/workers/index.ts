@@ -1,4 +1,4 @@
-import { startWorker, scheduleRepeatingJob, closeQueue } from '../../../shared/queue';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
 import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { pollOrderStatuses } from './status-poll.worker';
@@ -8,18 +8,25 @@ export { startOrderTimeoutWorker, stopOrderTimeoutWorker } from './order-timeout
 
 const log = createServiceLogger('order-polling');
 
+const QUEUE_NAME = 'order-polling';
+
 export async function startOrderPolling(): Promise<void> {
   const config = getConfig();
 
-  await startWorker(async () => {
-    await pollOrderStatuses();
-  });
+  await startNamedWorker(
+    QUEUE_NAME,
+    async () => {
+      await pollOrderStatuses();
+    },
+    { retryable: false, concurrency: 1 },
+  );
 
-  await scheduleRepeatingJob('poll-order-statuses', config.polling.intervalMs);
+  const q = getNamedQueue(QUEUE_NAME);
+  await q.add('poll-order-statuses', {}, { repeat: { every: config.polling.intervalMs } });
   log.info({ intervalMs: config.polling.intervalMs }, 'Order polling started');
 }
 
 export async function stopOrderPolling(): Promise<void> {
-  await closeQueue();
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Order polling stopped');
 }

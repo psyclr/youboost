@@ -1,13 +1,14 @@
 import { startOrderPolling, stopOrderPolling } from '../index';
 
-const mockStartWorker = jest.fn().mockResolvedValue(undefined);
-const mockScheduleRepeatingJob = jest.fn().mockResolvedValue(undefined);
-const mockCloseQueue = jest.fn().mockResolvedValue(undefined);
+const mockStartNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockStopNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockQueueAdd = jest.fn().mockResolvedValue({});
+const mockGetNamedQueue = jest.fn().mockReturnValue({ add: mockQueueAdd });
 
 jest.mock('../../../../shared/queue', () => ({
-  startWorker: (...args: unknown[]): unknown => mockStartWorker(...args),
-  scheduleRepeatingJob: (...args: unknown[]): unknown => mockScheduleRepeatingJob(...args),
-  closeQueue: (...args: unknown[]): unknown => mockCloseQueue(...args),
+  startNamedWorker: (...args: unknown[]): unknown => mockStartNamedWorker(...args),
+  stopNamedWorker: (...args: unknown[]): unknown => mockStopNamedWorker(...args),
+  getNamedQueue: (...args: unknown[]): unknown => mockGetNamedQueue(...args),
 }));
 
 jest.mock('../../../../shared/config', () => ({
@@ -37,30 +38,33 @@ describe('Order Polling Bootstrap', () => {
   });
 
   describe('startOrderPolling', () => {
-    it('should start the worker', async () => {
+    it('should start a named worker for order-polling', async () => {
       await startOrderPolling();
 
-      expect(mockStartWorker).toHaveBeenCalledWith(expect.any(Function));
+      expect(mockStartNamedWorker).toHaveBeenCalledWith(
+        'order-polling',
+        expect.any(Function),
+        expect.objectContaining({ retryable: false, concurrency: 1 }),
+      );
     });
 
-    it('should schedule a repeating job', async () => {
+    it('should schedule a repeating job on the named queue', async () => {
       await startOrderPolling();
 
-      expect(mockScheduleRepeatingJob).toHaveBeenCalledWith('poll-order-statuses', 30_000);
-    });
-
-    it('should use interval from config', async () => {
-      await startOrderPolling();
-
-      expect(mockScheduleRepeatingJob).toHaveBeenCalledWith('poll-order-statuses', 30_000);
+      expect(mockGetNamedQueue).toHaveBeenCalledWith('order-polling');
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        'poll-order-statuses',
+        {},
+        { repeat: { every: 30_000 } },
+      );
     });
   });
 
   describe('stopOrderPolling', () => {
-    it('should close the queue', async () => {
+    it('should stop the named worker', async () => {
       await stopOrderPolling();
 
-      expect(mockCloseQueue).toHaveBeenCalled();
+      expect(mockStopNamedWorker).toHaveBeenCalledWith('order-polling');
     });
 
     it('should resolve without errors', async () => {

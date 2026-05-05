@@ -1,5 +1,4 @@
-import { Queue, Worker, type Job } from 'bullmq';
-import { getRedis } from '../../../shared/redis/redis';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { findExpiredPendingDeposits, updateDepositStatus } from '../deposit.repository';
 
@@ -7,16 +6,6 @@ const log = createServiceLogger('deposit-expiry');
 
 const QUEUE_NAME = 'deposit-expiry';
 const CHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-
-let queue: Queue | null = null;
-let worker: Worker | null = null;
-
-function getExpiryQueue(): Queue {
-  queue ??= new Queue(QUEUE_NAME, {
-    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-  });
-  return queue;
-}
 
 async function processExpiredDeposits(): Promise<void> {
   const expired = await findExpiredPendingDeposits();
@@ -38,44 +27,21 @@ async function processExpiredDeposits(): Promise<void> {
 }
 
 export async function startDepositExpiryWorker(): Promise<void> {
-  if (worker) {
-    log.warn('Deposit expiry worker already started');
-    return;
-  }
-
-  worker = new Worker(
+  await startNamedWorker(
     QUEUE_NAME,
-    async (_job: Job) => {
+    async () => {
       await processExpiredDeposits();
     },
-    {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-      concurrency: 1,
-    },
+    { retryable: false, concurrency: 1 },
   );
 
-  worker.on('failed', (job, err) => {
-    log.error({ jobName: job?.name, err }, 'Deposit expiry job failed');
-  });
-
-  worker.on('completed', (job) => {
-    log.debug({ jobName: job.name }, 'Deposit expiry job completed');
-  });
-
-  const q = getExpiryQueue();
+  const q = getNamedQueue(QUEUE_NAME);
   await q.add('deposit-expiry-tick', {}, { repeat: { every: CHECK_INTERVAL_MS } });
 
   log.info({ intervalMs: CHECK_INTERVAL_MS }, 'Deposit expiry worker started');
 }
 
 export async function stopDepositExpiryWorker(): Promise<void> {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
-  if (queue) {
-    await queue.close();
-    queue = null;
-  }
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Deposit expiry worker stopped');
 }

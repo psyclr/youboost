@@ -1,5 +1,5 @@
-import { Queue, Worker, type Job } from 'bullmq';
-import { getRedis } from '../../shared/redis/redis';
+import type { Job } from 'bullmq';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../shared/queue';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { getEmailProvider } from './utils/email-provider-factory';
 import * as repo from './notification.repository';
@@ -7,23 +7,14 @@ import * as repo from './notification.repository';
 const log = createServiceLogger('notification-dispatcher');
 
 const QUEUE_NAME = 'notification-delivery';
-let queue: Queue | null = null;
-let worker: Worker | null = null;
 
 interface NotificationJobData {
   notificationId: string;
 }
 
-function getNotificationQueue(): Queue {
-  queue ??= new Queue(QUEUE_NAME, {
-    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-  });
-  return queue;
-}
-
 export async function enqueueNotification(notificationId: string): Promise<void> {
   try {
-    const q = getNotificationQueue();
+    const q = getNamedQueue(QUEUE_NAME);
     const jobData: NotificationJobData = { notificationId };
 
     await q.add('deliver-notification', jobData, {
@@ -74,45 +65,17 @@ export async function processNotificationDelivery(job: Job<NotificationJobData>)
 }
 
 export async function startNotificationWorker(): Promise<void> {
-  if (worker) {
-    log.warn('Notification worker already started');
-    return;
-  }
-
-  worker = new Worker(
+  await startNamedWorker<NotificationJobData>(
     QUEUE_NAME,
-    async (job: Job<NotificationJobData>) => {
-      log.debug(
-        { jobName: job.name, notificationId: job.data.notificationId },
-        'Processing notification delivery',
-      );
+    async (job) => {
       await processNotificationDelivery(job);
     },
-    {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-      concurrency: 3,
-    },
+    { retryable: true, concurrency: 3 },
   );
-
-  worker.on('failed', (job, err) => {
-    log.error({ jobName: job?.name, err }, 'Notification delivery job failed');
-  });
-
-  worker.on('completed', (job) => {
-    log.debug({ jobName: job.name }, 'Notification delivery job completed');
-  });
-
   log.info('Notification worker started');
 }
 
 export async function stopNotificationWorker(): Promise<void> {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
-  if (queue) {
-    await queue.close();
-    queue = null;
-  }
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Notification worker stopped');
 }

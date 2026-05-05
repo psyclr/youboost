@@ -1,5 +1,4 @@
-import { Queue, Worker, type Job } from 'bullmq';
-import { getRedis } from '../../../shared/redis/redis';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
 import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import * as ordersRepo from '../orders.repository';
@@ -17,16 +16,6 @@ const log = createServiceLogger('order-timeout');
 
 const QUEUE_NAME = 'order-timeout';
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-
-let queue: Queue | null = null;
-let worker: Worker | null = null;
-
-function getTimeoutQueue(): Queue {
-  queue ??= new Queue(QUEUE_NAME, {
-    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-  });
-  return queue;
-}
 
 async function attemptFinalStatusCheck(order: OrderRecord): Promise<string | null> {
   if (!order.externalOrderId || !order.providerId) return null;
@@ -126,44 +115,21 @@ export async function processTimedOutOrders(): Promise<void> {
 }
 
 export async function startOrderTimeoutWorker(): Promise<void> {
-  if (worker) {
-    log.warn('Order timeout worker already started');
-    return;
-  }
-
-  worker = new Worker(
+  await startNamedWorker(
     QUEUE_NAME,
-    async (_job: Job) => {
+    async () => {
       await processTimedOutOrders();
     },
-    {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-      concurrency: 1,
-    },
+    { retryable: false, concurrency: 1 },
   );
 
-  worker.on('failed', (job, err) => {
-    log.error({ jobName: job?.name, err }, 'Order timeout job failed');
-  });
-
-  worker.on('completed', (job) => {
-    log.debug({ jobName: job.name }, 'Order timeout job completed');
-  });
-
-  const q = getTimeoutQueue();
+  const q = getNamedQueue(QUEUE_NAME);
   await q.add('order-timeout-tick', {}, { repeat: { every: CHECK_INTERVAL_MS } });
 
   log.info({ intervalMs: CHECK_INTERVAL_MS }, 'Order timeout worker started');
 }
 
 export async function stopOrderTimeoutWorker(): Promise<void> {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
-  if (queue) {
-    await queue.close();
-    queue = null;
-  }
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Order timeout worker stopped');
 }

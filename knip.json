@@ -17,6 +17,7 @@
   "ignoreIssues": {
     "src/modules/**/*.types.ts": ["exports", "types"],
     "src/modules/billing/providers/registry.ts": ["exports"],
+    "src/shared/queue/queue.ts": ["exports"],
     "src/modules/notifications/utils/email-templates.ts": ["exports"],
     "src/modules/notifications/utils/email-provider-factory.ts": ["exports"],
     "frontend/src/lib/api/**": ["exports", "types"]

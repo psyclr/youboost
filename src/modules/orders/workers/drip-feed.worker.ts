@@ -1,5 +1,4 @@
-import { Queue, Worker, type Job } from 'bullmq';
-import { getRedis } from '../../../shared/redis/redis';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import { selectProviderById } from '../../providers';
 import * as ordersRepo from '../orders.repository';
@@ -10,15 +9,6 @@ import type { OrderRecord } from '../orders.types';
 const log = createServiceLogger('drip-feed-worker');
 
 const QUEUE_NAME = 'drip-feed';
-let queue: Queue | null = null;
-let worker: Worker | null = null;
-
-function getDripFeedQueue(): Queue {
-  queue ??= new Queue(QUEUE_NAME, {
-    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-  });
-  return queue;
-}
 
 async function processDripFeedRun(order: OrderRecord): Promise<void> {
   if (order.dripFeedPausedAt) {
@@ -55,9 +45,7 @@ async function processDripFeedRun(order: OrderRecord): Promise<void> {
     'Drip-feed run submitted',
   );
 
-  // Check if all runs are completed
   if (updated.dripFeedRunsCompleted >= order.dripFeedRuns) {
-    // Check if service has refill guarantee
     if (service.refillDays) {
       await setRefillEligibility(order.id, service.refillDays);
     } else {
@@ -86,52 +74,27 @@ async function processDripFeedBatch(): Promise<void> {
       await processDripFeedRun(order);
     } catch (err) {
       log.error({ orderId: order.id, err }, 'Failed to process drip-feed run');
-      // Re-throw to let BullMQ handle retry logic
       throw err;
     }
   }
 }
 
 export async function startDripFeedWorker(): Promise<void> {
-  if (worker) {
-    log.warn('Drip-feed worker already started');
-    return;
-  }
-
-  worker = new Worker(
+  await startNamedWorker(
     QUEUE_NAME,
-    async (_job: Job) => {
+    async () => {
       await processDripFeedBatch();
     },
-    {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-      concurrency: 1,
-    },
+    { retryable: true, concurrency: 1 },
   );
 
-  worker.on('failed', (job, err) => {
-    log.error({ jobName: job?.name, err }, 'Drip-feed job failed');
-  });
-
-  worker.on('completed', (job) => {
-    log.debug({ jobName: job.name }, 'Drip-feed job completed');
-  });
-
-  // Schedule repeatable job every 60 seconds
-  const q = getDripFeedQueue();
+  const q = getNamedQueue(QUEUE_NAME);
   await q.add('drip-feed-tick', {}, { repeat: { every: 60_000 } });
 
   log.info('Drip-feed worker started (interval: 60s)');
 }
 
 export async function stopDripFeedWorker(): Promise<void> {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
-  if (queue) {
-    await queue.close();
-    queue = null;
-  }
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Drip-feed worker stopped');
 }

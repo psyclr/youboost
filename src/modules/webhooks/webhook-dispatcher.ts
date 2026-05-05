@@ -1,24 +1,15 @@
 import crypto from 'node:crypto';
-import { Queue, Worker, type Job } from 'bullmq';
-import { getRedis } from '../../shared/redis/redis';
+import type { Job } from 'bullmq';
+import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../shared/queue';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as repo from './webhooks.repository';
 
 const log = createServiceLogger('webhook-dispatcher');
 
 const QUEUE_NAME = 'webhook-delivery';
-let queue: Queue | null = null;
-let worker: Worker | null = null;
 
 export function signPayload(payload: string, secret: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('hex');
-}
-
-function getWebhookQueue(): Queue {
-  queue ??= new Queue(QUEUE_NAME, {
-    connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-  });
-  return queue;
 }
 
 export interface WebhookJobData {
@@ -38,7 +29,7 @@ export async function enqueueWebhookDelivery(
     const webhooks = await repo.findActiveWebhooksByEvent(userId, event);
     if (webhooks.length === 0) return;
 
-    const q = getWebhookQueue();
+    const q = getNamedQueue(QUEUE_NAME);
 
     for (const webhook of webhooks) {
       const jobData: WebhookJobData = {
@@ -81,7 +72,6 @@ export async function processWebhookDelivery(job: Job<WebhookJobData>): Promise<
     throw new Error(`Webhook delivery failed: ${response.status} ${response.statusText}`);
   }
 
-  // Fire-and-forget lastTriggeredAt update
   repo.updateLastTriggeredAt(webhookId).catch((err) => {
     log.error({ err, webhookId }, 'Failed to update lastTriggeredAt');
   });
@@ -90,45 +80,17 @@ export async function processWebhookDelivery(job: Job<WebhookJobData>): Promise<
 }
 
 export async function startWebhookWorker(): Promise<void> {
-  if (worker) {
-    log.warn('Webhook worker already started');
-    return;
-  }
-
-  worker = new Worker(
+  await startNamedWorker<WebhookJobData>(
     QUEUE_NAME,
-    async (job: Job<WebhookJobData>) => {
-      log.debug(
-        { jobName: job.name, webhookId: job.data.webhookId },
-        'Processing webhook delivery',
-      );
+    async (job) => {
       await processWebhookDelivery(job);
     },
-    {
-      connection: getRedis().duplicate({ maxRetriesPerRequest: null }),
-      concurrency: 3,
-    },
+    { retryable: true, concurrency: 3 },
   );
-
-  worker.on('failed', (job, err) => {
-    log.error({ jobName: job?.name, err }, 'Webhook delivery job failed');
-  });
-
-  worker.on('completed', (job) => {
-    log.debug({ jobName: job.name }, 'Webhook delivery job completed');
-  });
-
   log.info('Webhook worker started');
 }
 
 export async function stopWebhookWorker(): Promise<void> {
-  if (worker) {
-    await worker.close();
-    worker = null;
-  }
-  if (queue) {
-    await queue.close();
-    queue = null;
-  }
+  await stopNamedWorker(QUEUE_NAME);
   log.info('Webhook worker stopped');
 }

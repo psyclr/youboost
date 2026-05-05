@@ -1,1 +1,11 @@
-export { getQueue, startWorker, scheduleRepeatingJob, closeQueue } from './queue';
+export {
+  getQueue,
+  startWorker,
+  scheduleRepeatingJob,
+  closeQueue,
+  getNamedQueue,
+  startNamedWorker,
+  stopNamedWorker,
+  closeAllQueues,
+  type WorkerOptions,
+} from './queue';
