@@ -61,6 +61,41 @@ describe('Stripe Webhook Raw Body Handling', () => {
     expect(JSON.parse(rawBody)).toEqual(mockWebhookPayload);
   });
 
+  it('should capture raw body when routes are registered with a prefix', async () => {
+    // Regression test: production registers stripeRoutes with prefix '/billing/stripe'.
+    // Previously the content-type parser branched on req.url === '/webhook',
+    // which was never true in production (req.url is '/billing/stripe/webhook').
+    const prefixedApp = Fastify();
+    await prefixedApp.register(stripeRoutes, { prefix: '/billing/stripe' });
+    await prefixedApp.ready();
+
+    const mockPayload = {
+      id: 'evt_prefix_1',
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_prefix_1' } },
+    };
+    const mockHandleWebhookEvent = jest
+      .spyOn(stripeService, 'handleWebhookEvent')
+      .mockResolvedValue();
+
+    const response = await prefixedApp.inject({
+      method: 'POST',
+      url: '/billing/stripe/webhook',
+      headers: {
+        'content-type': 'application/json',
+        'stripe-signature': 'sig',
+      },
+      payload: mockPayload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockHandleWebhookEvent).toHaveBeenCalledTimes(1);
+    const [rawBody] = mockHandleWebhookEvent.mock.calls[0]!;
+    expect(JSON.parse(rawBody)).toEqual(mockPayload);
+
+    await prefixedApp.close();
+  });
+
   it('should return error when stripe-signature header is missing', async () => {
     const response = await app.inject({
       method: 'POST',

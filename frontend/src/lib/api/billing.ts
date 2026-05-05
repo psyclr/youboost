@@ -38,3 +38,9 @@ export const createStripeCheckout = (amount: number) =>
     method: 'POST',
     body: JSON.stringify({ amount }),
   });
+
+export const createCryptomusCheckout = (amount: number) =>
+  apiRequest<{ orderId: string; url: string }>('/billing/cryptomus/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });

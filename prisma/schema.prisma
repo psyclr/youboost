@@ -373,14 +373,16 @@ model Deposit {
   cryptoAmount   Decimal       @default(0) @map("crypto_amount") @db.Decimal(20, 8)
   cryptoCurrency String        @default("") @map("crypto_currency") @db.VarChar(10)
   paymentAddress String        @default("") @map("payment_address") @db.VarChar(255)
-  stripeSessionId String?      @unique @map("stripe_session_id") @db.VarChar(255)
-  status         DepositStatus @default(PENDING)
-  txHash         String?       @map("tx_hash") @db.VarChar(255)
-  expiresAt      DateTime      @map("expires_at") @db.Timestamptz(6)
-  confirmedAt    DateTime?     @map("confirmed_at") @db.Timestamptz(6)
-  ledgerEntryId  String?       @map("ledger_entry_id") @db.Uuid
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  stripeSessionId      String?       @unique @map("stripe_session_id") @db.VarChar(255)
+  cryptomusOrderId     String?       @unique @map("cryptomus_order_id") @db.VarChar(255)
+  cryptomusCheckoutUrl String?       @map("cryptomus_checkout_url") @db.VarChar(512)
+  status               DepositStatus @default(PENDING)
+  txHash               String?       @map("tx_hash") @db.VarChar(255)
+  expiresAt            DateTime      @map("expires_at") @db.Timestamptz(6)
+  confirmedAt          DateTime?     @map("confirmed_at") @db.Timestamptz(6)
+  ledgerEntryId        String?       @map("ledger_entry_id") @db.Uuid
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -393,6 +395,7 @@ model Deposit {
 enum PaymentMethod {
   CRYPTO
   STRIPE
+  CRYPTOMUS
 }
 
 enum DepositStatus {

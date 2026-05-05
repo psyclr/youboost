@@ -17,6 +17,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/.env.local
 frontend/test-screenshots/
+frontend/screenshots/
 tests/screenshots/
 
 # Tool artifacts

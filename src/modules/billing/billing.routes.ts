@@ -4,21 +4,8 @@ import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import { authenticate } from '../auth/auth.middleware';
 import * as billingService from './billing.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
-import { depositSchema, transactionsQuerySchema, transactionIdSchema } from './billing.types';
-import { confirmDepositSchema, depositIdSchema, depositsQuerySchema } from './deposit.types';
-
-function validateBody<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  body: unknown,
-): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
+import { transactionsQuerySchema, transactionIdSchema } from './billing.types';
+import { depositIdSchema, depositsQuerySchema } from './deposit.types';
 
 function validateQuery<T>(
   schema: {
@@ -63,13 +50,6 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(StatusCodes.OK).send(result);
   });
 
-  app.post('/deposit', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const input = validateBody(depositSchema, request.body);
-    const result = await billingService.createDeposit(user.userId, input);
-    return reply.status(StatusCodes.CREATED).send(result);
-  });
-
   app.get('/transactions', async (request: FastifyRequest, reply: FastifyReply) => {
     const user = getAuthUser(request);
     const query = validateQuery(transactionsQuerySchema, request.query);
@@ -95,14 +75,6 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const user = getAuthUser(request);
     const params = validateParams(depositIdSchema, request.params);
     const result = await billingService.getDeposit(params.depositId, user.userId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
-
-  app.post('/deposits/:depositId/confirm', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const params = validateParams(depositIdSchema, request.params);
-    const body = validateBody(confirmDepositSchema, request.body);
-    const result = await billingService.confirmDeposit(params.depositId, body, user.userId);
     return reply.status(StatusCodes.OK).send(result);
   });
 }

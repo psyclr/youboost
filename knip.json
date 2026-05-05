@@ -12,7 +12,7 @@
       "ignoreDependencies": ["@testing-library/*", "tw-animate-css", "shadcn", "tailwindcss"]
     }
   },
-  "ignore": ["frontend/src/components/ui/**"],
+  "ignore": ["frontend/src/components/ui/**", "src/modules/billing/providers/**"],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
     "src/modules/**/*.types.ts": ["exports", "types"],

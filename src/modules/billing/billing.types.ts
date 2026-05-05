@@ -1,13 +1,6 @@
 import { z } from 'zod/v4';
 import type { LedgerType } from '../../generated/prisma';
 
-export const depositSchema = z.object({
-  amount: z.number().min(10),
-  currency: z.literal('USD'),
-  paymentMethod: z.literal('crypto'),
-  cryptoCurrency: z.enum(['USDT', 'BTC', 'ETH']),
-});
-
 export const transactionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -20,7 +13,6 @@ export const transactionIdSchema = z.object({
   transactionId: z.uuid(),
 });
 
-export type DepositInput = z.infer<typeof depositSchema>;
 export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
 export type TransactionIdParam = z.infer<typeof transactionIdSchema>;
 
@@ -30,17 +22,6 @@ export interface BalanceResponse {
   frozen: number;
   available: number;
   currency: string;
-}
-
-export interface DepositResponse {
-  depositId: string;
-  paymentAddress: string;
-  amount: number;
-  cryptoAmount: number;
-  cryptoCurrency: string;
-  expiresAt: Date;
-  status: string;
-  qrCode: string;
 }
 
 export interface TransactionSummary {

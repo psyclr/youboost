@@ -1,14 +1,5 @@
 import { z } from 'zod/v4';
 
-export const createDepositSchema = z.object({
-  amount: z.number().min(10),
-  cryptoCurrency: z.enum(['USDT', 'BTC', 'ETH']),
-});
-
-export const confirmDepositSchema = z.object({
-  txHash: z.string().min(1),
-});
-
 export const depositIdSchema = z.object({
   depositId: z.uuid(),
 });
@@ -19,8 +10,6 @@ export const depositsQuerySchema = z.object({
   status: z.enum(['PENDING', 'CONFIRMED', 'EXPIRED', 'FAILED']).optional(),
 });
 
-export type CreateDepositInput = z.infer<typeof createDepositSchema>;
-export type ConfirmDepositInput = z.infer<typeof confirmDepositSchema>;
 export type DepositIdParam = z.infer<typeof depositIdSchema>;
 export type DepositsQuery = z.infer<typeof depositsQuerySchema>;
 

@@ -31,19 +31,6 @@ const baseSchemas: Record<string, OpenAPIV3.SchemaObject> = {
       createdAt: { type: 'string', format: 'date-time' },
     },
   },
-  DepositResponse: {
-    type: 'object',
-    properties: {
-      depositId: { type: 'string', format: 'uuid' },
-      paymentAddress: { type: 'string' },
-      amount: { type: 'number' },
-      cryptoAmount: { type: 'number' },
-      cryptoCurrency: { type: 'string' },
-      expiresAt: { type: 'string', format: 'date-time' },
-      status: { type: 'string' },
-      qrCode: { type: 'string' },
-    },
-  },
   DepositDetail: {
     type: 'object',
     properties: {

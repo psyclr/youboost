@@ -1,55 +1,6 @@
-import { depositSchema, transactionsQuerySchema, transactionIdSchema } from '../billing.types';
+import { transactionsQuerySchema, transactionIdSchema } from '../billing.types';
 
 describe('Billing Validation Schemas', () => {
-  describe('depositSchema', () => {
-    const valid = {
-      amount: 50,
-      currency: 'USD' as const,
-      paymentMethod: 'crypto' as const,
-      cryptoCurrency: 'USDT' as const,
-    };
-
-    it('should accept valid input', () => {
-      expect(() => depositSchema.parse(valid)).not.toThrow();
-    });
-
-    it('should accept minimum amount of 10', () => {
-      expect(() => depositSchema.parse({ ...valid, amount: 10 })).not.toThrow();
-    });
-
-    it('should reject amount below 10', () => {
-      expect(() => depositSchema.parse({ ...valid, amount: 9 })).toThrow();
-    });
-
-    it('should reject zero amount', () => {
-      expect(() => depositSchema.parse({ ...valid, amount: 0 })).toThrow();
-    });
-
-    it('should reject negative amount', () => {
-      expect(() => depositSchema.parse({ ...valid, amount: -5 })).toThrow();
-    });
-
-    it('should reject non-USD currency', () => {
-      expect(() => depositSchema.parse({ ...valid, currency: 'EUR' })).toThrow();
-    });
-
-    it('should reject non-crypto payment method', () => {
-      expect(() => depositSchema.parse({ ...valid, paymentMethod: 'card' })).toThrow();
-    });
-
-    it('should accept BTC crypto currency', () => {
-      expect(() => depositSchema.parse({ ...valid, cryptoCurrency: 'BTC' })).not.toThrow();
-    });
-
-    it('should accept ETH crypto currency', () => {
-      expect(() => depositSchema.parse({ ...valid, cryptoCurrency: 'ETH' })).not.toThrow();
-    });
-
-    it('should reject unsupported crypto currency', () => {
-      expect(() => depositSchema.parse({ ...valid, cryptoCurrency: 'DOGE' })).toThrow();
-    });
-  });
-
   describe('transactionsQuerySchema', () => {
     it('should accept empty object with defaults', () => {
       const result = transactionsQuerySchema.parse({});

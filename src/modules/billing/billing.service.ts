@@ -1,27 +1,19 @@
-import { NotFoundError, ValidationError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import { paymentGateway } from './utils/stub-payment-gateway';
+import { NotFoundError } from '../../shared/errors';
 import * as walletRepo from './wallet.repository';
 import * as ledgerRepo from './ledger.repository';
 import * as depositRepo from './deposit.repository';
 import type {
-  DepositInput,
   TransactionsQuery,
   BalanceResponse,
-  DepositResponse,
   PaginatedTransactions,
   TransactionDetailed,
 } from './billing.types';
 import type {
-  CreateDepositInput,
-  ConfirmDepositInput,
   DepositsQuery,
   DepositRecord,
   DepositDetailResponse,
   PaginatedDeposits,
 } from './deposit.types';
-
-const log = createServiceLogger('billing');
 
 export async function getBalance(userId: string): Promise<BalanceResponse> {
   const wallet = await walletRepo.getOrCreateWallet(userId);
@@ -34,135 +26,6 @@ export async function getBalance(userId: string): Promise<BalanceResponse> {
     frozen,
     available: balance - frozen,
     currency: wallet.currency,
-  };
-}
-
-export async function createDeposit(userId: string, input: DepositInput): Promise<DepositResponse> {
-  await walletRepo.getOrCreateWallet(userId);
-
-  const payment = await paymentGateway.createPayment({
-    amount: input.amount,
-    currency: input.currency,
-    cryptoCurrency: input.cryptoCurrency,
-  });
-
-  const deposit = await depositRepo.createDeposit({
-    userId,
-    amount: input.amount,
-    cryptoAmount: payment.cryptoAmount,
-    cryptoCurrency: input.cryptoCurrency,
-    paymentAddress: payment.paymentAddress,
-    expiresAt: payment.expiresAt,
-  });
-
-  log.info({ userId, depositId: deposit.id }, 'Deposit created');
-
-  return {
-    depositId: deposit.id,
-    paymentAddress: payment.paymentAddress,
-    amount: input.amount,
-    cryptoAmount: payment.cryptoAmount,
-    cryptoCurrency: input.cryptoCurrency,
-    expiresAt: payment.expiresAt,
-    status: 'pending',
-    qrCode: payment.qrCode,
-  };
-}
-
-export async function initiateDeposit(
-  userId: string,
-  input: CreateDepositInput,
-): Promise<DepositDetailResponse> {
-  await walletRepo.getOrCreateWallet(userId);
-
-  const payment = await paymentGateway.createPayment({
-    amount: input.amount,
-    currency: 'USD',
-    cryptoCurrency: input.cryptoCurrency,
-  });
-
-  const deposit = await depositRepo.createDeposit({
-    userId,
-    amount: input.amount,
-    cryptoAmount: payment.cryptoAmount,
-    cryptoCurrency: input.cryptoCurrency,
-    paymentAddress: payment.paymentAddress,
-    expiresAt: payment.expiresAt,
-  });
-
-  log.info({ userId, depositId: deposit.id }, 'Deposit initiated');
-
-  return {
-    id: deposit.id,
-    amount: input.amount,
-    cryptoAmount: payment.cryptoAmount,
-    cryptoCurrency: input.cryptoCurrency,
-    paymentAddress: payment.paymentAddress,
-    status: 'PENDING',
-    txHash: null,
-    expiresAt: payment.expiresAt,
-    confirmedAt: null,
-    createdAt: deposit.createdAt,
-  };
-}
-
-export async function confirmDeposit(
-  depositId: string,
-  input: ConfirmDepositInput,
-  userId: string,
-): Promise<DepositDetailResponse> {
-  const deposit = await depositRepo.findDepositById(depositId, userId);
-  if (!deposit) {
-    throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
-  }
-
-  if (deposit.status !== 'PENDING') {
-    throw new ValidationError('Deposit cannot be confirmed', 'DEPOSIT_NOT_PENDING');
-  }
-
-  const wallet = await walletRepo.getOrCreateWallet(userId);
-  const balanceBefore = Number(wallet.balance);
-  const amount = Number(deposit.amount);
-  const newBalance = balanceBefore + amount;
-
-  await walletRepo.updateBalance({
-    walletId: wallet.id,
-    newBalance,
-    newHold: Number(wallet.holdAmount),
-  });
-
-  const entry = await ledgerRepo.createLedgerEntry({
-    userId,
-    walletId: wallet.id,
-    type: 'DEPOSIT',
-    amount,
-    balanceBefore,
-    balanceAfter: newBalance,
-    referenceType: 'deposit',
-    referenceId: depositId,
-    description: `Deposit ${amount} USD via ${deposit.cryptoCurrency}`,
-  });
-
-  const updated = await depositRepo.updateDepositStatus(depositId, {
-    status: 'CONFIRMED',
-    txHash: input.txHash,
-    confirmedAt: new Date(),
-    ledgerEntryId: entry.id,
-  });
-
-  log.info({ userId, depositId, txHash: input.txHash }, 'Deposit confirmed');
-
-  return {
-    id: updated.id,
-    amount: Number(updated.amount),
-    cryptoAmount: Number(updated.cryptoAmount),
-    cryptoCurrency: updated.cryptoCurrency,
-    paymentAddress: updated.paymentAddress,
-    status: updated.status,
-    txHash: updated.txHash,
-    expiresAt: updated.expiresAt,
-    confirmedAt: updated.confirmedAt,
-    createdAt: updated.createdAt,
   };
 }
 

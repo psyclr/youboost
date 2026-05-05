@@ -12,6 +12,7 @@ import { createServiceLogger } from './shared/utils/logger';
 import { authRoutes } from './modules/auth';
 import { billingRoutes } from './modules/billing';
 import { stripeRoutes } from './modules/billing/stripe';
+import { cryptomusRoutes } from './modules/billing/cryptomus';
 import { orderRoutes } from './modules/orders';
 import { providerRoutes } from './modules/providers';
 import { apiKeyRoutes } from './modules/api-keys';
@@ -116,6 +117,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
+  await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
   await app.register(orderRoutes, { prefix: '/orders' });
   await app.register(providerRoutes, { prefix: '/providers' });
   await app.register(apiKeyRoutes, { prefix: '/api-keys' });

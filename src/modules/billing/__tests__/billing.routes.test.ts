@@ -3,15 +3,17 @@ import { billingRoutes } from '../billing.routes';
 import { AppError } from '../../../shared/errors/app-error';
 
 const mockGetBalance = jest.fn();
-const mockCreateDeposit = jest.fn();
 const mockGetTransactions = jest.fn();
 const mockGetTransactionById = jest.fn();
+const mockListDeposits = jest.fn();
+const mockGetDeposit = jest.fn();
 
 jest.mock('../billing.service', () => ({
   getBalance: (...args: unknown[]): unknown => mockGetBalance(...args),
-  createDeposit: (...args: unknown[]): unknown => mockCreateDeposit(...args),
   getTransactions: (...args: unknown[]): unknown => mockGetTransactions(...args),
   getTransactionById: (...args: unknown[]): unknown => mockGetTransactionById(...args),
+  listDeposits: (...args: unknown[]): unknown => mockListDeposits(...args),
+  getDeposit: (...args: unknown[]): unknown => mockGetDeposit(...args),
 }));
 
 const mockVerifyAccessToken = jest.fn();
@@ -88,70 +90,6 @@ describe('Billing Routes', () => {
 
     it('should return 401 without token', async () => {
       const res = await app.inject({ method: 'GET', url: '/billing/balance' });
-      expect(res.statusCode).toBe(401);
-    });
-  });
-
-  describe('POST /billing/deposit', () => {
-    const validDeposit = {
-      amount: 50,
-      currency: 'USD',
-      paymentMethod: 'crypto',
-      cryptoCurrency: 'USDT',
-    };
-
-    it('should return 201 on valid deposit', async () => {
-      const headers = withAuth();
-      mockCreateDeposit.mockResolvedValue({
-        depositId: 'd1',
-        paymentAddress: '0xAddr',
-        amount: 50,
-        cryptoAmount: 50,
-        cryptoCurrency: 'USDT',
-        expiresAt: new Date().toISOString(),
-        status: 'pending',
-        qrCode: 'https://qr',
-      });
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/billing/deposit',
-        headers,
-        payload: validDeposit,
-      });
-
-      expect(res.statusCode).toBe(201);
-      expect(JSON.parse(res.body).depositId).toBe('d1');
-    });
-
-    it('should return 422 on invalid amount', async () => {
-      const headers = withAuth();
-      const res = await app.inject({
-        method: 'POST',
-        url: '/billing/deposit',
-        headers,
-        payload: { ...validDeposit, amount: 5 },
-      });
-      expect(res.statusCode).toBe(422);
-    });
-
-    it('should return 422 on invalid crypto currency', async () => {
-      const headers = withAuth();
-      const res = await app.inject({
-        method: 'POST',
-        url: '/billing/deposit',
-        headers,
-        payload: { ...validDeposit, cryptoCurrency: 'DOGE' },
-      });
-      expect(res.statusCode).toBe(422);
-    });
-
-    it('should return 401 without token', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/billing/deposit',
-        payload: validDeposit,
-      });
       expect(res.statusCode).toBe(401);
     });
   });

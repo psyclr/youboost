@@ -1,4 +1,4 @@
-import { getBalance, createDeposit, getTransactions, getTransactionById } from '../billing.service';
+import { getBalance, getTransactions, getTransactionById } from '../billing.service';
 
 const mockGetOrCreateWallet = jest.fn();
 const mockFindWalletByUserId = jest.fn();
@@ -9,31 +9,20 @@ jest.mock('../wallet.repository', () => ({
   updateBalance: jest.fn(),
 }));
 
-const mockCreateLedgerEntry = jest.fn();
 const mockFindLedgerById = jest.fn();
 const mockFindLedgerEntries = jest.fn();
 
 jest.mock('../ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
+  createLedgerEntry: jest.fn(),
   findLedgerById: (...args: unknown[]): unknown => mockFindLedgerById(...args),
   findLedgerEntries: (...args: unknown[]): unknown => mockFindLedgerEntries(...args),
 }));
 
-const mockCreatePayment = jest.fn();
-
-const mockDepositCreate = jest.fn();
-
 jest.mock('../deposit.repository', () => ({
-  createDeposit: (...args: unknown[]): unknown => mockDepositCreate(...args),
+  createDeposit: jest.fn(),
   findDepositById: jest.fn(),
   findDepositsByUserId: jest.fn(),
   updateDepositStatus: jest.fn(),
-}));
-
-jest.mock('../utils/stub-payment-gateway', () => ({
-  paymentGateway: {
-    createPayment: (...args: unknown[]): unknown => mockCreatePayment(...args),
-  },
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({
@@ -96,70 +85,6 @@ describe('Billing Service', () => {
       expect(mockGetOrCreateWallet).toHaveBeenCalledWith('new-user');
       expect(result.balance).toBe(0);
       expect(result.available).toBe(0);
-    });
-  });
-
-  describe('createDeposit', () => {
-    const depositInput = {
-      amount: 50,
-      currency: 'USD' as const,
-      paymentMethod: 'crypto' as const,
-      cryptoCurrency: 'USDT' as const,
-    };
-
-    it('should create deposit and return payment info', async () => {
-      mockGetOrCreateWallet.mockResolvedValue(mockWallet);
-      mockCreatePayment.mockResolvedValue({
-        paymentAddress: '0xAddr',
-        cryptoAmount: 50,
-        expiresAt: new Date('2030-01-01'),
-        qrCode: 'https://qr.example.com',
-      });
-      mockDepositCreate.mockResolvedValue({ id: 'deposit-1', createdAt: new Date() });
-
-      const result = await createDeposit('user-1', depositInput);
-
-      expect(result.depositId).toBe('deposit-1');
-      expect(result.paymentAddress).toBe('0xAddr');
-      expect(result.amount).toBe(50);
-      expect(result.cryptoAmount).toBe(50);
-      expect(result.status).toBe('pending');
-    });
-
-    it('should call payment gateway with correct params', async () => {
-      mockGetOrCreateWallet.mockResolvedValue(mockWallet);
-      mockCreatePayment.mockResolvedValue({
-        paymentAddress: '0x',
-        cryptoAmount: 1,
-        expiresAt: new Date(),
-        qrCode: 'qr',
-      });
-      mockDepositCreate.mockResolvedValue({ id: 'dep-1', createdAt: new Date() });
-
-      await createDeposit('user-1', depositInput);
-
-      expect(mockCreatePayment).toHaveBeenCalledWith({
-        amount: 50,
-        currency: 'USD',
-        cryptoCurrency: 'USDT',
-      });
-    });
-
-    it('should create deposit record in repository', async () => {
-      mockGetOrCreateWallet.mockResolvedValue(mockWallet);
-      mockCreatePayment.mockResolvedValue({
-        paymentAddress: '0x',
-        cryptoAmount: 1,
-        expiresAt: new Date(),
-        qrCode: 'qr',
-      });
-      mockDepositCreate.mockResolvedValue({ id: 'dep-1', createdAt: new Date() });
-
-      await createDeposit('user-1', depositInput);
-
-      expect(mockDepositCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-1', amount: 50, cryptoCurrency: 'USDT' }),
-      );
     });
   });
 

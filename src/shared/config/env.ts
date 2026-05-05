@@ -20,6 +20,12 @@ const envSchema = z.object({
   // Stripe (optional)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // Cryptomus (optional)
+  CRYPTOMUS_MERCHANT_ID: z.string().optional(),
+  CRYPTOMUS_PAYMENT_KEY: z.string().optional(),
+  // Public URL for Cryptomus webhook callback (required in prod, ngrok URL in dev)
+  CRYPTOMUS_CALLBACK_URL: z.string().optional(),
   PORT: z
     .string()
     .default('3000')
@@ -120,6 +126,11 @@ export interface AppConfig {
     secretKey: string | undefined;
     webhookSecret: string | undefined;
   };
+  cryptomus: {
+    merchantId: string | undefined;
+    paymentKey: string | undefined;
+    callbackUrl: string | undefined;
+  };
   provider: {
     encryptionKey: string;
     mode: 'stub' | 'real';
@@ -172,6 +183,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     stripe: {
       secretKey: parsed.STRIPE_SECRET_KEY,
       webhookSecret: parsed.STRIPE_WEBHOOK_SECRET,
+    },
+    cryptomus: {
+      merchantId: parsed.CRYPTOMUS_MERCHANT_ID,
+      paymentKey: parsed.CRYPTOMUS_PAYMENT_KEY,
+      callbackUrl: parsed.CRYPTOMUS_CALLBACK_URL,
     },
     provider: {
       encryptionKey: parsed.PROVIDER_ENCRYPTION_KEY,

@@ -38,39 +38,6 @@ export const billingPaths: OpenAPIV3.PathsObject = {
       },
     },
   },
-  '/billing/deposit': {
-    post: {
-      tags: ['Billing'],
-      summary: 'Create deposit (legacy)',
-      security: auth,
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['amount', 'currency', 'paymentMethod', 'cryptoCurrency'],
-              properties: {
-                amount: { type: 'number', minimum: 10 },
-                currency: { type: 'string', enum: ['USD'] },
-                paymentMethod: { type: 'string', enum: ['crypto'] },
-                cryptoCurrency: { type: 'string', enum: ['USDT', 'BTC', 'ETH'] },
-              },
-            },
-          },
-        },
-      },
-      responses: {
-        '201': {
-          description: 'Deposit created',
-          content: {
-            'application/json': { schema: { $ref: '#/components/schemas/DepositResponse' } },
-          },
-        },
-        '401': { description: 'Unauthorized' },
-      },
-    },
-  },
   '/billing/transactions': {
     get: {
       tags: ['Billing'],
@@ -165,43 +132,6 @@ export const billingPaths: OpenAPIV3.PathsObject = {
           },
         },
         '404': { description: 'Deposit not found' },
-      },
-    },
-  },
-  '/billing/deposits/{depositId}/confirm': {
-    post: {
-      tags: ['Billing'],
-      summary: 'Confirm deposit with transaction hash',
-      security: auth,
-      parameters: [
-        {
-          name: 'depositId',
-          in: 'path',
-          required: true,
-          schema: { type: 'string', format: 'uuid' },
-        },
-      ],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              required: ['txHash'],
-              properties: { txHash: { type: 'string' } },
-            },
-          },
-        },
-      },
-      responses: {
-        '200': {
-          description: 'Deposit confirmed',
-          content: {
-            'application/json': { schema: { $ref: '#/components/schemas/DepositDetail' } },
-          },
-        },
-        '404': { description: 'Deposit not found' },
-        '422': { description: 'Deposit cannot be confirmed' },
       },
     },
   },
