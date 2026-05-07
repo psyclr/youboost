@@ -160,6 +160,18 @@ export async function handleWebhookEvent(rawBody: string): Promise<void> {
     return;
   }
 
+  // Replay protection: Cryptomus webhook payload has no timestamp field,
+  // so we reject webhooks targeting deposits past their expiry window.
+  // Paired with confirmDepositTransaction idempotency (PENDING-only guard),
+  // this prevents stale webhooks from re-crediting expired deposits.
+  if (deposit.expiresAt && deposit.expiresAt < new Date() && deposit.status !== 'PENDING') {
+    log.warn(
+      { orderId, depositId: deposit.id, expiresAt: deposit.expiresAt, status: deposit.status },
+      'Cryptomus webhook for already-resolved expired deposit — ignoring as replay',
+    );
+    return;
+  }
+
   if (CONFIRMED_STATUSES.has(status)) {
     await confirmDepositTransaction(deposit.id, deposit.userId, PROVIDER_LABEL);
     return;
