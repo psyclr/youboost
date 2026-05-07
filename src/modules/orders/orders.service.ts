@@ -1,5 +1,6 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
+import { fireAndForget } from '../../shared/utils/fire-and-forget';
 import { holdFunds, releaseFunds } from '../billing';
 import { selectProviderById } from '../providers';
 import { applyCoupon } from '../coupons';
@@ -106,8 +107,10 @@ export async function createOrder(userId: string, input: CreateOrderInput): Prom
     });
 
     if (couponId) {
-      applyCoupon(couponId).catch(() => {
-        /* fire-and-forget */
+      fireAndForget(applyCoupon(couponId), {
+        operation: 'apply coupon usage',
+        logger: log,
+        extra: { userId, orderId: order.id, couponId },
       });
     }
 

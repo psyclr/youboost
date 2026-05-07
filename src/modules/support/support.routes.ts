@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { ValidationError } from '../../shared/errors';
+import { validateBody, validateQuery, validateParams } from '../../shared/middleware/validation';
 import { authenticate } from '../auth';
 import { requireAdmin } from '../providers';
 import * as supportService from './support.service';
@@ -11,45 +11,6 @@ import {
   ticketIdSchema,
   updateTicketStatusSchema,
 } from './support.types';
-
-function validateBody<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  body: unknown,
-): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
-
-function validateQuery<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  query: unknown,
-): T {
-  const result = schema.safeParse(query);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
-
-function validateParams<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  params: unknown,
-): T {
-  const result = schema.safeParse(params);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
 
 export async function supportRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authenticate);

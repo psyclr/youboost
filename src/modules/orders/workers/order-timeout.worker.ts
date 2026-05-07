@@ -1,6 +1,7 @@
 import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
 import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
+import { fireAndForget } from '../../../shared/utils/fire-and-forget';
 import * as ordersRepo from '../orders.repository';
 import { settleFunds } from '../utils/fund-settlement';
 import { enqueueWebhookDelivery } from '../../webhooks';
@@ -65,22 +66,32 @@ async function forceFailOrder(order: OrderRecord): Promise<void> {
   const updatedOrder = { ...order, remains: order.remains };
   await settleFunds(updatedOrder, 'FAILED');
 
-  enqueueWebhookDelivery(order.userId, 'order.failed', {
-    orderId: order.id,
-    status: 'FAILED',
-    reason: 'timeout',
-  }).catch(() => {});
+  fireAndForget(
+    enqueueWebhookDelivery(order.userId, 'order.failed', {
+      orderId: order.id,
+      status: 'FAILED',
+      reason: 'timeout',
+    }),
+    { operation: 'enqueue order.failed webhook', logger: log, extra: { orderId: order.id } },
+  );
 
-  enqueueNotification({
-    userId: order.userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: 'Order Timed Out',
-    body: `Your order ${order.id} has been marked as failed due to timeout. Funds have been released back to your balance.`,
-    eventType: 'order.failed',
-    referenceType: 'order',
-    referenceId: order.id,
-  }).catch(() => {});
+  fireAndForget(
+    enqueueNotification({
+      userId: order.userId,
+      type: 'EMAIL',
+      channel: 'user-email',
+      subject: 'Order Timed Out',
+      body: `Your order ${order.id} has been marked as failed due to timeout. Funds have been released back to your balance.`,
+      eventType: 'order.failed',
+      referenceType: 'order',
+      referenceId: order.id,
+    }),
+    {
+      operation: 'enqueue order.failed notification',
+      logger: log,
+      extra: { orderId: order.id },
+    },
+  );
 
   log.info({ orderId: order.id }, 'Order force-failed due to timeout, funds released');
 }

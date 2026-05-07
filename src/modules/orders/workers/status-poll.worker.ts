@@ -1,5 +1,6 @@
 import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
+import { fireAndForget } from '../../../shared/utils/fire-and-forget';
 import * as ordersRepo from '../orders.repository';
 import * as serviceRepo from '../service.repository';
 import { providersRepo, decryptApiKey, createSmmApiClient } from '../../providers';
@@ -100,26 +101,32 @@ function dispatchTerminalNotifications(
   const webhookEvent = TERMINAL_EVENT_MAP[newStatus];
   if (!webhookEvent) return;
 
-  enqueueWebhookDelivery(order.userId, webhookEvent, {
-    orderId: order.id,
-    status: newStatus,
-    remains,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+  fireAndForget(
+    enqueueWebhookDelivery(order.userId, webhookEvent, {
+      orderId: order.id,
+      status: newStatus,
+      remains,
+    }),
+    { operation: `enqueue ${webhookEvent} webhook`, logger: log, extra: { orderId: order.id } },
+  );
 
-  enqueueNotification({
-    userId: order.userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: TERMINAL_SUBJECT_MAP[newStatus] ?? 'Order Update',
-    body: `Your order ${order.id} status: ${newStatus}.`,
-    eventType: webhookEvent,
-    referenceType: 'order',
-    referenceId: order.id,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+  fireAndForget(
+    enqueueNotification({
+      userId: order.userId,
+      type: 'EMAIL',
+      channel: 'user-email',
+      subject: TERMINAL_SUBJECT_MAP[newStatus] ?? 'Order Update',
+      body: `Your order ${order.id} status: ${newStatus}.`,
+      eventType: webhookEvent,
+      referenceType: 'order',
+      referenceId: order.id,
+    }),
+    {
+      operation: `enqueue ${webhookEvent} notification`,
+      logger: log,
+      extra: { orderId: order.id },
+    },
+  );
 }
 
 async function handleRefillEligibility(orderId: string, serviceId: string): Promise<void> {

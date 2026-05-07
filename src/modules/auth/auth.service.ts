@@ -5,6 +5,7 @@ import {
   ValidationError,
 } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
+import { fireAndForget } from '../../shared/utils/fire-and-forget';
 import { hashPassword, comparePassword } from './utils/password';
 import {
   generateAccessToken,
@@ -45,16 +46,17 @@ export async function register(
 
   log.info({ userId: user.id }, 'User registered');
 
-  // Send verification email (fire-and-forget)
-  sendVerificationEmail(user.id, user.email).catch(() => {});
+  fireAndForget(sendVerificationEmail(user.id, user.email), {
+    operation: 'send verification email',
+    logger: log,
+    extra: { userId: user.id },
+  });
 
-  // Apply referral code if provided (fire-and-forget, non-blocking)
   if (input.referralCode) {
-    applyReferral(user.id, input.referralCode).catch((err) => {
-      log.warn(
-        { userId: user.id, referralCode: input.referralCode, err },
-        'Failed to apply referral code',
-      );
+    fireAndForget(applyReferral(user.id, input.referralCode), {
+      operation: 'apply referral code',
+      logger: log,
+      extra: { userId: user.id, referralCode: input.referralCode },
     });
   }
 

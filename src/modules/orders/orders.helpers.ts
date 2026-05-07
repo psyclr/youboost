@@ -1,5 +1,6 @@
 import { ValidationError, NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
+import { fireAndForget } from '../../shared/utils/fire-and-forget';
 import { releaseFunds } from '../billing';
 import { validateCoupon } from '../coupons';
 import { selectProviderById } from '../providers';
@@ -102,26 +103,25 @@ export function dispatchOrderNotifications(params: {
   price: number;
 }): void {
   const { userId, orderId, status, price } = params;
-  enqueueWebhookDelivery(userId, 'order.created', {
-    orderId,
-    status,
-    price,
-  }).catch(() => {
-    /* fire-and-forget */
+  fireAndForget(enqueueWebhookDelivery(userId, 'order.created', { orderId, status, price }), {
+    operation: 'enqueue order.created webhook',
+    logger: log,
+    extra: { userId, orderId },
   });
 
-  enqueueNotification({
-    userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: 'Order Created',
-    body: `Your order ${orderId} has been created.`,
-    eventType: 'order.created',
-    referenceType: 'order',
-    referenceId: orderId,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+  fireAndForget(
+    enqueueNotification({
+      userId,
+      type: 'EMAIL',
+      channel: 'user-email',
+      subject: 'Order Created',
+      body: `Your order ${orderId} has been created.`,
+      eventType: 'order.created',
+      referenceType: 'order',
+      referenceId: orderId,
+    }),
+    { operation: 'enqueue order.created notification', logger: log, extra: { userId, orderId } },
+  );
 }
 
 export function dispatchCancelNotifications(params: {
@@ -131,26 +131,24 @@ export function dispatchCancelNotifications(params: {
   refundAmount: number;
 }): void {
   const { userId, orderId, status, refundAmount } = params;
-  enqueueWebhookDelivery(userId, 'order.cancelled', {
-    orderId,
-    status,
-    refundAmount,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+  fireAndForget(
+    enqueueWebhookDelivery(userId, 'order.cancelled', { orderId, status, refundAmount }),
+    { operation: 'enqueue order.cancelled webhook', logger: log, extra: { userId, orderId } },
+  );
 
-  enqueueNotification({
-    userId,
-    type: 'EMAIL',
-    channel: 'user-email',
-    subject: 'Order Cancelled',
-    body: `Your order ${orderId} has been cancelled. Refund: $${refundAmount}.`,
-    eventType: 'order.cancelled',
-    referenceType: 'order',
-    referenceId: orderId,
-  }).catch(() => {
-    /* fire-and-forget */
-  });
+  fireAndForget(
+    enqueueNotification({
+      userId,
+      type: 'EMAIL',
+      channel: 'user-email',
+      subject: 'Order Cancelled',
+      body: `Your order ${orderId} has been cancelled. Refund: $${refundAmount}.`,
+      eventType: 'order.cancelled',
+      referenceType: 'order',
+      referenceId: orderId,
+    }),
+    { operation: 'enqueue order.cancelled notification', logger: log, extra: { userId, orderId } },
+  );
 }
 
 export function mapOrderToDetailed(order: OrderRecord): {
