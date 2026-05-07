@@ -13,7 +13,7 @@ import {
   getRefreshExpiresAt,
 } from './utils/tokens';
 import * as userRepo from './user.repository';
-import * as tokenStore from './token-store';
+import * as tokenStore from './token.repository';
 import { sendVerificationEmail } from './auth-email.service';
 import { applyReferral } from '../referrals';
 import type {

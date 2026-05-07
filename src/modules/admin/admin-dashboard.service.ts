@@ -1,28 +1,18 @@
-import { getPrisma } from '../../shared/database';
 import { createServiceLogger } from '../../shared/utils/logger';
+import * as repo from './admin-dashboard.repository';
 import type { DashboardStats } from './admin.types';
 
 const log = createServiceLogger('admin-dashboard');
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const prisma = getPrisma();
-
-  const [totalUsers, totalOrders, activeServices, revenueResult, recentOrderRecords] =
+  const [totalUsers, totalOrders, activeServices, totalRevenue, recentOrderRecords] =
     await Promise.all([
-      prisma.user.count(),
-      prisma.order.count(),
-      prisma.service.count({ where: { isActive: true } }),
-      prisma.order.aggregate({
-        _sum: { price: true },
-        where: { status: { in: ['COMPLETED', 'PARTIAL'] } },
-      }),
-      prisma.order.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
+      repo.countUsers(),
+      repo.countOrders(),
+      repo.countActiveServices(),
+      repo.sumRevenueByStatuses(['COMPLETED', 'PARTIAL']),
+      repo.findRecentOrders(10),
     ]);
-
-  const totalRevenue = revenueResult._sum.price ? Number(revenueResult._sum.price) : 0;
 
   const recentOrders = recentOrderRecords.map((r) => ({
     orderId: r.id,

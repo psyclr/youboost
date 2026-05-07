@@ -18,7 +18,7 @@ const mockRevokeRefresh = jest.fn();
 const mockRevokeAll = jest.fn();
 const mockBlacklist = jest.fn();
 
-jest.mock('../token-store', () => ({
+jest.mock('../token.repository', () => ({
   saveRefreshToken: (...args: unknown[]): unknown => mockSaveRefresh(...args),
   findRefreshToken: (...args: unknown[]): unknown => mockFindRefresh(...args),
   revokeRefreshToken: (...args: unknown[]): unknown => mockRevokeRefresh(...args),

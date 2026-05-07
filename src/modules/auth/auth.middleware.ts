@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { UnauthorizedError } from '../../shared/errors';
 import { verifyAccessToken } from './utils/tokens';
-import { isAccessTokenBlacklisted } from './token-store';
+import { isAccessTokenBlacklisted } from './token.repository';
 import type { AuthenticatedUser } from './auth.types';
 
 declare module 'fastify' {

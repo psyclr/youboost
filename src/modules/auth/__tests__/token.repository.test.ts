@@ -5,7 +5,7 @@ import {
   revokeAllUserTokens,
   blacklistAccessToken,
   isAccessTokenBlacklisted,
-} from '../token-store';
+} from '../token.repository';
 
 const mockCreate = jest.fn();
 const mockFindFirst = jest.fn();

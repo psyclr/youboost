@@ -23,7 +23,7 @@ jest.mock('../../auth/utils/tokens', () => ({
   verifyAccessToken: (...args: unknown[]): unknown => mockVerifyAccessToken(...args),
 }));
 
-jest.mock('../../auth/token-store', () => ({
+jest.mock('../../auth/token.repository', () => ({
   isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
 }));
 
