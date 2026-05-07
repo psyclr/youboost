@@ -1,4 +1,5 @@
 import { getPrisma } from '../../shared/database';
+import type { PrismaClient } from '../../generated/prisma';
 import { getRedis } from '../../shared/redis';
 
 const BLACKLIST_PREFIX = 'bl:';
@@ -12,51 +13,96 @@ interface RefreshTokenRecord {
   createdAt: Date;
 }
 
+export interface TokenRepository {
+  saveRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
+  findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  revokeRefreshToken(tokenHash: string): Promise<void>;
+  revokeAllUserTokens(userId: string): Promise<void>;
+  blacklistAccessToken(jti: string, expiresIn: number): Promise<void>;
+  isAccessTokenBlacklisted(jti: string): Promise<boolean>;
+}
+
+export function createTokenRepository(prisma: PrismaClient): TokenRepository {
+  async function saveRefreshToken(
+    userId: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    await prisma.refreshToken.create({
+      data: { userId, tokenHash, expiresAt },
+    });
+  }
+
+  async function findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
+    return prisma.refreshToken.findFirst({
+      where: {
+        tokenHash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+  }
+
+  async function revokeRefreshToken(tokenHash: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  async function revokeAllUserTokens(userId: string): Promise<void> {
+    await prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  async function blacklistAccessToken(jti: string, expiresIn: number): Promise<void> {
+    const redis = getRedis();
+    await redis.set(`${BLACKLIST_PREFIX}${jti}`, '1', 'EX', expiresIn);
+  }
+
+  async function isAccessTokenBlacklisted(jti: string): Promise<boolean> {
+    const redis = getRedis();
+    const result = await redis.get(`${BLACKLIST_PREFIX}${jti}`);
+    return result !== null;
+  }
+
+  return {
+    saveRefreshToken,
+    findRefreshToken,
+    revokeRefreshToken,
+    revokeAllUserTokens,
+    blacklistAccessToken,
+    isAccessTokenBlacklisted,
+  };
+}
+
+// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
 export async function saveRefreshToken(
   userId: string,
   tokenHash: string,
   expiresAt: Date,
 ): Promise<void> {
-  const prisma = getPrisma();
-  await prisma.refreshToken.create({
-    data: { userId, tokenHash, expiresAt },
-  });
+  return createTokenRepository(getPrisma()).saveRefreshToken(userId, tokenHash, expiresAt);
 }
 
 export async function findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
-  const prisma = getPrisma();
-  return prisma.refreshToken.findFirst({
-    where: {
-      tokenHash,
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-  });
+  return createTokenRepository(getPrisma()).findRefreshToken(tokenHash);
 }
 
 export async function revokeRefreshToken(tokenHash: string): Promise<void> {
-  const prisma = getPrisma();
-  await prisma.refreshToken.updateMany({
-    where: { tokenHash, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  return createTokenRepository(getPrisma()).revokeRefreshToken(tokenHash);
 }
 
 export async function revokeAllUserTokens(userId: string): Promise<void> {
-  const prisma = getPrisma();
-  await prisma.refreshToken.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  return createTokenRepository(getPrisma()).revokeAllUserTokens(userId);
 }
 
 export async function blacklistAccessToken(jti: string, expiresIn: number): Promise<void> {
-  const redis = getRedis();
-  await redis.set(`${BLACKLIST_PREFIX}${jti}`, '1', 'EX', expiresIn);
+  return createTokenRepository(getPrisma()).blacklistAccessToken(jti, expiresIn);
 }
 
 export async function isAccessTokenBlacklisted(jti: string): Promise<boolean> {
-  const redis = getRedis();
-  const result = await redis.get(`${BLACKLIST_PREFIX}${jti}`);
-  return result !== null;
+  return createTokenRepository(getPrisma()).isAccessTokenBlacklisted(jti);
 }
