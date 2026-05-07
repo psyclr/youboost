@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth/auth.middleware';
+import { authenticate } from '../auth';
 import { requireAdmin } from './providers.middleware';
 import * as providerService from './providers.service';
 import {

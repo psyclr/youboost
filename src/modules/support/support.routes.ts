@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth/auth.middleware';
-import { requireAdmin } from '../providers/providers.middleware';
+import { authenticate } from '../auth';
+import { requireAdmin } from '../providers';
 import * as supportService from './support.service';
 import {
   createTicketSchema,

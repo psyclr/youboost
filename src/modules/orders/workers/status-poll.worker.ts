@@ -2,9 +2,7 @@ import { getConfig } from '../../../shared/config';
 import { createServiceLogger } from '../../../shared/utils/logger';
 import * as ordersRepo from '../orders.repository';
 import * as serviceRepo from '../service.repository';
-import { findProviderById } from '../../providers/providers.repository';
-import { decryptApiKey } from '../../providers/utils/encryption';
-import { createSmmApiClient } from '../../providers/utils/smm-api-client';
+import { providersRepo, decryptApiKey, createSmmApiClient } from '../../providers';
 import { providerClient as stubClient } from '../utils/stub-provider-client';
 import { isCircuitOpen, recordFailure, recordSuccess } from '../utils/circuit-breaker';
 import { mapProviderStatus, isTerminalStatus } from '../utils/status-mapper';
@@ -73,7 +71,7 @@ async function resolveClient(providerId: string): Promise<ProviderClient> {
     return stubClient;
   }
 
-  const provider = await findProviderById(providerId);
+  const provider = await providersRepo.findProviderById(providerId);
   if (!provider) {
     throw new Error(`Provider not found: ${providerId}`);
   }

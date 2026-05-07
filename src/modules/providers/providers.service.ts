@@ -2,7 +2,7 @@ import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import { encryptApiKey, decryptApiKey } from './utils/encryption';
 import { createSmmApiClient } from './utils/smm-api-client';
-import type { ProviderServiceInfo, ProviderBalanceInfo } from '../orders/utils/provider-client';
+import type { ProviderServiceInfo, ProviderBalanceInfo } from '../orders';
 import * as providerRepo from './providers.repository';
 import type {
   CreateProviderInput,

@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth/auth.middleware';
+import { authenticate } from '../auth';
 import * as apiKeysService from './api-keys.service';
-import type { AuthenticatedUser } from '../auth/auth.types';
+import type { AuthenticatedUser } from '../auth';
 import { createApiKeySchema, apiKeysQuerySchema, apiKeyIdSchema } from './api-keys.types';
 
 function validateBody<T>(

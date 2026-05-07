@@ -6,8 +6,7 @@ import { hashPassword } from './utils/password';
 import * as userRepo from './user.repository';
 import * as emailTokenRepo from './email-token.repository';
 import type { EmailTokenType } from './email-token.repository';
-import { getEmailProvider } from '../notifications/utils/email-provider-factory';
-import { verificationEmail, passwordResetEmail } from '../notifications/utils/email-templates';
+import { getEmailProvider, verificationEmail, passwordResetEmail } from '../notifications';
 
 const log = createServiceLogger('auth-email');
 

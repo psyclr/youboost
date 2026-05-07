@@ -1,6 +1,6 @@
 import { getPrisma } from '../../shared/database';
 import type { OrderStatus } from '../../generated/prisma';
-import type { OrderRecord } from '../orders/orders.types';
+import type { OrderRecord } from '../orders';
 
 export async function countUsers(): Promise<number> {
   return getPrisma().user.count();

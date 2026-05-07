@@ -5,9 +5,7 @@ import * as ordersRepo from '../orders.repository';
 import { settleFunds } from '../utils/fund-settlement';
 import { enqueueWebhookDelivery } from '../../webhooks';
 import { enqueueNotification } from '../../notifications';
-import { findProviderById } from '../../providers/providers.repository';
-import { decryptApiKey } from '../../providers/utils/encryption';
-import { createSmmApiClient } from '../../providers/utils/smm-api-client';
+import { providersRepo, decryptApiKey, createSmmApiClient } from '../../providers';
 import { providerClient as stubClient } from '../utils/stub-provider-client';
 import { mapProviderStatus, isTerminalStatus } from '../utils/status-mapper';
 import type { OrderRecord } from '../orders.types';
@@ -25,7 +23,7 @@ async function attemptFinalStatusCheck(order: OrderRecord): Promise<string | nul
     if (order.providerId === 'stub') {
       client = stubClient;
     } else {
-      const provider = await findProviderById(order.providerId);
+      const provider = await providersRepo.findProviderById(order.providerId);
       if (!provider) return null;
       const apiKey = decryptApiKey(provider.apiKeyEncrypted);
       client = createSmmApiClient({ apiEndpoint: provider.apiEndpoint, apiKey });

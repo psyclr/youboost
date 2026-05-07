@@ -1,8 +1,8 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import * as ordersRepo from '../orders/orders.repository';
-import * as billingInternal from '../billing/billing-internal.service';
-import type { OrderRecord } from '../orders/orders.types';
+import { orderRepo as ordersRepo } from '../orders';
+import { chargeFunds, releaseFunds, refundFunds } from '../billing';
+import type { OrderRecord } from '../orders';
 import type { AdminOrdersQuery, AdminOrderResponse, PaginatedAdminOrders } from './admin.types';
 
 const log = createServiceLogger('admin-orders');
@@ -15,12 +15,12 @@ async function settleFinances(
   const RELEASE_STATUSES = ['FAILED', 'CANCELLED'];
 
   if (CHARGE_STATUSES.includes(status)) {
-    await billingInternal.chargeFunds(ctx.userId, ctx.amount, ctx.orderId);
+    await chargeFunds(ctx.userId, ctx.amount, ctx.orderId);
   } else if (RELEASE_STATUSES.includes(status)) {
-    await billingInternal.releaseFunds(ctx.userId, ctx.amount, ctx.orderId);
+    await releaseFunds(ctx.userId, ctx.amount, ctx.orderId);
   } else if (status === 'REFUNDED') {
-    await billingInternal.releaseFunds(ctx.userId, ctx.amount, ctx.orderId);
-    await billingInternal.refundFunds(ctx.userId, ctx.amount, ctx.orderId);
+    await releaseFunds(ctx.userId, ctx.amount, ctx.orderId);
+    await refundFunds(ctx.userId, ctx.amount, ctx.orderId);
   }
 }
 
@@ -126,10 +126,10 @@ export async function refundOrder(orderId: string): Promise<AdminOrderResponse> 
 
   // Release hold first if order was still processing
   if (order.status === 'PROCESSING') {
-    await billingInternal.releaseFunds(order.userId, amount, orderId);
+    await releaseFunds(order.userId, amount, orderId);
   }
 
-  await billingInternal.refundFunds(order.userId, amount, orderId);
+  await refundFunds(order.userId, amount, orderId);
 
   const updated = await ordersRepo.updateOrderStatus(orderId, {
     status: 'REFUNDED',

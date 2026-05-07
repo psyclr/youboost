@@ -3,7 +3,7 @@ import { createServiceLogger } from '../../shared/utils/logger';
 import { getRedis } from '../../shared/redis/redis';
 import * as catalogRepo from './catalog.repository';
 import type { CatalogQuery, CatalogServiceResponse, PaginatedCatalog } from './catalog.types';
-import type { ServiceRecord } from '../orders/orders.types';
+import type { ServiceRecord } from '../orders';
 
 const log = createServiceLogger('catalog');
 

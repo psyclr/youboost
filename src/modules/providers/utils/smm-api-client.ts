@@ -6,7 +6,7 @@ import type {
   StatusResult,
   ProviderServiceInfo,
   ProviderBalanceInfo,
-} from '../../orders/utils/provider-client';
+} from '../../orders';
 
 interface SmmApiClientOptions {
   apiEndpoint: string;

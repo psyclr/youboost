@@ -1,9 +1,7 @@
 import { createServiceLogger } from '../../shared/utils/logger';
 import { NotFoundError, ValidationError } from '../../shared/errors';
-import * as depositRepo from '../billing/deposit.repository';
-import * as walletRepo from '../billing/wallet.repository';
-import * as ledgerRepo from '../billing/ledger.repository';
-import type { DepositDetailResponse } from '../billing/deposit.types';
+import { depositRepo, walletRepo, ledgerRepo } from '../billing';
+import type { DepositDetailResponse } from '../billing';
 
 const log = createServiceLogger('admin-deposits');
 

@@ -1,5 +1,5 @@
 import { getPrisma } from '../../shared/database';
-import type { ServiceRecord } from '../orders/orders.types';
+import type { ServiceRecord } from '../orders';
 
 interface CatalogFilters {
   platform?: string | undefined;

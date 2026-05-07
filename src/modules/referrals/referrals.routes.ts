@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { authenticate } from '../auth/auth.middleware';
+import { authenticate } from '../auth';
 import * as referralsService from './referrals.service';
 
 export async function referralRoutes(app: FastifyInstance): Promise<void> {

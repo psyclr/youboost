@@ -1,4 +1,3 @@
-export { webhookRoutes } from './webhooks.routes';
 export {
   enqueueWebhookDelivery,
   startWebhookWorker,

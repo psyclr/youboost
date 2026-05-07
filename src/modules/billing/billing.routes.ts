@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth/auth.middleware';
+import { authenticate } from '../auth';
 import * as billingService from './billing.service';
-import type { AuthenticatedUser } from '../auth/auth.types';
+import type { AuthenticatedUser } from '../auth';
 import { transactionsQuerySchema, transactionIdSchema } from './billing.types';
 import { depositIdSchema, depositsQuerySchema } from './deposit.types';
 

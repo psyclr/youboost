@@ -1,8 +1,7 @@
 import { getConfig } from '../../shared/config';
 import { ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import type { ProviderClient } from '../orders/utils/provider-client';
-import { providerClient as stubClient } from '../orders/utils/stub-provider-client';
+import { stubProviderClient as stubClient, type ProviderClient } from '../orders';
 import { findActiveProvidersByPriority, findProviderById } from './providers.repository';
 import { decryptApiKey } from './utils/encryption';
 import { createSmmApiClient } from './utils/smm-api-client';

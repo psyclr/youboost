@@ -70,6 +70,46 @@ module.exports = [
     },
   },
   {
+    // Module boundary enforcement: cross-module imports must go via index.ts
+    files: ['src/modules/*/*.ts'],
+    ignores: ['src/modules/**/__tests__/**', 'src/modules/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex:
+                '^\\.\\./(auth|billing|orders|providers|admin|catalog|webhooks|notifications|api-keys|tracking|referrals|support|coupons)/.+$',
+              message:
+                'Cross-module imports must go through the module index. Import from "../<module>" instead of deep paths.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Same rule for nested module files (e.g. billing/stripe, orders/workers)
+    files: ['src/modules/*/*/*.ts'],
+    ignores: ['src/modules/**/__tests__/**', 'src/modules/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex:
+                '^\\.\\./\\.\\./(auth|billing|orders|providers|admin|catalog|webhooks|notifications|api-keys|tracking|referrals|support|coupons)/.+$',
+              message:
+                'Cross-module imports must go through the module index. Import from "../../<module>" instead of deep paths.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['tests/**/*.ts'],
     rules: {
       'max-lines': 'off',

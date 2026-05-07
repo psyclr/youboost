@@ -1,7 +1,7 @@
 import { NotFoundError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import * as userRepo from '../auth/user.repository';
-import * as walletRepo from '../billing/wallet.repository';
+import { userRepo } from '../auth';
+import { walletRepo } from '../billing';
 import type {
   AdminUsersQuery,
   AdminUpdateUserInput,

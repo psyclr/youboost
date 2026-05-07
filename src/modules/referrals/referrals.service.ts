@@ -1,8 +1,7 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
 import * as referralRepo from './referrals.repository';
-import * as walletRepo from '../billing/wallet.repository';
-import * as ledgerRepo from '../billing/ledger.repository';
+import { walletRepo, ledgerRepo } from '../billing';
 import { getPrisma } from '../../shared/database';
 import type { ReferralStats } from './referrals.types';
 

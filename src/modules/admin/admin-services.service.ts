@@ -1,8 +1,7 @@
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { createServiceLogger } from '../../shared/utils/logger';
-import * as serviceRepo from '../orders/service.repository';
-import { findProviderById } from '../providers/providers.repository';
-import type { ServiceRecord } from '../orders/orders.types';
+import { serviceRepo, type ServiceRecord } from '../orders';
+import { providersRepo } from '../providers';
 import type {
   AdminServicesQuery,
   AdminServiceCreateInput,
@@ -54,7 +53,7 @@ export async function listAllServices(query: AdminServicesQuery): Promise<{
 }
 
 export async function createService(input: AdminServiceCreateInput): Promise<AdminServiceResponse> {
-  const provider = await findProviderById(input.providerId);
+  const provider = await providersRepo.findProviderById(input.providerId);
   if (!provider) {
     throw new ValidationError('Provider not found', 'PROVIDER_NOT_FOUND');
   }
@@ -88,7 +87,7 @@ export async function updateService(
   }
 
   if (input.providerId) {
-    const provider = await findProviderById(input.providerId);
+    const provider = await providersRepo.findProviderById(input.providerId);
     if (!provider) {
       throw new ValidationError('Provider not found', 'PROVIDER_NOT_FOUND');
     }
