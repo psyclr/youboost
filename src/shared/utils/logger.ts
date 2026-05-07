@@ -10,34 +10,46 @@ const REDACT_PATHS = [
   'req.headers.cookie',
 ];
 
-const isDevelopment =
-  process.env['NODE_ENV'] !== 'production' && process.env['NODE_ENV'] !== 'test';
-const isTest = process.env['NODE_ENV'] === 'test';
+export interface CreateLoggerOptions {
+  level?: string;
+  nodeEnv?: string;
+}
 
-const baseConfig: pino.LoggerOptions = {
-  level: isTest ? 'silent' : (process.env['LOG_LEVEL'] ?? 'info'),
-  redact: {
-    paths: REDACT_PATHS,
-    censor: '[REDACTED]',
-  },
-  base: {
-    env: process.env['NODE_ENV'] ?? 'development',
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-};
+export function createLogger(options: CreateLoggerOptions = {}): Logger {
+  const nodeEnv = options.nodeEnv ?? process.env['NODE_ENV'] ?? 'development';
+  const isDevelopment = nodeEnv !== 'production' && nodeEnv !== 'test';
+  const isTest = nodeEnv === 'test';
 
-const devTransport: pino.TransportSingleOptions = {
-  target: 'pino-pretty',
-  options: {
-    colorize: true,
-    translateTime: 'SYS:standard',
-    ignore: 'pid,hostname',
-  },
-};
+  const baseConfig: pino.LoggerOptions = {
+    level: isTest ? 'silent' : (options.level ?? process.env['LOG_LEVEL'] ?? 'info'),
+    redact: {
+      paths: REDACT_PATHS,
+      censor: '[REDACTED]',
+    },
+    base: {
+      env: nodeEnv,
+    },
+    timestamp: pino.stdTimeFunctions.isoTime,
+  };
 
-export const logger: Logger = isDevelopment
-  ? pino({ ...baseConfig, transport: devTransport })
-  : pino(baseConfig);
+  if (isDevelopment) {
+    const devTransport: pino.TransportSingleOptions = {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      },
+    };
+    return pino({ ...baseConfig, transport: devTransport });
+  }
+
+  return pino(baseConfig);
+}
+
+// Default shared logger — used by modules not yet converted to factory DI.
+// Delete in Phase 18 (sweep).
+export const logger: Logger = createLogger();
 
 export function createServiceLogger(serviceName: string): Logger {
   return logger.child({ service: serviceName });
