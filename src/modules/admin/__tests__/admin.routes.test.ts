@@ -1,76 +1,84 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { AppError } from '../../../shared/errors/app-error';
-import { adminRoutes } from '../admin.routes';
+import { createAdminRoutes } from '../admin.routes';
+import type { AdminDashboardService } from '../admin-dashboard.service';
+import type { AdminBillingService } from '../admin-billing.service';
+import type { AdminDepositsService } from '../admin-deposits.service';
+import type { AdminOrdersService } from '../admin-orders.service';
+import type { AdminServicesService } from '../admin-services.service';
+import type { AdminUsersService } from '../admin-users.service';
 
-const mockListUsers = jest.fn();
-const mockGetUser = jest.fn();
-const mockUpdateUser = jest.fn();
-const mockListAllOrders = jest.fn();
-const mockGetAnyOrder = jest.fn();
-const mockForceOrderStatus = jest.fn();
-const mockRefundOrder = jest.fn();
-const mockListAllServices = jest.fn();
-const mockCreateService = jest.fn();
-const mockUpdateService = jest.fn();
-const mockDeactivateService = jest.fn();
-const mockAdjustBalance = jest.fn();
-const mockGetDashboardStats = jest.fn();
-
-jest.mock('../admin-users.service', () => ({
-  listUsers: (...args: unknown[]): unknown => mockListUsers(...args),
-  getUser: (...args: unknown[]): unknown => mockGetUser(...args),
-  updateUser: (...args: unknown[]): unknown => mockUpdateUser(...args),
-}));
-jest.mock('../admin-orders.service', () => ({
-  listAllOrders: (...args: unknown[]): unknown => mockListAllOrders(...args),
-  getAnyOrder: (...args: unknown[]): unknown => mockGetAnyOrder(...args),
-  forceOrderStatus: (...args: unknown[]): unknown => mockForceOrderStatus(...args),
-  refundOrder: (...args: unknown[]): unknown => mockRefundOrder(...args),
-}));
-jest.mock('../admin-services.service', () => ({
-  listAllServices: (...args: unknown[]): unknown => mockListAllServices(...args),
-  createService: (...args: unknown[]): unknown => mockCreateService(...args),
-  updateService: (...args: unknown[]): unknown => mockUpdateService(...args),
-  deactivateService: (...args: unknown[]): unknown => mockDeactivateService(...args),
-}));
-jest.mock('../admin-billing.service', () => ({
-  adjustBalance: (...args: unknown[]): unknown => mockAdjustBalance(...args),
-}));
-jest.mock('../admin-dashboard.service', () => ({
-  getDashboardStats: (...args: unknown[]): unknown => mockGetDashboardStats(...args),
-}));
-jest.mock('../../auth/auth.middleware', () => ({
-  authenticate: jest.fn().mockImplementation(async (req: unknown) => {
-    (req as Record<string, unknown>).user = { userId: 'admin-1', role: 'ADMIN' };
-  }),
-  // `auth/index.ts` imports `createAuthenticate` to build the transitional
-  // `authenticate` shim used by unconverted callers (admin.routes). Provide
-  // a stub that returns the same bypass function above.
-  createAuthenticate: jest.fn().mockImplementation(() => async (req: unknown) => {
-    (req as Record<string, unknown>).user = { userId: 'admin-1', role: 'ADMIN' };
-  }),
-}));
-jest.mock('../../providers/providers.middleware', () => ({
-  requireAdmin: jest.fn(),
-}));
+function buildFakes(): {
+  dashboardService: jest.Mocked<AdminDashboardService>;
+  billingService: jest.Mocked<AdminBillingService>;
+  depositsService: jest.Mocked<AdminDepositsService>;
+  ordersService: jest.Mocked<AdminOrdersService>;
+  servicesService: jest.Mocked<AdminServicesService>;
+  usersService: jest.Mocked<AdminUsersService>;
+} {
+  return {
+    dashboardService: {
+      getDashboardStats: jest.fn(),
+    } as unknown as jest.Mocked<AdminDashboardService>,
+    billingService: { adjustBalance: jest.fn() } as unknown as jest.Mocked<AdminBillingService>,
+    depositsService: {
+      listAllDeposits: jest.fn(),
+      adminConfirmDeposit: jest.fn(),
+      adminExpireDeposit: jest.fn(),
+    } as unknown as jest.Mocked<AdminDepositsService>,
+    ordersService: {
+      listAllOrders: jest.fn(),
+      getAnyOrder: jest.fn(),
+      forceOrderStatus: jest.fn(),
+      refundOrder: jest.fn(),
+      pauseDripFeed: jest.fn(),
+      resumeDripFeed: jest.fn(),
+    } as unknown as jest.Mocked<AdminOrdersService>,
+    servicesService: {
+      listAllServices: jest.fn(),
+      createService: jest.fn(),
+      updateService: jest.fn(),
+      deactivateService: jest.fn(),
+    } as unknown as jest.Mocked<AdminServicesService>,
+    usersService: {
+      listUsers: jest.fn(),
+      getUser: jest.fn(),
+      updateUser: jest.fn(),
+    } as unknown as jest.Mocked<AdminUsersService>,
+  };
+}
 
 const userId = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const orderId = 'b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e';
 const serviceId = 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f';
+const depositId = 'd1e2f3a4-b5c6-4d7e-8f9a-0b1c2d3e4f5a';
 const paginatedRes = { pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
 
 let app: FastifyInstance;
+let fakes: ReturnType<typeof buildFakes>;
 
 beforeAll(async () => {
-  app = Fastify();
-  app.setErrorHandler((error, _request, reply) => {
+  fakes = buildFakes();
+  app = Fastify({ logger: false });
+  app.setErrorHandler((error: Error, _request, reply) => {
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send(error.toJSON());
     }
-    return reply.status(500).send({ error: { message: (error as Error).message } });
+    return reply.status(500).send({ error: { message: error.message } });
   });
-  await app.register(adminRoutes, { prefix: '/admin' });
+
+  const authenticate = async (req: FastifyRequest): Promise<void> => {
+    (req as unknown as { user: { userId: string; role: string } }).user = {
+      userId: 'admin-1',
+      role: 'ADMIN',
+    };
+  };
+  const requireAdmin = jest.fn();
+
+  await app.register(createAdminRoutes({ ...fakes, authenticate, requireAdmin }), {
+    prefix: '/admin',
+  });
   await app.ready();
 });
 afterAll(async () => {
@@ -80,19 +88,23 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-describe('Admin Routes', () => {
+describe('Admin Routes (factory)', () => {
   describe('GET /admin/users', () => {
     it('should return users list', async () => {
-      mockListUsers.mockResolvedValue({ users: [], ...paginatedRes });
+      fakes.usersService.listUsers.mockResolvedValue({ users: [], ...paginatedRes });
       const res = await app.inject({ method: 'GET', url: '/admin/users' });
       expect(res.statusCode).toBe(200);
-      expect(mockListUsers).toHaveBeenCalled();
+      expect(fakes.usersService.listUsers).toHaveBeenCalled();
     });
   });
 
   describe('GET /admin/users/:userId', () => {
     it('should return user detail', async () => {
-      mockGetUser.mockResolvedValue({ userId, email: 'a@b.com', wallet: null });
+      fakes.usersService.getUser.mockResolvedValue({
+        userId,
+        email: 'a@b.com',
+        wallet: null,
+      } as Awaited<ReturnType<AdminUsersService['getUser']>>);
       const res = await app.inject({ method: 'GET', url: `/admin/users/${userId}` });
       expect(res.statusCode).toBe(200);
     });
@@ -105,7 +117,11 @@ describe('Admin Routes', () => {
 
   describe('PATCH /admin/users/:userId', () => {
     it('should update user', async () => {
-      mockUpdateUser.mockResolvedValue({ userId, role: 'ADMIN', status: 'ACTIVE' });
+      fakes.usersService.updateUser.mockResolvedValue({
+        userId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      } as Awaited<ReturnType<AdminUsersService['updateUser']>>);
       const res = await app.inject({
         method: 'PATCH',
         url: `/admin/users/${userId}`,
@@ -117,7 +133,7 @@ describe('Admin Routes', () => {
 
   describe('POST /admin/users/:userId/balance/adjust', () => {
     it('should adjust balance', async () => {
-      mockAdjustBalance.mockResolvedValue(undefined);
+      fakes.billingService.adjustBalance.mockResolvedValue(undefined);
       const res = await app.inject({
         method: 'POST',
         url: `/admin/users/${userId}/balance/adjust`,
@@ -138,7 +154,7 @@ describe('Admin Routes', () => {
 
   describe('GET /admin/orders', () => {
     it('should return orders list', async () => {
-      mockListAllOrders.mockResolvedValue({ orders: [], ...paginatedRes });
+      fakes.ordersService.listAllOrders.mockResolvedValue({ orders: [], ...paginatedRes });
       const res = await app.inject({ method: 'GET', url: '/admin/orders' });
       expect(res.statusCode).toBe(200);
     });
@@ -146,7 +162,10 @@ describe('Admin Routes', () => {
 
   describe('GET /admin/orders/:orderId', () => {
     it('should return order detail', async () => {
-      mockGetAnyOrder.mockResolvedValue({ orderId, status: 'PENDING' });
+      fakes.ordersService.getAnyOrder.mockResolvedValue({
+        orderId,
+        status: 'PENDING',
+      } as Awaited<ReturnType<AdminOrdersService['getAnyOrder']>>);
       const res = await app.inject({ method: 'GET', url: `/admin/orders/${orderId}` });
       expect(res.statusCode).toBe(200);
     });
@@ -154,7 +173,10 @@ describe('Admin Routes', () => {
 
   describe('PATCH /admin/orders/:orderId/status', () => {
     it('should force order status', async () => {
-      mockForceOrderStatus.mockResolvedValue({ orderId, status: 'COMPLETED' });
+      fakes.ordersService.forceOrderStatus.mockResolvedValue({
+        orderId,
+        status: 'COMPLETED',
+      } as Awaited<ReturnType<AdminOrdersService['forceOrderStatus']>>);
       const res = await app.inject({
         method: 'PATCH',
         url: `/admin/orders/${orderId}/status`,
@@ -175,7 +197,10 @@ describe('Admin Routes', () => {
 
   describe('POST /admin/orders/:orderId/refund', () => {
     it('should refund order', async () => {
-      mockRefundOrder.mockResolvedValue({ orderId, status: 'REFUNDED' });
+      fakes.ordersService.refundOrder.mockResolvedValue({
+        orderId,
+        status: 'REFUNDED',
+      } as Awaited<ReturnType<AdminOrdersService['refundOrder']>>);
       const res = await app.inject({ method: 'POST', url: `/admin/orders/${orderId}/refund` });
       expect(res.statusCode).toBe(200);
     });
@@ -183,7 +208,10 @@ describe('Admin Routes', () => {
 
   describe('GET /admin/services', () => {
     it('should return services list', async () => {
-      mockListAllServices.mockResolvedValue({ services: [] });
+      fakes.servicesService.listAllServices.mockResolvedValue({
+        services: [],
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
       const res = await app.inject({ method: 'GET', url: '/admin/services' });
       expect(res.statusCode).toBe(200);
     });
@@ -191,7 +219,10 @@ describe('Admin Routes', () => {
 
   describe('POST /admin/services', () => {
     it('should create service', async () => {
-      mockCreateService.mockResolvedValue({ serviceId, name: 'Test' });
+      fakes.servicesService.createService.mockResolvedValue({
+        serviceId,
+        name: 'Test',
+      } as Awaited<ReturnType<AdminServicesService['createService']>>);
       const res = await app.inject({
         method: 'POST',
         url: '/admin/services',
@@ -217,7 +248,10 @@ describe('Admin Routes', () => {
 
   describe('PATCH /admin/services/:serviceId', () => {
     it('should update service', async () => {
-      mockUpdateService.mockResolvedValue({ serviceId, name: 'Updated' });
+      fakes.servicesService.updateService.mockResolvedValue({
+        serviceId,
+        name: 'Updated',
+      } as Awaited<ReturnType<AdminServicesService['updateService']>>);
       const res = await app.inject({
         method: 'PATCH',
         url: `/admin/services/${serviceId}`,
@@ -229,15 +263,54 @@ describe('Admin Routes', () => {
 
   describe('DELETE /admin/services/:serviceId', () => {
     it('should deactivate service', async () => {
-      mockDeactivateService.mockResolvedValue(undefined);
+      fakes.servicesService.deactivateService.mockResolvedValue(undefined);
       const res = await app.inject({ method: 'DELETE', url: `/admin/services/${serviceId}` });
       expect(res.statusCode).toBe(204);
     });
   });
 
+  describe('GET /admin/deposits', () => {
+    it('should return deposits list', async () => {
+      fakes.depositsService.listAllDeposits.mockResolvedValue({
+        deposits: [],
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+      const res = await app.inject({ method: 'GET', url: '/admin/deposits' });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('POST /admin/deposits/:depositId/confirm', () => {
+    it('should confirm deposit', async () => {
+      fakes.depositsService.adminConfirmDeposit.mockResolvedValue({
+        id: depositId,
+        status: 'CONFIRMED',
+      } as Awaited<ReturnType<AdminDepositsService['adminConfirmDeposit']>>);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/admin/deposits/${depositId}/confirm`,
+      });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('POST /admin/deposits/:depositId/expire', () => {
+    it('should expire deposit', async () => {
+      fakes.depositsService.adminExpireDeposit.mockResolvedValue({
+        id: depositId,
+        status: 'EXPIRED',
+      } as Awaited<ReturnType<AdminDepositsService['adminExpireDeposit']>>);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/admin/deposits/${depositId}/expire`,
+      });
+      expect(res.statusCode).toBe(200);
+    });
+  });
+
   describe('GET /admin/dashboard/stats', () => {
     it('should return dashboard stats', async () => {
-      mockGetDashboardStats.mockResolvedValue({
+      fakes.dashboardService.getDashboardStats.mockResolvedValue({
         totalUsers: 10,
         totalOrders: 50,
         totalRevenue: 500,

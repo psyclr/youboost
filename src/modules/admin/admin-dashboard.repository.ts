@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { OrderStatus, PrismaClient } from '../../generated/prisma';
 import type { OrderRecord } from '../orders';
 
@@ -45,25 +44,4 @@ export function createAdminDashboardRepository(prisma: PrismaClient): AdminDashb
     sumRevenueByStatuses,
     findRecentOrders,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function countUsers(): Promise<number> {
-  return createAdminDashboardRepository(getPrisma()).countUsers();
-}
-
-export async function countOrders(): Promise<number> {
-  return createAdminDashboardRepository(getPrisma()).countOrders();
-}
-
-export async function countActiveServices(): Promise<number> {
-  return createAdminDashboardRepository(getPrisma()).countActiveServices();
-}
-
-export async function sumRevenueByStatuses(statuses: OrderStatus[]): Promise<number> {
-  return createAdminDashboardRepository(getPrisma()).sumRevenueByStatuses(statuses);
-}
-
-export async function findRecentOrders(limit: number): Promise<OrderRecord[]> {
-  return createAdminDashboardRepository(getPrisma()).findRecentOrders(limit);
 }

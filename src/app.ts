@@ -11,14 +11,16 @@ import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthEmailService } from './modules/auth';
 // prettier-ignore
-import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createDepositExpiryWorker } from './modules/billing';
+import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry } from './modules/billing';
 // prettier-ignore
 import { createOutboxRepository, createOutboxService, createOutboxWorker, createHandlerRegistry } from './shared/outbox';
 import { createSystemClock } from './shared/utils/clock';
 // prettier-ignore
-import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, createOrderTimeoutWorker, createStatusPollWorker, createDripFeedWorker, stubProviderClient } from './modules/orders';
+import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, stubProviderClient } from './modules/orders';
 // prettier-ignore
 import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector } from './modules/providers';
+import { buildAdminServices } from './composition/admin-services';
+import { buildOrderWorkers } from './composition/build-workers';
 import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
 import { createApiKeysService } from './modules/api-keys/api-keys.service';
 import { createWebhooksRepository } from './modules/webhooks/webhooks.repository';
@@ -198,46 +200,34 @@ export async function createApp(): Promise<CreatedApp> {
     logger: createServiceLogger('orders'),
   });
 
-  // Workers (lifecycle-only instances; started/stopped via returned workers facade).
-  const orderTimeoutWorker = createOrderTimeoutWorker({
+  // Admin module — fan-in consumer of every other module.
+  const adminServices = buildAdminServices({
     prisma,
-    ordersRepo,
-    providerSelector,
-    stubClient: stubProviderClient,
-    fundSettlement,
-    outbox,
-    config: { orderTimeoutHours: config.polling.orderTimeoutHours },
-    logger: createServiceLogger('order-timeout'),
-  });
-  const statusPollWorker = createStatusPollWorker({
-    prisma,
-    ordersRepo,
-    servicesRepo,
-    providerSelector,
-    stubClient: stubProviderClient,
-    fundSettlement,
-    circuitBreaker,
-    outbox,
-    config: {
-      intervalMs: config.polling.intervalMs,
-      batchSize: config.polling.batchSize,
-      circuitBreakerThreshold: config.polling.circuitBreakerThreshold,
-      circuitBreakerCooldownMs: config.polling.circuitBreakerCooldownMs,
-    },
-    logger: createServiceLogger('status-poll'),
-  });
-  const dripFeedWorker = createDripFeedWorker({
-    ordersRepo,
-    servicesRepo,
-    providerSelector,
-    ordersService,
-    logger: createServiceLogger('drip-feed-worker'),
-  });
-  const depositExpiryWorker = createDepositExpiryWorker({
+    userRepo,
+    walletRepo,
+    ledgerRepo,
     depositRepo,
-    lifecycle: depositLifecycle,
-    logger: createServiceLogger('deposit-expiry'),
+    ordersRepo,
+    servicesRepo,
+    providersRepo,
+    billingInternal,
   });
+
+  // Workers (lifecycle-only instances; started/stopped via returned workers facade).
+  const { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker } =
+    buildOrderWorkers({
+      prisma,
+      ordersRepo,
+      servicesRepo,
+      ordersService,
+      providerSelector,
+      fundSettlement,
+      circuitBreaker,
+      outbox,
+      depositRepo,
+      depositLifecycle,
+      config,
+    });
 
   // Outbox handler registry — wires domain events to side-effect producers.
   const handlerRegistry = createHandlerRegistry(
@@ -270,6 +260,7 @@ export async function createApp(): Promise<CreatedApp> {
     referralsService,
     couponsService,
     trackingService,
+    adminServices,
   });
 
   const workers: AppWorkers = {

@@ -1,11 +1,23 @@
-import { createServiceLogger } from '../../shared/utils/logger';
-import { adjustBalance as internalAdjustBalance } from '../billing';
+import type { Logger } from 'pino';
 import type { AdminBalanceAdjustInput } from './admin.types';
 
-const log = createServiceLogger('admin-billing');
+export interface AdminBillingService {
+  adjustBalance(userId: string, input: AdminBalanceAdjustInput): Promise<void>;
+}
 
-export async function adjustBalance(userId: string, input: AdminBalanceAdjustInput): Promise<void> {
-  await internalAdjustBalance(userId, input.amount, input.reason);
+export interface AdminBillingServiceDeps {
+  adjustBalance: (userId: string, amount: number, reason: string) => Promise<void>;
+  logger: Logger;
+}
 
-  log.info({ userId, amount: input.amount, reason: input.reason }, 'Balance adjusted');
+export function createAdminBillingService(deps: AdminBillingServiceDeps): AdminBillingService {
+  const { adjustBalance: internalAdjustBalance, logger } = deps;
+
+  async function adjustBalance(userId: string, input: AdminBalanceAdjustInput): Promise<void> {
+    await internalAdjustBalance(userId, input.amount, input.reason);
+
+    logger.info({ userId, amount: input.amount, reason: input.reason }, 'Balance adjusted');
+  }
+
+  return { adjustBalance };
 }

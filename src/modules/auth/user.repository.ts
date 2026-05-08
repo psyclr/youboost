@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 
 const VALID_ROLES = ['USER', 'RESELLER', 'ADMIN'] as const;
@@ -141,28 +140,4 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     updateUserRole,
     updateUserStatus,
   };
-}
-
-// Transitional shims for unconverted callers (admin module, F16).
-// Only the functions still used externally via `userRepo` namespace are kept;
-// the rest have been removed. Delete the remainder in sweep phase F17.
-export async function findById(id: string): Promise<UserRecord | null> {
-  return createUserRepository(getPrisma()).findById(id);
-}
-
-export async function findAllUsers(filters: {
-  role?: string | undefined;
-  status?: string | undefined;
-  page: number;
-  limit: number;
-}): Promise<{ users: UserRecord[]; total: number }> {
-  return createUserRepository(getPrisma()).findAllUsers(filters);
-}
-
-export async function updateUserRole(userId: string, role: string): Promise<UserRecord> {
-  return createUserRepository(getPrisma()).updateUserRole(userId, role);
-}
-
-export async function updateUserStatus(userId: string, status: string): Promise<UserRecord> {
-  return createUserRepository(getPrisma()).updateUserStatus(userId, status);
 }

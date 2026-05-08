@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import { getRedis } from '../../shared/redis';
 
@@ -76,11 +75,4 @@ export function createTokenRepository(prisma: PrismaClient): TokenRepository {
     blacklistAccessToken,
     isAccessTokenBlacklisted,
   };
-}
-
-// Transitional shim for external tests (billing/orders/providers routes) that
-// jest.mock this module to control `isAccessTokenBlacklisted`. Used by the
-// `authenticate` shim in `./index.ts`. Delete in sweep phase F17.
-export async function isAccessTokenBlacklisted(jti: string): Promise<boolean> {
-  return createTokenRepository(getPrisma()).isAccessTokenBlacklisted(jti);
 }

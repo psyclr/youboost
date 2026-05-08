@@ -1,104 +1,72 @@
-import { listAllOrders, getAnyOrder, forceOrderStatus, refundOrder } from '../admin-orders.service';
+import { createAdminOrdersService } from '../admin-orders.service';
+import { createFakeOrdersRepo, createFakeBilling, makeOrderRecord, silentLogger } from './fakes';
 
-const mockFindAllOrders = jest.fn();
-const mockFindOrderByIdAdmin = jest.fn();
-const mockUpdateOrderStatus = jest.fn();
-const mockPauseDripFeed = jest.fn();
-const mockResumeDripFeed = jest.fn();
-
-jest.mock('../../orders', () => ({
-  orderRepo: {
-    findAllOrders: (...args: unknown[]): unknown => mockFindAllOrders(...args),
-    findOrderByIdAdmin: (...args: unknown[]): unknown => mockFindOrderByIdAdmin(...args),
-    updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
-    pauseDripFeed: (...args: unknown[]): unknown => mockPauseDripFeed(...args),
-    resumeDripFeed: (...args: unknown[]): unknown => mockResumeDripFeed(...args),
-  },
-}));
-
-const mockRefundFunds = jest.fn();
-const mockChargeFunds = jest.fn();
-const mockReleaseFunds = jest.fn();
-
-jest.mock('../../billing', () => ({
-  refundFunds: (...args: unknown[]): unknown => mockRefundFunds(...args),
-  chargeFunds: (...args: unknown[]): unknown => mockChargeFunds(...args),
-  releaseFunds: (...args: unknown[]): unknown => mockReleaseFunds(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockOrder = {
-  id: 'order-1',
-  userId: 'user-1',
-  serviceId: 'svc-1',
-  providerId: null,
-  externalOrderId: null,
-  link: 'https://youtube.com/watch?v=123',
-  quantity: 1000,
-  price: 5.99,
-  status: 'PENDING',
-  startCount: null,
-  remains: null,
-  isDripFeed: false,
-  dripFeedRuns: null,
-  dripFeedRunsCompleted: 0,
-  dripFeedInterval: null,
-  dripFeedPausedAt: null,
-  createdAt: new Date('2024-01-01'),
-  updatedAt: new Date('2024-01-01'),
-  completedAt: null,
-};
+function build(options: { orders?: ReturnType<typeof makeOrderRecord>[] } = {}): {
+  service: ReturnType<typeof createAdminOrdersService>;
+  billing: ReturnType<typeof createFakeBilling>;
+  ordersRepo: ReturnType<typeof createFakeOrdersRepo>;
+} {
+  const ordersRepo = createFakeOrdersRepo(options.orders ? { orders: options.orders } : {});
+  const billing = createFakeBilling();
+  const service = createAdminOrdersService({
+    ordersRepo,
+    billing: {
+      chargeFunds: billing.chargeFunds,
+      releaseFunds: billing.releaseFunds,
+      refundFunds: billing.refundFunds,
+    },
+    logger: silentLogger,
+  });
+  return { service, billing, ordersRepo };
+}
 
 describe('Admin Orders Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('listAllOrders', () => {
     it('should return paginated orders', async () => {
-      mockFindAllOrders.mockResolvedValue({ orders: [mockOrder], total: 1 });
+      const { service } = build({ orders: [makeOrderRecord({ id: 'order-1' })] });
 
-      const result = await listAllOrders({ page: 1, limit: 20 });
+      const result = await service.listAllOrders({ page: 1, limit: 20 });
 
       expect(result.orders).toHaveLength(1);
-      const first = result.orders[0];
-      expect(first?.orderId).toBe('order-1');
+      expect(result.orders[0]?.orderId).toBe('order-1');
       expect(result.pagination.total).toBe(1);
     });
 
     it('should pass status and userId filters', async () => {
-      mockFindAllOrders.mockResolvedValue({ orders: [], total: 0 });
+      const { service } = build({
+        orders: [
+          makeOrderRecord({ id: 'order-1', status: 'PENDING', userId: 'user-1' }),
+          makeOrderRecord({ id: 'order-2', status: 'COMPLETED', userId: 'user-1' }),
+          makeOrderRecord({ id: 'order-3', status: 'PENDING', userId: 'user-2' }),
+        ],
+      });
 
-      await listAllOrders({ page: 1, limit: 20, status: 'PENDING', userId: 'user-1' });
-
-      expect(mockFindAllOrders).toHaveBeenCalledWith({
-        status: 'PENDING',
-        userId: 'user-1',
+      const result = await service.listAllOrders({
         page: 1,
         limit: 20,
+        status: 'PENDING',
+        userId: 'user-1',
       });
+
+      expect(result.orders).toHaveLength(1);
+      expect(result.orders[0]?.orderId).toBe('order-1');
     });
 
     it('should calculate totalPages correctly', async () => {
-      mockFindAllOrders.mockResolvedValue({ orders: [], total: 50 });
+      const orders = Array.from({ length: 50 }, (_, i) =>
+        makeOrderRecord({ id: `order-${i}`, userId: 'user-1' }),
+      );
+      const { service } = build({ orders });
 
-      const result = await listAllOrders({ page: 1, limit: 20 });
+      const result = await service.listAllOrders({ page: 1, limit: 20 });
 
       expect(result.pagination.totalPages).toBe(3);
     });
 
     it('should return empty when no orders', async () => {
-      mockFindAllOrders.mockResolvedValue({ orders: [], total: 0 });
+      const { service } = build();
 
-      const result = await listAllOrders({ page: 1, limit: 20 });
+      const result = await service.listAllOrders({ page: 1, limit: 20 });
 
       expect(result.orders).toHaveLength(0);
     });
@@ -106,194 +74,203 @@ describe('Admin Orders Service', () => {
 
   describe('getAnyOrder', () => {
     it('should return order detail', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder);
+      const { service } = build({
+        orders: [makeOrderRecord({ id: 'order-1', userId: 'user-1' })],
+      });
 
-      const result = await getAnyOrder('order-1');
+      const result = await service.getAnyOrder('order-1');
 
       expect(result.orderId).toBe('order-1');
       expect(result.userId).toBe('user-1');
     });
 
     it('should throw NotFoundError when order not found', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(null);
+      const { service } = build();
 
-      await expect(getAnyOrder('nonexistent')).rejects.toThrow('Order not found');
+      await expect(service.getAnyOrder('nonexistent')).rejects.toThrow('Order not found');
     });
   });
 
   describe('forceOrderStatus', () => {
     it('should update order status', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder);
-      mockUpdateOrderStatus.mockResolvedValue({ ...mockOrder, status: 'COMPLETED' });
+      const { service, ordersRepo } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING' })],
+      });
 
-      const result = await forceOrderStatus('order-1', 'COMPLETED');
+      const result = await service.forceOrderStatus('order-1', 'COMPLETED');
 
       expect(result.status).toBe('COMPLETED');
-      expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-        'order-1',
-        expect.objectContaining({ status: 'COMPLETED' }),
-      );
+      expect(ordersRepo.orders[0]?.status).toBe('COMPLETED');
     });
 
     it('should set completedAt for terminal statuses', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder);
-      mockUpdateOrderStatus.mockResolvedValue({ ...mockOrder, status: 'COMPLETED' });
+      const { service } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING' })],
+      });
 
-      await forceOrderStatus('order-1', 'COMPLETED');
+      const result = await service.forceOrderStatus('order-1', 'COMPLETED');
 
-      expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-        'order-1',
-        expect.objectContaining({ completedAt: expect.any(Date) }),
-      );
+      expect(result.completedAt).toBeInstanceOf(Date);
     });
 
     it('should set completedAt to null for non-terminal statuses', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder);
-      mockUpdateOrderStatus.mockResolvedValue({ ...mockOrder, status: 'PROCESSING' });
+      const { service, ordersRepo } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING', completedAt: null })],
+      });
 
-      await forceOrderStatus('order-1', 'PROCESSING');
+      await service.forceOrderStatus('order-1', 'PROCESSING');
 
-      expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-        'order-1',
-        expect.objectContaining({ completedAt: null }),
-      );
+      expect(ordersRepo.orders[0]?.completedAt).toBeNull();
     });
 
     it('should throw NotFoundError when order not found', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(null);
+      const { service } = build();
 
-      await expect(forceOrderStatus('nonexistent', 'COMPLETED')).rejects.toThrow('Order not found');
-    });
-
-    it('should charge funds when PROCESSING → COMPLETED', async () => {
-      const processingOrder = { ...mockOrder, status: 'PROCESSING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(processingOrder);
-      mockChargeFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...processingOrder, status: 'COMPLETED' });
-
-      await forceOrderStatus('order-1', 'COMPLETED');
-
-      expect(mockChargeFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-    });
-
-    it('should release funds when PROCESSING → FAILED', async () => {
-      const processingOrder = { ...mockOrder, status: 'PROCESSING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(processingOrder);
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...processingOrder, status: 'FAILED' });
-
-      await forceOrderStatus('order-1', 'FAILED');
-
-      expect(mockReleaseFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-    });
-
-    it('should release funds when PROCESSING → CANCELLED', async () => {
-      const processingOrder = { ...mockOrder, status: 'PROCESSING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(processingOrder);
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...processingOrder, status: 'CANCELLED' });
-
-      await forceOrderStatus('order-1', 'CANCELLED');
-
-      expect(mockReleaseFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-    });
-
-    it('should release+refund funds when PROCESSING → REFUNDED', async () => {
-      const processingOrder = { ...mockOrder, status: 'PROCESSING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(processingOrder);
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockRefundFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...processingOrder, status: 'REFUNDED' });
-
-      await forceOrderStatus('order-1', 'REFUNDED');
-
-      expect(mockReleaseFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-      expect(mockRefundFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-    });
-
-    it('should not settle finances when transitioning from non-PROCESSING status', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder); // status is PENDING
-      mockUpdateOrderStatus.mockResolvedValue({ ...mockOrder, status: 'COMPLETED' });
-
-      await forceOrderStatus('order-1', 'COMPLETED');
-
-      expect(mockChargeFunds).not.toHaveBeenCalled();
-      expect(mockReleaseFunds).not.toHaveBeenCalled();
-    });
-
-    it('should throw when setting same status', async () => {
-      const completedOrder = { ...mockOrder, status: 'COMPLETED' };
-      mockFindOrderByIdAdmin.mockResolvedValue(completedOrder);
-
-      await expect(forceOrderStatus('order-1', 'COMPLETED')).rejects.toThrow(
-        'Order already has this status',
+      await expect(service.forceOrderStatus('nonexistent', 'COMPLETED')).rejects.toThrow(
+        'Order not found',
       );
     });
 
-    it('should not trigger financial ops for PROCESSING→PROCESSING', async () => {
-      // This is now covered by the same-status guard above
+    it('should charge funds when PROCESSING → COMPLETED', async () => {
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PROCESSING', price: 5.99 as never })],
+      });
+
+      await service.forceOrderStatus('order-1', 'COMPLETED');
+
+      expect(billing.calls.chargeFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+    });
+
+    it('should release funds when PROCESSING → FAILED', async () => {
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PROCESSING', price: 5.99 as never })],
+      });
+
+      await service.forceOrderStatus('order-1', 'FAILED');
+
+      expect(billing.calls.releaseFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+    });
+
+    it('should release funds when PROCESSING → CANCELLED', async () => {
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PROCESSING', price: 5.99 as never })],
+      });
+
+      await service.forceOrderStatus('order-1', 'CANCELLED');
+
+      expect(billing.calls.releaseFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+    });
+
+    it('should release+refund funds when PROCESSING → REFUNDED', async () => {
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PROCESSING', price: 5.99 as never })],
+      });
+
+      await service.forceOrderStatus('order-1', 'REFUNDED');
+
+      expect(billing.calls.releaseFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+      expect(billing.calls.refundFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+    });
+
+    it('should not settle finances when transitioning from non-PROCESSING status', async () => {
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING' })],
+      });
+
+      await service.forceOrderStatus('order-1', 'COMPLETED');
+
+      expect(billing.calls.chargeFunds).toHaveLength(0);
+      expect(billing.calls.releaseFunds).toHaveLength(0);
+    });
+
+    it('should throw when setting same status', async () => {
+      const { service } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'COMPLETED' })],
+      });
+
+      await expect(service.forceOrderStatus('order-1', 'COMPLETED')).rejects.toThrow(
+        'Order already has this status',
+      );
     });
   });
 
   describe('refundOrder', () => {
     it('should refund order and update status', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(mockOrder);
-      mockRefundFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...mockOrder, status: 'REFUNDED' });
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING', price: 5.99 as never })],
+      });
 
-      const result = await refundOrder('order-1');
+      const result = await service.refundOrder('order-1');
 
       expect(result.status).toBe('REFUNDED');
-      expect(mockRefundFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
+      expect(billing.calls.refundFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
     });
 
     it('should throw NotFoundError when order not found', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue(null);
+      const { service } = build();
 
-      await expect(refundOrder('nonexistent')).rejects.toThrow('Order not found');
+      await expect(service.refundOrder('nonexistent')).rejects.toThrow('Order not found');
     });
 
     it('should throw ValidationError when already refunded', async () => {
-      mockFindOrderByIdAdmin.mockResolvedValue({ ...mockOrder, status: 'REFUNDED' });
+      const { service } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'REFUNDED' })],
+      });
 
-      await expect(refundOrder('order-1')).rejects.toThrow('Order already refunded');
+      await expect(service.refundOrder('order-1')).rejects.toThrow('Order already refunded');
     });
 
     it('should release hold before refund when PROCESSING', async () => {
-      const processingOrder = { ...mockOrder, status: 'PROCESSING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(processingOrder);
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockRefundFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...processingOrder, status: 'REFUNDED' });
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PROCESSING', price: 5.99 as never })],
+      });
 
-      await refundOrder('order-1');
+      await service.refundOrder('order-1');
 
-      expect(mockReleaseFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
-      expect(mockRefundFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
+      expect(billing.calls.releaseFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
+      expect(billing.calls.refundFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
     });
 
     it('should not release hold when refunding non-PROCESSING order', async () => {
-      const completedOrder = { ...mockOrder, status: 'COMPLETED' };
-      mockFindOrderByIdAdmin.mockResolvedValue(completedOrder);
-      mockRefundFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...completedOrder, status: 'REFUNDED' });
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'COMPLETED', price: 5.99 as never })],
+      });
 
-      await refundOrder('order-1');
+      await service.refundOrder('order-1');
 
-      expect(mockReleaseFunds).not.toHaveBeenCalled();
-      expect(mockRefundFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
+      expect(billing.calls.releaseFunds).toHaveLength(0);
+      expect(billing.calls.refundFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
     });
 
     it('should not release hold when refunding PENDING order', async () => {
-      const pendingOrder = { ...mockOrder, status: 'PENDING' };
-      mockFindOrderByIdAdmin.mockResolvedValue(pendingOrder);
-      mockRefundFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({ ...pendingOrder, status: 'REFUNDED' });
+      const { service, billing } = build({
+        orders: [makeOrderRecord({ id: 'order-1', status: 'PENDING', price: 5.99 as never })],
+      });
 
-      await refundOrder('order-1');
+      await service.refundOrder('order-1');
 
-      expect(mockReleaseFunds).not.toHaveBeenCalled();
-      expect(mockRefundFunds).toHaveBeenCalledWith('user-1', 5.99, 'order-1');
+      expect(billing.calls.releaseFunds).toHaveLength(0);
+      expect(billing.calls.refundFunds).toEqual([
+        { userId: 'user-1', amount: 5.99, orderId: 'order-1' },
+      ]);
     });
   });
 });

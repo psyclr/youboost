@@ -1,9 +1,12 @@
-import { createServiceLogger } from '../../shared/utils/logger';
+import type { Logger } from 'pino';
+import type { PrismaClient } from '../../generated/prisma';
 import { NotFoundError, ValidationError } from '../../shared/errors';
-import { depositRepo, walletRepo, ledgerRepo } from '../billing';
-import type { DepositDetailResponse } from '../billing';
-
-const log = createServiceLogger('admin-deposits');
+import type {
+  DepositRepository,
+  WalletRepository,
+  LedgerRepository,
+  DepositDetailResponse,
+} from '../billing';
 
 interface AdminDepositResponse extends DepositDetailResponse {
   userId: string;
@@ -21,118 +24,138 @@ interface AdminDepositsQuery {
   userId?: string | undefined;
 }
 
-export async function listAllDeposits(query: AdminDepositsQuery): Promise<AdminPaginatedDeposits> {
-  const { deposits, total } = await depositRepo.findAllDeposits({
-    status: query.status as 'PENDING' | 'CONFIRMED' | 'EXPIRED' | 'FAILED' | undefined,
-    userId: query.userId,
-    page: query.page,
-    limit: query.limit,
-  });
+export interface AdminDepositsService {
+  listAllDeposits(query: AdminDepositsQuery): Promise<AdminPaginatedDeposits>;
+  adminConfirmDeposit(depositId: string): Promise<DepositDetailResponse>;
+  adminExpireDeposit(depositId: string): Promise<DepositDetailResponse>;
+}
 
-  return {
-    deposits: deposits.map((d) => ({
-      id: d.id,
-      userId: d.userId,
-      amount: Number(d.amount),
-      cryptoAmount: Number(d.cryptoAmount),
-      cryptoCurrency: d.cryptoCurrency,
-      paymentAddress: d.paymentAddress,
-      status: d.status,
-      txHash: d.txHash,
-      expiresAt: d.expiresAt,
-      confirmedAt: d.confirmedAt,
-      createdAt: d.createdAt,
-    })),
-    pagination: {
+export interface AdminDepositsServiceDeps {
+  prisma: PrismaClient;
+  depositRepo: DepositRepository;
+  walletRepo: WalletRepository;
+  ledgerRepo: LedgerRepository;
+  logger: Logger;
+}
+
+export function createAdminDepositsService(deps: AdminDepositsServiceDeps): AdminDepositsService {
+  const { depositRepo, walletRepo, ledgerRepo, logger } = deps;
+
+  async function listAllDeposits(query: AdminDepositsQuery): Promise<AdminPaginatedDeposits> {
+    const { deposits, total } = await depositRepo.findAllDeposits({
+      status: query.status as 'PENDING' | 'CONFIRMED' | 'EXPIRED' | 'FAILED' | undefined,
+      userId: query.userId,
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
-}
+    });
 
-export async function adminConfirmDeposit(depositId: string): Promise<DepositDetailResponse> {
-  const deposit = await depositRepo.findDepositById(depositId);
-  if (!deposit) {
-    throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+    return {
+      deposits: deposits.map((d) => ({
+        id: d.id,
+        userId: d.userId,
+        amount: Number(d.amount),
+        cryptoAmount: Number(d.cryptoAmount),
+        cryptoCurrency: d.cryptoCurrency,
+        paymentAddress: d.paymentAddress,
+        status: d.status,
+        txHash: d.txHash,
+        expiresAt: d.expiresAt,
+        confirmedAt: d.confirmedAt,
+        createdAt: d.createdAt,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
 
-  if (deposit.status !== 'PENDING') {
-    throw new ValidationError('Deposit is not pending', 'DEPOSIT_NOT_PENDING');
+  async function adminConfirmDeposit(depositId: string): Promise<DepositDetailResponse> {
+    const deposit = await depositRepo.findDepositById(depositId);
+    if (!deposit) {
+      throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+    }
+
+    if (deposit.status !== 'PENDING') {
+      throw new ValidationError('Deposit is not pending', 'DEPOSIT_NOT_PENDING');
+    }
+
+    const wallet = await walletRepo.getOrCreateWallet(deposit.userId);
+    const balanceBefore = Number(wallet.balance);
+    const amount = Number(deposit.amount);
+    const newBalance = balanceBefore + amount;
+
+    await walletRepo.updateBalance({
+      walletId: wallet.id,
+      newBalance,
+      newHold: Number(wallet.holdAmount),
+    });
+
+    const entry = await ledgerRepo.createLedgerEntry({
+      userId: deposit.userId,
+      walletId: wallet.id,
+      type: 'DEPOSIT',
+      amount,
+      balanceBefore,
+      balanceAfter: newBalance,
+      referenceType: 'deposit',
+      referenceId: depositId,
+      description: `Admin-confirmed deposit $${amount}`,
+    });
+
+    const updated = await depositRepo.updateDepositStatus(depositId, {
+      status: 'CONFIRMED',
+      confirmedAt: new Date(),
+      ledgerEntryId: entry.id,
+    });
+
+    logger.info({ depositId, userId: deposit.userId, amount }, 'Deposit admin-confirmed');
+
+    return {
+      id: updated.id,
+      amount: Number(updated.amount),
+      cryptoAmount: Number(updated.cryptoAmount),
+      cryptoCurrency: updated.cryptoCurrency,
+      paymentAddress: updated.paymentAddress,
+      status: updated.status,
+      txHash: updated.txHash,
+      expiresAt: updated.expiresAt,
+      confirmedAt: updated.confirmedAt,
+      createdAt: updated.createdAt,
+    };
   }
 
-  const wallet = await walletRepo.getOrCreateWallet(deposit.userId);
-  const balanceBefore = Number(wallet.balance);
-  const amount = Number(deposit.amount);
-  const newBalance = balanceBefore + amount;
+  async function adminExpireDeposit(depositId: string): Promise<DepositDetailResponse> {
+    const deposit = await depositRepo.findDepositById(depositId);
+    if (!deposit) {
+      throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+    }
 
-  await walletRepo.updateBalance({
-    walletId: wallet.id,
-    newBalance,
-    newHold: Number(wallet.holdAmount),
-  });
+    if (deposit.status !== 'PENDING') {
+      throw new ValidationError('Deposit is not pending', 'DEPOSIT_NOT_PENDING');
+    }
 
-  const entry = await ledgerRepo.createLedgerEntry({
-    userId: deposit.userId,
-    walletId: wallet.id,
-    type: 'DEPOSIT',
-    amount,
-    balanceBefore,
-    balanceAfter: newBalance,
-    referenceType: 'deposit',
-    referenceId: depositId,
-    description: `Admin-confirmed deposit $${amount}`,
-  });
+    const updated = await depositRepo.updateDepositStatus(depositId, {
+      status: 'EXPIRED',
+    });
 
-  const updated = await depositRepo.updateDepositStatus(depositId, {
-    status: 'CONFIRMED',
-    confirmedAt: new Date(),
-    ledgerEntryId: entry.id,
-  });
+    logger.info({ depositId, userId: deposit.userId }, 'Deposit admin-expired');
 
-  log.info({ depositId, userId: deposit.userId, amount }, 'Deposit admin-confirmed');
-
-  return {
-    id: updated.id,
-    amount: Number(updated.amount),
-    cryptoAmount: Number(updated.cryptoAmount),
-    cryptoCurrency: updated.cryptoCurrency,
-    paymentAddress: updated.paymentAddress,
-    status: updated.status,
-    txHash: updated.txHash,
-    expiresAt: updated.expiresAt,
-    confirmedAt: updated.confirmedAt,
-    createdAt: updated.createdAt,
-  };
-}
-
-export async function adminExpireDeposit(depositId: string): Promise<DepositDetailResponse> {
-  const deposit = await depositRepo.findDepositById(depositId);
-  if (!deposit) {
-    throw new NotFoundError('Deposit not found', 'DEPOSIT_NOT_FOUND');
+    return {
+      id: updated.id,
+      amount: Number(updated.amount),
+      cryptoAmount: Number(updated.cryptoAmount),
+      cryptoCurrency: updated.cryptoCurrency,
+      paymentAddress: updated.paymentAddress,
+      status: updated.status,
+      txHash: updated.txHash,
+      expiresAt: updated.expiresAt,
+      confirmedAt: updated.confirmedAt,
+      createdAt: updated.createdAt,
+    };
   }
 
-  if (deposit.status !== 'PENDING') {
-    throw new ValidationError('Deposit is not pending', 'DEPOSIT_NOT_PENDING');
-  }
-
-  const updated = await depositRepo.updateDepositStatus(depositId, {
-    status: 'EXPIRED',
-  });
-
-  log.info({ depositId, userId: deposit.userId }, 'Deposit admin-expired');
-
-  return {
-    id: updated.id,
-    amount: Number(updated.amount),
-    cryptoAmount: Number(updated.cryptoAmount),
-    cryptoCurrency: updated.cryptoCurrency,
-    paymentAddress: updated.paymentAddress,
-    status: updated.status,
-    txHash: updated.txHash,
-    expiresAt: updated.expiresAt,
-    confirmedAt: updated.confirmedAt,
-    createdAt: updated.createdAt,
-  };
+  return { listAllDeposits, adminConfirmDeposit, adminExpireDeposit };
 }

@@ -17,7 +17,8 @@ import { createWebhookRoutes } from '../modules/webhooks/webhooks.routes';
 import type { WebhooksService } from '../modules/webhooks';
 import { createCatalogRoutes } from '../modules/catalog/catalog.routes';
 import type { CatalogService } from '../modules/catalog/catalog.service';
-import { adminRoutes } from '../modules/admin/admin.routes';
+import { createAdminRoutes } from '../modules/admin/admin.routes';
+import type { AdminServices } from './admin-services';
 import { createNotificationRoutes } from '../modules/notifications/notifications.routes';
 import type { NotificationsService } from '../modules/notifications';
 import { createSupportRoutes, createAdminSupportRoutes } from '../modules/support/support.routes';
@@ -48,6 +49,7 @@ export interface RouteRegistrationDeps {
   referralsService: ReferralsService;
   couponsService: CouponsService;
   trackingService: TrackingService;
+  adminServices: AdminServices;
 }
 
 export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void> {
@@ -89,7 +91,9 @@ export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void>
     prefix: '/webhooks',
   });
   await app.register(createCatalogRoutes(deps.catalogService), { prefix: '/catalog' });
-  await app.register(adminRoutes, { prefix: '/admin' });
+  await app.register(createAdminRoutes({ ...deps.adminServices, authenticate, requireAdmin }), {
+    prefix: '/admin',
+  });
   await app.register(
     createNotificationRoutes({ service: deps.notificationsService, authenticate }),
     { prefix: '/notifications' },

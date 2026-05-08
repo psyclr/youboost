@@ -1,66 +1,40 @@
+import { createAdminDepositsService } from '../admin-deposits.service';
 import {
-  listAllDeposits,
-  adminConfirmDeposit,
-  adminExpireDeposit,
-} from '../admin-deposits.service';
-
-const mockFindDepositById = jest.fn();
-const mockFindAllDeposits = jest.fn();
-const mockUpdateDepositStatus = jest.fn();
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-const mockCreateLedgerEntry = jest.fn();
-
-jest.mock('../../billing', () => ({
-  depositRepo: {
-    findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
-    findAllDeposits: (...args: unknown[]): unknown => mockFindAllDeposits(...args),
-    updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-  },
-  walletRepo: {
-    getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-    updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-  },
-  ledgerRepo: {
-    createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-  },
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockDeposit = {
-  id: 'dep-1',
-  userId: 'user-1',
-  amount: 100,
-  cryptoAmount: 95.5,
-  cryptoCurrency: 'USDT',
-  paymentAddress: 'TXyz123abc',
-  status: 'PENDING',
-  txHash: null,
-  expiresAt: new Date('2024-01-02'),
-  confirmedAt: null,
-  ledgerEntryId: null,
-  createdAt: new Date('2024-01-01'),
-  updatedAt: new Date('2024-01-01'),
-};
+  createFakeDepositRepo,
+  createFakeWalletRepo,
+  createFakeLedgerRepo,
+  createFakePrisma,
+  silentLogger,
+} from './fakes';
 
 describe('Admin Deposits Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('listAllDeposits', () => {
     it('should return paginated list with Decimal fields mapped to numbers and userId included', async () => {
-      mockFindAllDeposits.mockResolvedValue({ deposits: [mockDeposit], total: 1 });
+      const depositRepo = createFakeDepositRepo([
+        {
+          id: 'dep-1',
+          userId: 'user-1',
+          amount: 100,
+          cryptoAmount: 95.5,
+          cryptoCurrency: 'USDT',
+          paymentAddress: 'TXyz123abc',
+          status: 'PENDING',
+          expiresAt: new Date('2024-01-02'),
+        },
+      ]);
+      const walletRepo = createFakeWalletRepo();
+      const ledgerRepo = createFakeLedgerRepo();
+      const prisma = createFakePrisma();
 
-      const result = await listAllDeposits({ page: 1, limit: 20 });
+      const service = createAdminDepositsService({
+        prisma: prisma.client,
+        depositRepo,
+        walletRepo,
+        ledgerRepo,
+        logger: silentLogger,
+      });
+
+      const result = await service.listAllDeposits({ page: 1, limit: 20 });
 
       expect(result.deposits).toHaveLength(1);
       const first = result.deposits[0]!;
@@ -72,76 +46,67 @@ describe('Admin Deposits Service', () => {
       expect(typeof first.cryptoAmount).toBe('number');
       expect(first.cryptoCurrency).toBe('USDT');
       expect(first.status).toBe('PENDING');
-      expect(result.pagination).toEqual({
-        page: 1,
-        limit: 20,
-        total: 1,
-        totalPages: 1,
-      });
+      expect(result.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
     });
 
     it('should pass status filter to repository', async () => {
-      mockFindAllDeposits.mockResolvedValue({ deposits: [], total: 0 });
+      const depositRepo = createFakeDepositRepo([
+        { id: 'dep-1', status: 'CONFIRMED' },
+        { id: 'dep-2', status: 'PENDING' },
+      ]);
+      const walletRepo = createFakeWalletRepo();
+      const ledgerRepo = createFakeLedgerRepo();
+      const prisma = createFakePrisma();
 
-      await listAllDeposits({ page: 1, limit: 20, status: 'CONFIRMED' });
-
-      expect(mockFindAllDeposits).toHaveBeenCalledWith({
-        status: 'CONFIRMED',
-        userId: undefined,
-        page: 1,
-        limit: 20,
+      const service = createAdminDepositsService({
+        prisma: prisma.client,
+        depositRepo,
+        walletRepo,
+        ledgerRepo,
+        logger: silentLogger,
       });
+
+      const result = await service.listAllDeposits({ page: 1, limit: 20, status: 'CONFIRMED' });
+
+      expect(result.deposits).toHaveLength(1);
+      expect(result.deposits[0]?.id).toBe('dep-1');
     });
   });
 
   describe('adminConfirmDeposit', () => {
     it('should confirm pending deposit, credit wallet, and create ledger entry', async () => {
-      mockFindDepositById.mockResolvedValue(mockDeposit);
-      mockGetOrCreateWallet.mockResolvedValue({
-        id: 'wallet-1',
-        userId: 'user-1',
-        balance: 50,
-        holdAmount: 0,
-        currency: 'USD',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      mockUpdateBalance.mockResolvedValue(undefined);
-      mockCreateLedgerEntry.mockResolvedValue({
-        id: 'ledger-1',
-        userId: 'user-1',
-        walletId: 'wallet-1',
-        type: 'DEPOSIT',
-        amount: 100,
-        balanceBefore: 50,
-        balanceAfter: 150,
-        referenceType: 'deposit',
-        referenceId: 'dep-1',
-        description: 'Admin-confirmed deposit $100',
-        metadata: null,
-        createdAt: new Date(),
-      });
-      const confirmedDeposit = {
-        ...mockDeposit,
-        status: 'CONFIRMED',
-        confirmedAt: new Date(),
-        ledgerEntryId: 'ledger-1',
-      };
-      mockUpdateDepositStatus.mockResolvedValue(confirmedDeposit);
+      const depositRepo = createFakeDepositRepo([
+        {
+          id: 'dep-1',
+          userId: 'user-1',
+          amount: 100,
+          cryptoAmount: 95.5,
+          cryptoCurrency: 'USDT',
+          paymentAddress: 'TXyz',
+          status: 'PENDING',
+        },
+      ]);
+      const walletRepo = createFakeWalletRepo({ userId: 'user-1', balance: 50, holdAmount: 0 });
+      const ledgerRepo = createFakeLedgerRepo();
+      const prisma = createFakePrisma();
 
-      const result = await adminConfirmDeposit('dep-1');
+      const service = createAdminDepositsService({
+        prisma: prisma.client,
+        depositRepo,
+        walletRepo,
+        ledgerRepo,
+        logger: silentLogger,
+      });
+
+      const result = await service.adminConfirmDeposit('dep-1');
 
       expect(result.status).toBe('CONFIRMED');
       expect(result.amount).toBe(100);
-      expect(mockGetOrCreateWallet).toHaveBeenCalledWith('user-1');
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 150,
-        newHold: 0,
-      });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith({
+
+      // Ledger entry should have been created with correct fields
+      expect(ledgerRepo.createCalls).toHaveLength(1);
+      expect(ledgerRepo.createCalls[0]?.data).toMatchObject({
         userId: 'user-1',
-        walletId: 'wallet-1',
         type: 'DEPOSIT',
         amount: 100,
         balanceBefore: 50,
@@ -149,49 +114,76 @@ describe('Admin Deposits Service', () => {
         referenceType: 'deposit',
         referenceId: 'dep-1',
         description: 'Admin-confirmed deposit $100',
-      });
-      expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-1', {
-        status: 'CONFIRMED',
-        confirmedAt: expect.any(Date),
-        ledgerEntryId: 'ledger-1',
       });
     });
 
     it('should throw NotFoundError if deposit not found', async () => {
-      mockFindDepositById.mockResolvedValue(null);
+      const service = createAdminDepositsService({
+        prisma: createFakePrisma().client,
+        depositRepo: createFakeDepositRepo(),
+        walletRepo: createFakeWalletRepo(),
+        ledgerRepo: createFakeLedgerRepo(),
+        logger: silentLogger,
+      });
 
-      await expect(adminConfirmDeposit('nonexistent')).rejects.toThrow('Deposit not found');
+      await expect(service.adminConfirmDeposit('nonexistent')).rejects.toThrow('Deposit not found');
     });
 
     it('should throw ValidationError if deposit is not PENDING', async () => {
-      mockFindDepositById.mockResolvedValue({ ...mockDeposit, status: 'CONFIRMED' });
+      const depositRepo = createFakeDepositRepo([{ id: 'dep-1', status: 'CONFIRMED', amount: 50 }]);
+      const service = createAdminDepositsService({
+        prisma: createFakePrisma().client,
+        depositRepo,
+        walletRepo: createFakeWalletRepo(),
+        ledgerRepo: createFakeLedgerRepo(),
+        logger: silentLogger,
+      });
 
-      await expect(adminConfirmDeposit('dep-1')).rejects.toThrow('Deposit is not pending');
+      await expect(service.adminConfirmDeposit('dep-1')).rejects.toThrow('Deposit is not pending');
     });
   });
 
   describe('adminExpireDeposit', () => {
     it('should expire pending deposit', async () => {
-      mockFindDepositById.mockResolvedValue(mockDeposit);
-      const expiredDeposit = { ...mockDeposit, status: 'EXPIRED' };
-      mockUpdateDepositStatus.mockResolvedValue(expiredDeposit);
+      const depositRepo = createFakeDepositRepo([
+        { id: 'dep-1', userId: 'user-1', amount: 100, status: 'PENDING' },
+      ]);
+      const service = createAdminDepositsService({
+        prisma: createFakePrisma().client,
+        depositRepo,
+        walletRepo: createFakeWalletRepo(),
+        ledgerRepo: createFakeLedgerRepo(),
+        logger: silentLogger,
+      });
 
-      const result = await adminExpireDeposit('dep-1');
+      const result = await service.adminExpireDeposit('dep-1');
 
       expect(result.status).toBe('EXPIRED');
-      expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-1', { status: 'EXPIRED' });
     });
 
     it('should throw NotFoundError if deposit not found', async () => {
-      mockFindDepositById.mockResolvedValue(null);
+      const service = createAdminDepositsService({
+        prisma: createFakePrisma().client,
+        depositRepo: createFakeDepositRepo(),
+        walletRepo: createFakeWalletRepo(),
+        ledgerRepo: createFakeLedgerRepo(),
+        logger: silentLogger,
+      });
 
-      await expect(adminExpireDeposit('nonexistent')).rejects.toThrow('Deposit not found');
+      await expect(service.adminExpireDeposit('nonexistent')).rejects.toThrow('Deposit not found');
     });
 
     it('should throw ValidationError if deposit is not PENDING', async () => {
-      mockFindDepositById.mockResolvedValue({ ...mockDeposit, status: 'EXPIRED' });
+      const depositRepo = createFakeDepositRepo([{ id: 'dep-1', status: 'EXPIRED' }]);
+      const service = createAdminDepositsService({
+        prisma: createFakePrisma().client,
+        depositRepo,
+        walletRepo: createFakeWalletRepo(),
+        ledgerRepo: createFakeLedgerRepo(),
+        logger: silentLogger,
+      });
 
-      await expect(adminExpireDeposit('dep-1')).rejects.toThrow('Deposit is not pending');
+      await expect(service.adminExpireDeposit('dep-1')).rejects.toThrow('Deposit is not pending');
     });
   });
 });
