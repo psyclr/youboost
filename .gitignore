@@ -27,3 +27,6 @@ YouBoost Design System.zip
 
 # MCP tool cache
 .serena/
+
+# Stray media
+*.mp4
