@@ -1,6 +1,6 @@
+import type { Logger } from 'pino';
 import { NotFoundError, ValidationError, ConflictError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import * as couponRepo from './coupons.repository';
+import type { CouponsRepository } from './coupons.repository';
 import type {
   CreateCouponInput,
   CouponResponse,
@@ -9,7 +9,18 @@ import type {
   CouponQuery,
 } from './coupons.types';
 
-const log = createServiceLogger('coupons');
+export interface CouponsService {
+  createCoupon(input: CreateCouponInput): Promise<CouponResponse>;
+  validateCoupon(code: string, orderAmount?: number): Promise<ValidateCouponResult>;
+  applyCoupon(couponId: string): Promise<void>;
+  listCoupons(query: CouponQuery): Promise<PaginatedCoupons>;
+  deactivateCoupon(couponId: string): Promise<void>;
+}
+
+export interface CouponsServiceDeps {
+  couponsRepo: CouponsRepository;
+  logger: Logger;
+}
 
 function toCouponResponse(coupon: {
   id: string;
@@ -35,31 +46,6 @@ function toCouponResponse(coupon: {
     isActive: coupon.isActive,
     createdAt: coupon.createdAt,
   };
-}
-
-export async function createCoupon(input: CreateCouponInput): Promise<CouponResponse> {
-  const existing = await couponRepo.findCouponByCode(input.code);
-  if (existing) {
-    throw new ConflictError('Coupon code already exists', 'COUPON_CODE_EXISTS');
-  }
-
-  if (input.discountType === 'PERCENTAGE' && input.discountValue > 100) {
-    throw new ValidationError('Percentage discount cannot exceed 100', 'INVALID_DISCOUNT_VALUE');
-  }
-
-  const createData: Parameters<typeof couponRepo.createCoupon>[0] = {
-    code: input.code,
-    discountType: input.discountType,
-    discountValue: input.discountValue,
-  };
-  if (input.maxUses != null) createData.maxUses = input.maxUses;
-  if (input.minOrderAmount != null) createData.minOrderAmount = input.minOrderAmount;
-  if (input.expiresAt) createData.expiresAt = new Date(input.expiresAt);
-
-  const coupon = await couponRepo.createCoupon(createData);
-
-  log.info({ couponId: coupon.id, code: coupon.code }, 'Coupon created');
-  return toCouponResponse(coupon);
 }
 
 function createInvalidResult(reason: string): ValidateCouponResult {
@@ -123,69 +109,103 @@ function calculateDiscount(
   return Math.round(discount * 100) / 100;
 }
 
-export async function validateCoupon(
-  code: string,
-  orderAmount?: number,
-): Promise<ValidateCouponResult> {
-  const coupon = await couponRepo.findCouponByCode(code);
+export function createCouponsService(deps: CouponsServiceDeps): CouponsService {
+  const { couponsRepo, logger } = deps;
 
-  if (!coupon) {
-    return createInvalidResult('Coupon not found');
+  async function createCoupon(input: CreateCouponInput): Promise<CouponResponse> {
+    const existing = await couponsRepo.findCouponByCode(input.code);
+    if (existing) {
+      throw new ConflictError('Coupon code already exists', 'COUPON_CODE_EXISTS');
+    }
+
+    if (input.discountType === 'PERCENTAGE' && input.discountValue > 100) {
+      throw new ValidationError('Percentage discount cannot exceed 100', 'INVALID_DISCOUNT_VALUE');
+    }
+
+    const createData: Parameters<CouponsRepository['createCoupon']>[0] = {
+      code: input.code,
+      discountType: input.discountType,
+      discountValue: input.discountValue,
+    };
+    if (input.maxUses != null) createData.maxUses = input.maxUses;
+    if (input.minOrderAmount != null) createData.minOrderAmount = input.minOrderAmount;
+    if (input.expiresAt) createData.expiresAt = new Date(input.expiresAt);
+
+    const coupon = await couponsRepo.createCoupon(createData);
+
+    logger.info({ couponId: coupon.id, code: coupon.code }, 'Coupon created');
+    return toCouponResponse(coupon);
   }
 
-  const availabilityError = checkCouponAvailability(coupon, orderAmount);
-  if (availabilityError) {
-    return createInvalidResult(availabilityError);
+  async function validateCoupon(code: string, orderAmount?: number): Promise<ValidateCouponResult> {
+    const coupon = await couponsRepo.findCouponByCode(code);
+
+    if (!coupon) {
+      return createInvalidResult('Coupon not found');
+    }
+
+    const availabilityError = checkCouponAvailability(coupon, orderAmount);
+    if (availabilityError) {
+      return createInvalidResult(availabilityError);
+    }
+
+    const discountValue = Number(coupon.discountValue);
+    const discount = calculateDiscount(coupon.discountType, discountValue, orderAmount);
+
+    return {
+      valid: true,
+      discount,
+      couponId: coupon.id,
+      discountType: coupon.discountType,
+      discountValue,
+    };
   }
 
-  const discountValue = Number(coupon.discountValue);
-  const discount = calculateDiscount(coupon.discountType, discountValue, orderAmount);
+  async function applyCoupon(couponId: string): Promise<void> {
+    const coupon = await couponsRepo.findCouponById(couponId);
+    if (!coupon) {
+      throw new NotFoundError('Coupon not found', 'COUPON_NOT_FOUND');
+    }
 
-  return {
-    valid: true,
-    discount,
-    couponId: coupon.id,
-    discountType: coupon.discountType,
-    discountValue,
-  };
-}
-
-export async function applyCoupon(couponId: string): Promise<void> {
-  const coupon = await couponRepo.findCouponById(couponId);
-  if (!coupon) {
-    throw new NotFoundError('Coupon not found', 'COUPON_NOT_FOUND');
+    await couponsRepo.incrementUsedCount(couponId);
+    logger.info({ couponId }, 'Coupon usage incremented');
   }
 
-  await couponRepo.incrementUsedCount(couponId);
-  log.info({ couponId }, 'Coupon usage incremented');
-}
-
-export async function listCoupons(query: CouponQuery): Promise<PaginatedCoupons> {
-  const listFilters: Parameters<typeof couponRepo.listCoupons>[0] = {
-    page: query.page,
-    limit: query.limit,
-  };
-  if (query.isActive != null) listFilters.isActive = query.isActive;
-
-  const { coupons, total } = await couponRepo.listCoupons(listFilters);
-
-  return {
-    coupons: coupons.map(toCouponResponse),
-    pagination: {
+  async function listCoupons(query: CouponQuery): Promise<PaginatedCoupons> {
+    const listFilters: Parameters<CouponsRepository['listCoupons']>[0] = {
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
-}
+    };
+    if (query.isActive != null) listFilters.isActive = query.isActive;
 
-export async function deactivateCoupon(couponId: string): Promise<void> {
-  const coupon = await couponRepo.findCouponById(couponId);
-  if (!coupon) {
-    throw new NotFoundError('Coupon not found', 'COUPON_NOT_FOUND');
+    const { coupons, total } = await couponsRepo.listCoupons(listFilters);
+
+    return {
+      coupons: coupons.map(toCouponResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
 
-  await couponRepo.deactivateCoupon(couponId);
-  log.info({ couponId }, 'Coupon deactivated');
+  async function deactivateCoupon(couponId: string): Promise<void> {
+    const coupon = await couponsRepo.findCouponById(couponId);
+    if (!coupon) {
+      throw new NotFoundError('Coupon not found', 'COUPON_NOT_FOUND');
+    }
+
+    await couponsRepo.deactivateCoupon(couponId);
+    logger.info({ couponId }, 'Coupon deactivated');
+  }
+
+  return {
+    createCoupon,
+    validateCoupon,
+    applyCoupon,
+    listCoupons,
+    deactivateCoupon,
+  };
 }

@@ -30,7 +30,9 @@ import { createSupportRepository } from './modules/support/support.repository';
 import { createSupportService } from './modules/support/support.service';
 import { createSupportRoutes, createAdminSupportRoutes } from './modules/support/support.routes';
 import { referralRoutes } from './modules/referrals/referrals.routes';
-import { couponRoutes, adminCouponRoutes } from './modules/coupons/coupons.routes';
+import { createCouponsRepository } from './modules/coupons/coupons.repository';
+import { createCouponsService } from './modules/coupons/coupons.service';
+import { createCouponRoutes, createAdminCouponRoutes } from './modules/coupons/coupons.routes';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
 import { createAdminTrackingRoutes } from './modules/tracking/tracking.routes';
@@ -158,6 +160,12 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('support'),
   });
 
+  const couponsRepo = createCouponsRepository(prisma);
+  const couponsService = createCouponsService({
+    couponsRepo,
+    logger: createServiceLogger('coupons'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -177,8 +185,13 @@ export async function createApp(): Promise<FastifyInstance> {
     { prefix: '/admin/support' },
   );
   await app.register(referralRoutes, { prefix: '/referrals' });
-  await app.register(couponRoutes, { prefix: '/coupons' });
-  await app.register(adminCouponRoutes, { prefix: '/admin/coupons' });
+  await app.register(createCouponRoutes({ service: couponsService, authenticate }), {
+    prefix: '/coupons',
+  });
+  await app.register(
+    createAdminCouponRoutes({ service: couponsService, authenticate, requireAdmin }),
+    { prefix: '/admin/coupons' },
+  );
   await app.register(
     createAdminTrackingRoutes({ service: trackingService, authenticate, requireAdmin }),
     { prefix: '/admin/tracking-links' },

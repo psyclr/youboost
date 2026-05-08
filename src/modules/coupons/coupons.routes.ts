@@ -1,9 +1,12 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type {
+  FastifyPluginAsync,
+  FastifyRequest,
+  FastifyReply,
+  preHandlerAsyncHookHandler,
+} from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth';
-import { requireAdmin } from '../providers';
-import * as couponsService from './coupons.service';
+import { validateBody, validateQuery, validateParams } from '../../shared/middleware/validation';
+import type { CouponsService } from './coupons.service';
 import {
   createCouponSchema,
   validateCouponSchema,
@@ -11,78 +14,52 @@ import {
   couponIdSchema,
 } from './coupons.types';
 
-function validateBody<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  body: unknown,
-): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
+export interface CouponRoutesDeps {
+  service: CouponsService;
+  authenticate: preHandlerAsyncHookHandler;
 }
 
-function validateQuery<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  query: unknown,
-): T {
-  const result = schema.safeParse(query);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
+export interface AdminCouponRoutesDeps extends CouponRoutesDeps {
+  requireAdmin: (req: FastifyRequest) => void | Promise<void>;
 }
 
-function validateParams<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  params: unknown,
-): T {
-  const result = schema.safeParse(params);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
+export function createCouponRoutes(deps: CouponRoutesDeps): FastifyPluginAsync {
+  const { service, authenticate } = deps;
+  return async (app) => {
+    app.post(
+      '/validate',
+      { preHandler: [authenticate] },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const body = validateBody(validateCouponSchema, request.body);
+        const result = await service.validateCoupon(body.code, body.orderAmount);
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
+  };
 }
 
-// User-facing routes
-export async function couponRoutes(app: FastifyInstance): Promise<void> {
-  app.post(
-    '/validate',
-    { preHandler: [authenticate] },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = validateBody(validateCouponSchema, request.body);
-      const result = await couponsService.validateCoupon(body.code, body.orderAmount);
+export function createAdminCouponRoutes(deps: AdminCouponRoutesDeps): FastifyPluginAsync {
+  const { service, authenticate, requireAdmin } = deps;
+  return async (app) => {
+    app.addHook('preHandler', authenticate);
+    app.addHook('preHandler', async (req) => requireAdmin(req));
+
+    app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = validateBody(createCouponSchema, request.body);
+      const result = await service.createCoupon(body);
+      return reply.status(StatusCodes.CREATED).send(result);
+    });
+
+    app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+      const query = validateQuery(couponQuerySchema, request.query);
+      const result = await service.listCoupons(query);
       return reply.status(StatusCodes.OK).send(result);
-    },
-  );
-}
+    });
 
-// Admin routes
-export async function adminCouponRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
-  app.addHook('preHandler', async (req) => requireAdmin(req));
-
-  app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = validateBody(createCouponSchema, request.body);
-    const result = await couponsService.createCoupon(body);
-    return reply.status(StatusCodes.CREATED).send(result);
-  });
-
-  app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    const query = validateQuery(couponQuerySchema, request.query);
-    const result = await couponsService.listCoupons(query);
-    return reply.status(StatusCodes.OK).send(result);
-  });
-
-  app.delete('/:couponId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = validateParams(couponIdSchema, request.params);
-    await couponsService.deactivateCoupon(params.couponId);
-    return reply.status(StatusCodes.NO_CONTENT).send();
-  });
+    app.delete('/:couponId', async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = validateParams(couponIdSchema, request.params);
+      await service.deactivateCoupon(params.couponId);
+      return reply.status(StatusCodes.NO_CONTENT).send();
+    });
+  };
 }

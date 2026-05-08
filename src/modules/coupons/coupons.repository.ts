@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { Coupon, PrismaClient } from '../../generated/prisma';
 
 export interface CouponsRepository {
@@ -95,40 +94,4 @@ export function createCouponsRepository(prisma: PrismaClient): CouponsRepository
     incrementUsedCount,
     deactivateCoupon,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createCoupon(data: {
-  code: string;
-  discountType: 'PERCENTAGE' | 'FIXED';
-  discountValue: number;
-  maxUses?: number;
-  minOrderAmount?: number;
-  expiresAt?: Date;
-}): Promise<Coupon> {
-  return createCouponsRepository(getPrisma()).createCoupon(data);
-}
-
-export async function findCouponByCode(code: string): Promise<Coupon | null> {
-  return createCouponsRepository(getPrisma()).findCouponByCode(code);
-}
-
-export async function findCouponById(id: string): Promise<Coupon | null> {
-  return createCouponsRepository(getPrisma()).findCouponById(id);
-}
-
-export async function listCoupons(filters: {
-  page: number;
-  limit: number;
-  isActive?: boolean;
-}): Promise<{ coupons: Coupon[]; total: number }> {
-  return createCouponsRepository(getPrisma()).listCoupons(filters);
-}
-
-export async function incrementUsedCount(couponId: string): Promise<void> {
-  return createCouponsRepository(getPrisma()).incrementUsedCount(couponId);
-}
-
-export async function deactivateCoupon(couponId: string): Promise<void> {
-  return createCouponsRepository(getPrisma()).deactivateCoupon(couponId);
 }
