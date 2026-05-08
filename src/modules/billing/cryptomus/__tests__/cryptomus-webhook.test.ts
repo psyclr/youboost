@@ -1,17 +1,43 @@
 import type { FastifyInstance } from 'fastify';
 import Fastify from 'fastify';
-import { cryptomusRoutes } from '../cryptomus.routes';
-import * as cryptomusService from '../cryptomus.service';
+import { createCryptomusRoutes } from '../cryptomus.routes';
+import { createCryptomusPaymentService, type CryptomusPaymentService } from '../cryptomus.service';
 import { signRequestBody } from '../cryptomus.crypto';
+import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
+import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 
-jest.mock('../cryptomus.service');
+function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
+  return {
+    prepareDepositCheckout: jest.fn(),
+    confirmDepositTransaction: jest.fn(),
+    failDepositTransaction: jest.fn(),
+  };
+}
+
+function makeService(): CryptomusPaymentService {
+  return createCryptomusPaymentService({
+    depositRepo: createFakeDepositRepository(),
+    lifecycle: makeLifecycle(),
+    cryptomusConfig: { merchantId: 'm', paymentKey: 'p', callbackUrl: 'https://cb' },
+    appUrl: 'http://localhost:3000',
+    logger: silentLogger,
+  });
+}
+
+const passThroughAuth = async (): Promise<void> => {
+  // no-op
+};
 
 describe('Cryptomus webhook route', () => {
   let app: FastifyInstance;
+  let service: CryptomusPaymentService;
 
   beforeEach(async () => {
     app = Fastify();
-    await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
+    service = makeService();
+    await app.register(createCryptomusRoutes({ service, authenticate: passThroughAuth }), {
+      prefix: '/billing/cryptomus',
+    });
     await app.ready();
   });
 
@@ -21,7 +47,7 @@ describe('Cryptomus webhook route', () => {
   });
 
   it('captures raw body and forwards to service when registered with prefix', async () => {
-    const mockHandle = jest.spyOn(cryptomusService, 'handleWebhookEvent').mockResolvedValue();
+    const spy = jest.spyOn(service, 'handleWebhookEvent').mockResolvedValue();
 
     const bodyObj = { order_id: 'dep-123', status: 'paid', amount: '25.00' };
     const unsignedJson = JSON.stringify(bodyObj);
@@ -37,15 +63,15 @@ describe('Cryptomus webhook route', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: true });
-    expect(mockHandle).toHaveBeenCalledTimes(1);
-    const [rawBody] = mockHandle.mock.calls[0]!;
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [rawBody] = spy.mock.calls[0]!;
     expect(typeof rawBody).toBe('string');
     expect(JSON.parse(rawBody)).toEqual(webhookBody);
   });
 
   it('returns 400 when service throws signature error', async () => {
     jest
-      .spyOn(cryptomusService, 'handleWebhookEvent')
+      .spyOn(service, 'handleWebhookEvent')
       .mockRejectedValue(new Error('Invalid Cryptomus webhook signature'));
 
     const res = await app.inject({

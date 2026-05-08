@@ -1,171 +1,265 @@
-jest.mock('../../../shared/config', () => ({
-  getConfig: jest.fn().mockReturnValue({
-    billing: { minDeposit: 5, maxDeposit: 10_000, depositExpiryMs: 3_600_000 },
-  }),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-    error: jest.fn(),
-  }),
-}));
-
-const mockFindDepositById = jest.fn();
-const mockCreateDeposit = jest.fn();
-const mockUpdateDepositStatus = jest.fn();
-jest.mock('../deposit.repository', () => ({
-  findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
-  createDeposit: (...args: unknown[]): unknown => mockCreateDeposit(...args),
-  updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-}));
-
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-jest.mock('../wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
-const mockCreateLedgerEntry = jest.fn();
-jest.mock('../ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-}));
-
-let transactionCallCount = 0;
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    $transaction: async (fn: (tx: unknown) => unknown) => {
-      transactionCallCount++;
-      return fn({});
-    },
-  }),
-}));
-
+import { createDepositLifecycleService } from '../deposit-lifecycle.service';
 import {
-  prepareDepositCheckout,
-  confirmDepositTransaction,
-  failDepositTransaction,
-} from '../deposit-lifecycle.service';
+  createFakePrisma,
+  createFakeWalletRepository,
+  createFakeLedgerRepository,
+  createFakeDepositRepository,
+  createFakeOutbox,
+  silentLogger,
+} from './fakes';
+
+const billingConfig = { minDeposit: 5, maxDeposit: 10_000, depositExpiryMs: 3_600_000 };
 
 describe('deposit-lifecycle.service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    transactionCallCount = 0;
-  });
-
   describe('prepareDepositCheckout', () => {
     it('rejects amount below configured min', async () => {
-      await expect(prepareDepositCheckout('u1', 4)).rejects.toThrow(/Minimum deposit/);
+      const prisma = createFakePrisma();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo: createFakeDepositRepository(),
+        outbox: createFakeOutbox().port,
+        billingConfig,
+        logger: silentLogger,
+      });
+      await expect(service.prepareDepositCheckout('u1', 4)).rejects.toThrow(/Minimum deposit/);
     });
 
     it('rejects amount above configured max', async () => {
-      await expect(prepareDepositCheckout('u1', 10_001)).rejects.toThrow(/Maximum deposit/);
+      const prisma = createFakePrisma();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo: createFakeDepositRepository(),
+        outbox: createFakeOutbox().port,
+        billingConfig,
+        logger: silentLogger,
+      });
+      await expect(service.prepareDepositCheckout('u1', 10_001)).rejects.toThrow(/Maximum deposit/);
     });
 
     it('creates a deposit with configured expiry', async () => {
-      mockGetOrCreateWallet.mockResolvedValue({ id: 'w1' });
-      mockCreateDeposit.mockResolvedValue({ id: 'd1' });
+      const prisma = createFakePrisma();
+      const walletRepo = createFakeWalletRepository();
+      const depositRepo = createFakeDepositRepository();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo,
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo,
+        outbox: createFakeOutbox().port,
+        billingConfig,
+        logger: silentLogger,
+      });
 
-      const result = await prepareDepositCheckout('u1', 25);
+      const result = await service.prepareDepositCheckout('u1', 25);
 
-      expect(mockGetOrCreateWallet).toHaveBeenCalledWith('u1');
-      expect(mockCreateDeposit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'u1',
-          amount: 25,
-          expiresAt: expect.any(Date),
-        }),
-      );
-      expect(result.id).toBe('d1');
+      expect(Number(result.amount)).toBe(25);
+      expect(depositRepo.deposits).toHaveLength(1);
+      expect(depositRepo.deposits[0]!.userId).toBe('u1');
+      expect(result.expiresAt).toBeInstanceOf(Date);
     });
   });
 
   describe('confirmDepositTransaction', () => {
     it('credits wallet and marks deposit CONFIRMED in a single tx', async () => {
-      mockFindDepositById.mockResolvedValue({
-        id: 'd1',
-        userId: 'u1',
-        amount: 25,
-        status: 'PENDING',
+      const prisma = createFakePrisma();
+      const walletRepo = createFakeWalletRepository({ userId: 'u1', balance: 0, holdAmount: 0 });
+      const ledgerRepo = createFakeLedgerRepository();
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'PENDING' },
+      ]);
+      const outbox = createFakeOutbox();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo,
+        ledgerRepo,
+        depositRepo,
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
       });
-      mockGetOrCreateWallet.mockResolvedValue({ id: 'w1', balance: 0, holdAmount: 0 });
-      mockCreateLedgerEntry.mockResolvedValue({ id: 'l1' });
 
-      await confirmDepositTransaction('d1', 'u1', 'Stripe');
+      await service.confirmDepositTransaction('d1', 'u1', 'Stripe');
 
-      expect(transactionCallCount).toBe(1);
-      expect(mockUpdateBalance).toHaveBeenCalledWith(expect.objectContaining({ newBalance: 25 }));
-      expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
-        'd1',
-        expect.objectContaining({ status: 'CONFIRMED' }),
-        expect.anything(),
-      );
+      expect(prisma.transactionCalls).toBe(1);
+      const w = walletRepo._walletsByKey.get('u1:USD')!;
+      expect(Number(w.balance)).toBe(25);
+      const d = depositRepo.deposits[0]!;
+      expect(d.status).toBe('CONFIRMED');
+      expect(d.confirmedAt).toBeInstanceOf(Date);
+      expect(ledgerRepo.entries).toHaveLength(1);
+    });
+
+    it('emits deposit.confirmed event inside the tx', async () => {
+      const prisma = createFakePrisma();
+      const walletRepo = createFakeWalletRepository({ userId: 'u1', balance: 0 });
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'PENDING' },
+      ]);
+      const outbox = createFakeOutbox();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo,
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo,
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
+      });
+
+      await service.confirmDepositTransaction('d1', 'u1', 'Stripe');
+
+      expect(outbox.events).toHaveLength(1);
+      expect(outbox.events[0]!.event).toMatchObject({
+        type: 'deposit.confirmed',
+        aggregateType: 'deposit',
+        aggregateId: 'd1',
+        userId: 'u1',
+        payload: { depositId: 'd1', userId: 'u1', amount: 25, provider: 'Stripe' },
+      });
+      // The tx passed to outbox.emit must be the same sentinel used by prisma.$transaction.
+      expect(outbox.events[0]!.tx).toBe(prisma.tx);
     });
 
     it('is idempotent on already-CONFIRMED deposit', async () => {
-      mockFindDepositById.mockResolvedValue({
-        id: 'd1',
-        userId: 'u1',
-        amount: 25,
-        status: 'CONFIRMED',
+      const prisma = createFakePrisma();
+      const walletRepo = createFakeWalletRepository({ userId: 'u1', balance: 0 });
+      const ledgerRepo = createFakeLedgerRepository();
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'CONFIRMED' },
+      ]);
+      const outbox = createFakeOutbox();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo,
+        ledgerRepo,
+        depositRepo,
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
       });
 
-      await confirmDepositTransaction('d1', 'u1', 'Stripe');
+      await service.confirmDepositTransaction('d1', 'u1', 'Stripe');
 
-      expect(mockUpdateBalance).not.toHaveBeenCalled();
-      expect(mockCreateLedgerEntry).not.toHaveBeenCalled();
-      expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
+      expect(ledgerRepo.entries).toHaveLength(0);
+      expect(depositRepo.deposits[0]!.status).toBe('CONFIRMED');
+      expect(outbox.events).toHaveLength(0);
     });
 
     it('ignores unknown deposit', async () => {
-      mockFindDepositById.mockResolvedValue(null);
+      const prisma = createFakePrisma();
+      const outbox = createFakeOutbox();
+      const ledgerRepo = createFakeLedgerRepository();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo,
+        depositRepo: createFakeDepositRepository(),
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
+      });
 
-      await confirmDepositTransaction('missing', 'u1', 'Stripe');
+      await service.confirmDepositTransaction('missing', 'u1', 'Stripe');
 
-      expect(mockUpdateBalance).not.toHaveBeenCalled();
+      expect(ledgerRepo.entries).toHaveLength(0);
+      expect(outbox.events).toHaveLength(0);
     });
 
     it('writes provider label into ledger description', async () => {
-      mockFindDepositById.mockResolvedValue({
-        id: 'd1',
-        userId: 'u1',
-        amount: 25,
-        status: 'PENDING',
+      const prisma = createFakePrisma();
+      const ledgerRepo = createFakeLedgerRepository();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository({ userId: 'u1', balance: 0 }),
+        ledgerRepo,
+        depositRepo: createFakeDepositRepository([
+          { id: 'd1', userId: 'u1', amount: 25, status: 'PENDING' },
+        ]),
+        outbox: createFakeOutbox().port,
+        billingConfig,
+        logger: silentLogger,
       });
-      mockGetOrCreateWallet.mockResolvedValue({ id: 'w1', balance: 0, holdAmount: 0 });
-      mockCreateLedgerEntry.mockResolvedValue({ id: 'l1' });
 
-      await confirmDepositTransaction('d1', 'u1', 'Cryptomus');
+      await service.confirmDepositTransaction('d1', 'u1', 'Cryptomus');
 
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ description: 'Cryptomus deposit $25.00' }),
-        expect.anything(),
-      );
+      expect(ledgerRepo.createCalls[0]!.data.description).toBe('Cryptomus deposit $25.00');
     });
   });
 
   describe('failDepositTransaction', () => {
     it('marks PENDING deposit as FAILED', async () => {
-      mockFindDepositById.mockResolvedValue({ id: 'd1', status: 'PENDING' });
+      const prisma = createFakePrisma();
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'PENDING' },
+      ]);
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo,
+        outbox: createFakeOutbox().port,
+        billingConfig,
+        logger: silentLogger,
+      });
 
-      await failDepositTransaction('d1', 'Cryptomus', 'fail');
+      await service.failDepositTransaction('d1', 'Cryptomus', 'fail');
 
-      expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
-        'd1',
-        expect.objectContaining({ status: 'FAILED' }),
-        expect.anything(),
-      );
+      expect(depositRepo.deposits[0]!.status).toBe('FAILED');
+    });
+
+    it('emits deposit.failed event inside the tx', async () => {
+      const prisma = createFakePrisma();
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'PENDING' },
+      ]);
+      const outbox = createFakeOutbox();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo,
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
+      });
+
+      await service.failDepositTransaction('d1', 'Cryptomus', 'wrong_amount');
+
+      expect(outbox.events).toHaveLength(1);
+      expect(outbox.events[0]!.event).toMatchObject({
+        type: 'deposit.failed',
+        aggregateType: 'deposit',
+        aggregateId: 'd1',
+        userId: 'u1',
+        payload: { depositId: 'd1', userId: 'u1', reason: 'wrong_amount' },
+      });
+      expect(outbox.events[0]!.tx).toBe(prisma.tx);
     });
 
     it('is idempotent on non-PENDING deposit', async () => {
-      mockFindDepositById.mockResolvedValue({ id: 'd1', status: 'CONFIRMED' });
+      const prisma = createFakePrisma();
+      const depositRepo = createFakeDepositRepository([
+        { id: 'd1', userId: 'u1', amount: 25, status: 'CONFIRMED' },
+      ]);
+      const outbox = createFakeOutbox();
+      const service = createDepositLifecycleService({
+        prisma: prisma.client,
+        walletRepo: createFakeWalletRepository(),
+        ledgerRepo: createFakeLedgerRepository(),
+        depositRepo,
+        outbox: outbox.port,
+        billingConfig,
+        logger: silentLogger,
+      });
 
-      await failDepositTransaction('d1', 'Cryptomus', 'fail');
+      await service.failDepositTransaction('d1', 'Cryptomus', 'fail');
 
-      expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
+      expect(depositRepo.deposits[0]!.status).toBe('CONFIRMED');
+      expect(outbox.events).toHaveLength(0);
     });
   });
 });

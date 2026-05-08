@@ -14,8 +14,10 @@ jest.mock('../../auth/user.repository', () => ({
 
 const mockFindWalletByUserId = jest.fn();
 
-jest.mock('../../billing/wallet.repository', () => ({
-  findWalletByUserId: (...args: unknown[]): unknown => mockFindWalletByUserId(...args),
+jest.mock('../../billing', () => ({
+  walletRepo: {
+    findWalletByUserId: (...args: unknown[]): unknown => mockFindWalletByUserId(...args),
+  },
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({

@@ -1,17 +1,26 @@
-import { stripeProvider } from '../stripe/stripe.service';
-import { cryptomusProvider } from '../cryptomus/cryptomus.service';
 import type { PaymentProvider, PaymentProviderId } from './types';
 
-const providers: readonly PaymentProvider[] = [stripeProvider, cryptomusProvider];
-
-export function getPaymentProviders(): readonly PaymentProvider[] {
-  return providers;
+export interface PaymentProviderRegistry {
+  getAll(): readonly PaymentProvider[];
+  get(id: PaymentProviderId): PaymentProvider;
 }
 
-export function getPaymentProvider(id: PaymentProviderId): PaymentProvider {
-  const provider = providers.find((p) => p.id === id);
-  if (!provider) {
-    throw new Error(`Unknown payment provider: ${id}`);
+export function createPaymentProviderRegistry(
+  providers: readonly PaymentProvider[],
+): PaymentProviderRegistry {
+  const list: readonly PaymentProvider[] = providers;
+
+  function getAll(): readonly PaymentProvider[] {
+    return list;
   }
-  return provider;
+
+  function get(id: PaymentProviderId): PaymentProvider {
+    const provider = list.find((p) => p.id === id);
+    if (!provider) {
+      throw new Error(`Unknown payment provider: ${id}`);
+    }
+    return provider;
+  }
+
+  return { getAll, get };
 }

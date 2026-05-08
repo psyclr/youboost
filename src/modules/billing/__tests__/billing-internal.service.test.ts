@@ -1,254 +1,202 @@
+import { createBillingInternalService } from '../billing-internal.service';
 import {
-  holdFunds,
-  releaseFunds,
-  chargeFunds,
-  refundFunds,
-  adjustBalance,
-} from '../billing-internal.service';
+  createFakePrisma,
+  createFakeWalletRepository,
+  createFakeLedgerRepository,
+  silentLogger,
+} from './fakes';
 
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-
-jest.mock('../wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
-const mockCreateLedgerEntry = jest.fn();
-
-jest.mock('../ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-}));
-
-const mockTransaction = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    $transaction: (...args: unknown[]): unknown => mockTransaction(...args),
-  }),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockWallet = {
-  id: 'wallet-1',
-  userId: 'user-1',
-  balance: 100,
-  currency: 'USD',
-  holdAmount: 20,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+function makeService(walletSeed: { balance?: number; holdAmount?: number } = {}) {
+  const prisma = createFakePrisma();
+  const walletRepo = createFakeWalletRepository({
+    userId: 'user-1',
+    walletId: 'wallet-1',
+    balance: walletSeed.balance ?? 100,
+    holdAmount: walletSeed.holdAmount ?? 20,
+  });
+  const ledgerRepo = createFakeLedgerRepository();
+  const service = createBillingInternalService({
+    prisma: prisma.client,
+    walletRepo,
+    ledgerRepo,
+    logger: silentLogger,
+  });
+  return { service, prisma, walletRepo, ledgerRepo };
+}
 
 describe('Billing Internal Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
-      cb('tx-client'),
-    );
-    mockGetOrCreateWallet.mockResolvedValue(mockWallet);
-    mockUpdateBalance.mockResolvedValue(mockWallet);
-    mockCreateLedgerEntry.mockResolvedValue({ id: 'ledger-1' });
-  });
-
   describe('holdFunds', () => {
     it('should hold funds when available balance is sufficient', async () => {
-      await holdFunds('user-1', 30, 'order-1');
+      const { service, walletRepo, ledgerRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 100,
-        newHold: 50,
-        tx: 'tx-client',
+      await service.holdFunds('user-1', 30, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(100);
+      expect(Number(w.holdAmount)).toBe(50);
+      expect(ledgerRepo.createCalls).toHaveLength(1);
+      expect(ledgerRepo.createCalls[0]!.data).toMatchObject({
+        type: 'HOLD',
+        amount: 30,
+        referenceId: 'order-1',
       });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'HOLD', amount: 30, referenceId: 'order-1' }),
-        'tx-client',
-      );
     });
 
     it('should throw when available balance is insufficient', async () => {
-      await expect(holdFunds('user-1', 90, 'order-1')).rejects.toThrow('Insufficient funds');
+      const { service } = makeService({ balance: 100, holdAmount: 20 });
+      await expect(service.holdFunds('user-1', 90, 'order-1')).rejects.toThrow(
+        'Insufficient funds',
+      );
     });
 
     it('should hold exact available amount', async () => {
-      await holdFunds('user-1', 80, 'order-1');
+      const { service, walletRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 100,
-        newHold: 100,
-        tx: 'tx-client',
-      });
+      await service.holdFunds('user-1', 80, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.holdAmount)).toBe(100);
     });
 
     it('should set referenceType to order', async () => {
-      await holdFunds('user-1', 10, 'order-1');
-
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ referenceType: 'order' }),
-        'tx-client',
-      );
+      const { service, ledgerRepo } = makeService();
+      await service.holdFunds('user-1', 10, 'order-1');
+      expect(ledgerRepo.createCalls[0]!.data.referenceType).toBe('order');
     });
   });
 
   describe('releaseFunds', () => {
     it('should release funds and decrease hold', async () => {
-      await releaseFunds('user-1', 10, 'order-1');
+      const { service, walletRepo, ledgerRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 100,
-        newHold: 10,
-        tx: 'tx-client',
-      });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'RELEASE', amount: 10 }),
-        'tx-client',
-      );
+      await service.releaseFunds('user-1', 10, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(100);
+      expect(Number(w.holdAmount)).toBe(10);
+      expect(ledgerRepo.createCalls[0]!.data).toMatchObject({ type: 'RELEASE', amount: 10 });
     });
 
     it('should throw when hold is insufficient', async () => {
-      await expect(releaseFunds('user-1', 30, 'order-1')).rejects.toThrow('Insufficient hold');
+      const { service } = makeService();
+      await expect(service.releaseFunds('user-1', 30, 'order-1')).rejects.toThrow(
+        'Insufficient hold',
+      );
     });
 
     it('should release exact hold amount', async () => {
-      await releaseFunds('user-1', 20, 'order-1');
+      const { service, walletRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 100,
-        newHold: 0,
-        tx: 'tx-client',
-      });
+      await service.releaseFunds('user-1', 20, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.holdAmount)).toBe(0);
     });
   });
 
   describe('chargeFunds', () => {
     it('should charge funds by decreasing balance and hold', async () => {
-      await chargeFunds('user-1', 15, 'order-1');
+      const { service, walletRepo, ledgerRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 85,
-        newHold: 5,
-        tx: 'tx-client',
+      await service.chargeFunds('user-1', 15, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(85);
+      expect(Number(w.holdAmount)).toBe(5);
+      expect(ledgerRepo.createCalls[0]!.data).toMatchObject({
+        type: 'WITHDRAW',
+        amount: 15,
+        balanceBefore: 100,
+        balanceAfter: 85,
       });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'WITHDRAW',
-          amount: 15,
-          balanceBefore: 100,
-          balanceAfter: 85,
-        }),
-        'tx-client',
-      );
     });
 
     it('should throw when hold is insufficient for charge', async () => {
-      await expect(chargeFunds('user-1', 25, 'order-1')).rejects.toThrow('Insufficient hold');
+      const { service } = makeService();
+      await expect(service.chargeFunds('user-1', 25, 'order-1')).rejects.toThrow(
+        'Insufficient hold',
+      );
     });
 
     it('should charge exact hold amount', async () => {
-      await chargeFunds('user-1', 20, 'order-1');
+      const { service, walletRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 80,
-        newHold: 0,
-        tx: 'tx-client',
-      });
+      await service.chargeFunds('user-1', 20, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(80);
+      expect(Number(w.holdAmount)).toBe(0);
     });
   });
 
   describe('refundFunds', () => {
     it('should refund by increasing balance', async () => {
-      await refundFunds('user-1', 25, 'order-1');
+      const { service, walletRepo, ledgerRepo } = makeService();
 
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 125,
-        newHold: 20,
-        tx: 'tx-client',
+      await service.refundFunds('user-1', 25, 'order-1');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(125);
+      expect(Number(w.holdAmount)).toBe(20);
+      expect(ledgerRepo.createCalls[0]!.data).toMatchObject({
+        type: 'REFUND',
+        amount: 25,
+        balanceBefore: 100,
+        balanceAfter: 125,
       });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'REFUND',
-          amount: 25,
-          balanceBefore: 100,
-          balanceAfter: 125,
-        }),
-        'tx-client',
-      );
     });
 
     it('should set correct description', async () => {
-      await refundFunds('user-1', 10, 'order-99');
-
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ description: 'Refund 10 for order order-99' }),
-        'tx-client',
-      );
+      const { service, ledgerRepo } = makeService();
+      await service.refundFunds('user-1', 10, 'order-99');
+      expect(ledgerRepo.createCalls[0]!.data.description).toBe('Refund 10 for order order-99');
     });
 
     it('should not change hold amount on refund', async () => {
-      await refundFunds('user-1', 10, 'order-1');
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 110,
-        newHold: 20,
-        tx: 'tx-client',
-      });
+      const { service, walletRepo } = makeService();
+      await service.refundFunds('user-1', 10, 'order-1');
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(110);
+      expect(Number(w.holdAmount)).toBe(20);
     });
   });
 
   describe('adjustBalance', () => {
     it('should increase balance with positive amount', async () => {
-      await adjustBalance('user-1', 50, 'Bonus');
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 150,
-        newHold: 20,
-        tx: 'tx-client',
+      const { service, walletRepo, ledgerRepo } = makeService();
+
+      await service.adjustBalance('user-1', 50, 'Bonus');
+
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(150);
+      expect(Number(w.holdAmount)).toBe(20);
+      expect(ledgerRepo.createCalls[0]!.data).toMatchObject({
+        type: 'ADMIN_ADJUSTMENT',
+        amount: 50,
+        balanceAfter: 150,
+        description: 'Bonus',
       });
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'ADMIN_ADJUSTMENT',
-          amount: 50,
-          balanceAfter: 150,
-          description: 'Bonus',
-        }),
-        'tx-client',
-      );
     });
 
     it('should decrease balance with negative amount', async () => {
-      await adjustBalance('user-1', -30, 'Penalty');
-      expect(mockUpdateBalance).toHaveBeenCalledWith({
-        walletId: 'wallet-1',
-        newBalance: 70,
-        newHold: 20,
-        tx: 'tx-client',
-      });
+      const { service, walletRepo } = makeService();
+      await service.adjustBalance('user-1', -30, 'Penalty');
+      const w = walletRepo._walletsByKey.get('user-1:USD')!;
+      expect(Number(w.balance)).toBe(70);
+      expect(Number(w.holdAmount)).toBe(20);
     });
 
     it('should throw when negative adjustment exceeds balance', async () => {
-      await expect(adjustBalance('user-1', -200, 'Too much')).rejects.toThrow('Insufficient funds');
+      const { service } = makeService();
+      await expect(service.adjustBalance('user-1', -200, 'Too much')).rejects.toThrow(
+        'Insufficient funds',
+      );
     });
 
     it('should use referenceType admin', async () => {
-      await adjustBalance('user-1', 10, 'Test');
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({ referenceType: 'admin' }),
-        'tx-client',
-      );
+      const { service, ledgerRepo } = makeService();
+      await service.adjustBalance('user-1', 10, 'Test');
+      expect(ledgerRepo.createCalls[0]!.data.referenceType).toBe('admin');
     });
   });
 });

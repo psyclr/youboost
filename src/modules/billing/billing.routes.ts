@@ -1,9 +1,14 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type {
+  FastifyPluginAsync,
+  FastifyRequest,
+  FastifyReply,
+  preHandlerAsyncHookHandler,
+} from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth';
-import * as billingService from './billing.service';
 import type { AuthenticatedUser } from '../auth';
+import type { BillingService } from './billing.service';
+import type { PaymentProviderRegistry } from './providers/registry';
 import { transactionsQuerySchema, transactionIdSchema } from './billing.types';
 import { depositIdSchema, depositsQuerySchema } from './deposit.types';
 
@@ -41,40 +46,56 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
   return user;
 }
 
-export async function billingRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
+export interface BillingRoutesDeps {
+  service: BillingService;
+  providerRegistry: PaymentProviderRegistry;
+  authenticate: preHandlerAsyncHookHandler;
+}
 
-  app.get('/balance', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const result = await billingService.getBalance(user.userId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+export function createBillingRoutes(deps: BillingRoutesDeps): FastifyPluginAsync {
+  const { service, authenticate } = deps;
+  // providerRegistry reserved for future "list available providers" endpoint;
+  // it's in deps to make the wiring explicit at app composition time.
+  void deps.providerRegistry;
 
-  app.get('/transactions', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const query = validateQuery(transactionsQuerySchema, request.query);
-    const result = await billingService.getTransactions(user.userId, query);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+  return async (app) => {
+    app.addHook('preHandler', authenticate);
 
-  app.get('/transactions/:transactionId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const params = validateParams(transactionIdSchema, request.params);
-    const result = await billingService.getTransactionById(user.userId, params.transactionId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.get('/balance', async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = getAuthUser(request);
+      const result = await service.getBalance(user.userId);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
-  app.get('/deposits', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const query = validateQuery(depositsQuerySchema, request.query);
-    const result = await billingService.listDeposits(user.userId, query);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.get('/transactions', async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = getAuthUser(request);
+      const query = validateQuery(transactionsQuerySchema, request.query);
+      const result = await service.getTransactions(user.userId, query);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
-  app.get('/deposits/:depositId', async (request: FastifyRequest, reply: FastifyReply) => {
-    const user = getAuthUser(request);
-    const params = validateParams(depositIdSchema, request.params);
-    const result = await billingService.getDeposit(params.depositId, user.userId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.get(
+      '/transactions/:transactionId',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const user = getAuthUser(request);
+        const params = validateParams(transactionIdSchema, request.params);
+        const result = await service.getTransactionById(user.userId, params.transactionId);
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
+
+    app.get('/deposits', async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = getAuthUser(request);
+      const query = validateQuery(depositsQuerySchema, request.query);
+      const result = await service.listDeposits(user.userId, query);
+      return reply.status(StatusCodes.OK).send(result);
+    });
+
+    app.get('/deposits/:depositId', async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = getAuthUser(request);
+      const params = validateParams(depositIdSchema, request.params);
+      const result = await service.getDeposit(params.depositId, user.userId);
+      return reply.status(StatusCodes.OK).send(result);
+    });
+  };
 }

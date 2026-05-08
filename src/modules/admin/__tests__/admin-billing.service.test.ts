@@ -2,7 +2,7 @@ import { adjustBalance } from '../admin-billing.service';
 
 const mockAdjustBalance = jest.fn();
 
-jest.mock('../../billing/billing-internal.service', () => ({
+jest.mock('../../billing', () => ({
   adjustBalance: (...args: unknown[]): unknown => mockAdjustBalance(...args),
 }));
 

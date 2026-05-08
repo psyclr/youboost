@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { StatusCodes } from 'http-status-codes';
+import Stripe from 'stripe';
 import { openapiSpec } from './shared/swagger/openapi-spec';
 import { AppError } from './shared/errors/app-error';
 import { checkHealth } from './shared/health/health';
@@ -16,9 +17,9 @@ import { createRedisCache } from './shared/cache/redis-cache';
 // prettier-ignore
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthEmailService } from './modules/auth';
 import { createAuthRoutes } from './modules/auth/auth.routes';
-import { billingRoutes } from './modules/billing/billing.routes';
-import { stripeRoutes } from './modules/billing/stripe/stripe.routes';
-import { cryptomusRoutes } from './modules/billing/cryptomus/cryptomus.routes';
+// prettier-ignore
+import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createBillingRoutes, createStripeRoutes, createCryptomusRoutes } from './modules/billing';
+import { createOutboxRepository, createOutboxService } from './shared/outbox';
 import { orderRoutes } from './modules/orders/orders.routes';
 // prettier-ignore
 import { createProvidersRepository, createProvidersService, createProviderRoutes, createEncryptionService, requireAdmin } from './modules/providers';
@@ -44,7 +45,6 @@ import { createReferralsRepository } from './modules/referrals/referrals.reposit
 import { createReferralsService } from './modules/referrals/referrals.service';
 import { createReferralRoutes } from './modules/referrals/referrals.routes';
 import type { ReferralsWalletPort } from './modules/referrals';
-import { walletRepo, ledgerRepo } from './modules/billing';
 import type { LedgerType } from './generated/prisma';
 import { createCouponsRepository } from './modules/coupons/coupons.repository';
 import { createCouponsService } from './modules/coupons/coupons.service';
@@ -208,42 +208,38 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('api-keys'),
   });
 
+  // Billing module — factory-wired. Repos shared with referrals walletOps adapter.
+  const walletRepo = createWalletRepository(prisma);
+  const ledgerRepo = createLedgerRepository(prisma);
+  const depositRepo = createDepositRepository(prisma);
+  const outboxRepo = createOutboxRepository(prisma);
+  // prettier-ignore
+  const outbox = createOutboxService({ outboxRepo, logger: createServiceLogger('outbox') });
+  // prettier-ignore
+  const billingService = createBillingService({ walletRepo, ledgerRepo, depositRepo, logger: createServiceLogger('billing') });
+  // prettier-ignore
+  const depositLifecycle = createDepositLifecycleService({ prisma, walletRepo, ledgerRepo, depositRepo, outbox, billingConfig: config.billing, logger: createServiceLogger('deposit-lifecycle') });
+  // prettier-ignore
+  const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
+  // prettier-ignore
+  const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
+  // prettier-ignore
+  const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
+
   const referralsRepo = createReferralsRepository(prisma);
+  // Port uses `string` for ledger type; billing expects LedgerType enum. Service
+  // only ever passes 'DEPOSIT' which is a valid member, so we cast at the boundary.
   const referralsWalletOps: ReferralsWalletPort = {
     getOrCreateWallet: (userId) => walletRepo.getOrCreateWallet(userId),
     updateBalance: async (args) => {
-      await walletRepo.updateBalance({
-        walletId: args.walletId,
-        newBalance: args.newBalance,
-        newHold: args.newHold,
-        tx: args.tx,
-      });
+      await walletRepo.updateBalance(args);
     },
     createLedgerEntry: async (data, tx) => {
-      await ledgerRepo.createLedgerEntry(
-        {
-          userId: data.userId,
-          walletId: data.walletId,
-          // Port uses `string` for type; billing expects LedgerType enum.
-          // Service only ever passes 'DEPOSIT' which is a valid member.
-          type: data.type as LedgerType,
-          amount: data.amount,
-          balanceBefore: data.balanceBefore,
-          balanceAfter: data.balanceAfter,
-          referenceType: data.referenceType,
-          referenceId: data.referenceId,
-          description: data.description,
-        },
-        tx,
-      );
+      await ledgerRepo.createLedgerEntry({ ...data, type: data.type as LedgerType }, tx);
     },
   };
-  const referralsService = createReferralsService({
-    referralsRepo,
-    walletOps: referralsWalletOps,
-    prisma,
-    logger: createServiceLogger('referrals'),
-  });
+  // prettier-ignore
+  const referralsService = createReferralsService({ referralsRepo, walletOps: referralsWalletOps, prisma, logger: createServiceLogger('referrals') });
 
   // prettier-ignore
   const authEmailService = createAuthEmailService({ userRepo, emailTokenRepo, emailProvider, appUrl: config.app.url, logger: createServiceLogger('auth-email') });
@@ -253,9 +249,12 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(createAuthRoutes({ authService, authEmailService, authenticate }), {
     prefix: '/auth',
   });
-  await app.register(billingRoutes, { prefix: '/billing' });
-  await app.register(stripeRoutes, { prefix: '/billing/stripe' });
-  await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
+  // prettier-ignore
+  await app.register(createBillingRoutes({ service: billingService, providerRegistry: paymentProviderRegistry, authenticate }), { prefix: '/billing' });
+  // prettier-ignore
+  await app.register(createStripeRoutes({ service: stripePayment, authenticate }), { prefix: '/billing/stripe' });
+  // prettier-ignore
+  await app.register(createCryptomusRoutes({ service: cryptomusPayment, authenticate }), { prefix: '/billing/cryptomus' });
   await app.register(orderRoutes, { prefix: '/orders' });
   // prettier-ignore
   await app.register(createProviderRoutes({ service: providersService, authenticate, requireAdmin }), { prefix: '/providers' });

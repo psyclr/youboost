@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { Prisma, PrismaClient, DepositStatus } from '../../generated/prisma';
 import type { DepositRecord } from './deposit.types';
 
@@ -201,81 +200,4 @@ export function createDepositRepository(prisma: PrismaClient): DepositRepository
     findDepositByCryptomusOrderId,
     updateDepositStatus,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createDeposit(data: {
-  userId: string;
-  amount: number;
-  cryptoAmount: number;
-  cryptoCurrency: string;
-  paymentAddress: string;
-  expiresAt: Date;
-}): Promise<DepositRecord> {
-  return createDepositRepository(getPrisma()).createDeposit(data);
-}
-
-export async function findDepositById(
-  depositId: string,
-  userId?: string | undefined,
-  tx?: PrismaTransactionClient,
-): Promise<DepositRecord | null> {
-  return createDepositRepository(getPrisma()).findDepositById(depositId, userId, tx);
-}
-
-export async function findDepositsByUserId(
-  userId: string,
-  filters: { status?: DepositStatus | undefined; page: number; limit: number },
-): Promise<{ deposits: DepositRecord[]; total: number }> {
-  return createDepositRepository(getPrisma()).findDepositsByUserId(userId, filters);
-}
-
-export async function findAllDeposits(filters: {
-  status?: DepositStatus | undefined;
-  userId?: string | undefined;
-  page: number;
-  limit: number;
-}): Promise<{ deposits: DepositRecord[]; total: number }> {
-  return createDepositRepository(getPrisma()).findAllDeposits(filters);
-}
-
-export async function findExpiredPendingDeposits(): Promise<DepositRecord[]> {
-  return createDepositRepository(getPrisma()).findExpiredPendingDeposits();
-}
-
-export async function updateDepositStripeSession(
-  depositId: string,
-  stripeSessionId: string,
-): Promise<void> {
-  return createDepositRepository(getPrisma()).updateDepositStripeSession(
-    depositId,
-    stripeSessionId,
-  );
-}
-
-export async function updateDepositCryptomusOrder(
-  depositId: string,
-  data: { cryptomusOrderId: string; cryptomusCheckoutUrl: string },
-): Promise<void> {
-  return createDepositRepository(getPrisma()).updateDepositCryptomusOrder(depositId, data);
-}
-
-export async function findDepositByCryptomusOrderId(
-  cryptomusOrderId: string,
-  tx?: PrismaTransactionClient,
-): Promise<DepositRecord | null> {
-  return createDepositRepository(getPrisma()).findDepositByCryptomusOrderId(cryptomusOrderId, tx);
-}
-
-export async function updateDepositStatus(
-  depositId: string,
-  data: {
-    status: DepositStatus;
-    txHash?: string | null;
-    confirmedAt?: Date | null;
-    ledgerEntryId?: string | null;
-  },
-  tx?: PrismaTransactionClient,
-): Promise<DepositRecord> {
-  return createDepositRepository(getPrisma()).updateDepositStatus(depositId, data, tx);
 }

@@ -14,7 +14,7 @@ const mockRefundFunds = jest.fn();
 const mockChargeFunds = jest.fn();
 const mockReleaseFunds = jest.fn();
 
-jest.mock('../../billing/billing-internal.service', () => ({
+jest.mock('../../billing', () => ({
   refundFunds: (...args: unknown[]): unknown => mockRefundFunds(...args),
   chargeFunds: (...args: unknown[]): unknown => mockChargeFunds(...args),
   releaseFunds: (...args: unknown[]): unknown => mockReleaseFunds(...args),

@@ -1,221 +1,197 @@
 import { signRequestBody } from '../cryptomus.crypto';
+import { createCryptomusPaymentService } from '../cryptomus.service';
+import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
+import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
 
-jest.mock('../../../../shared/config', () => ({
-  getConfig: jest.fn().mockReturnValue({
-    cryptomus: {
-      merchantId: 'merchant-1',
-      paymentKey: 'payment-key-xyz',
-      callbackUrl: 'https://example.com',
-    },
-    app: { url: 'http://localhost:3000' },
-  }),
-}));
+const paymentKey = 'payment-key-xyz';
 
-jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-    error: jest.fn(),
-  }),
-}));
-
-const mockFindDepositById = jest.fn();
-const mockFindDepositByCryptomusOrderId = jest.fn();
-const mockUpdateDepositStatus = jest.fn();
-jest.mock('../../deposit.repository', () => ({
-  findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
-  findDepositByCryptomusOrderId: (...args: unknown[]): unknown =>
-    mockFindDepositByCryptomusOrderId(...args),
-  updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-  createDeposit: jest.fn(),
-  updateDepositCryptomusOrder: jest.fn(),
-}));
-
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-jest.mock('../../wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
-const mockCreateLedgerEntry = jest.fn();
-jest.mock('../../ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-}));
-
-let transactionCallCount = 0;
-jest.mock('../../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    $transaction: async (fn: (tx: unknown) => unknown) => {
-      transactionCallCount++;
-      return fn({});
-    },
-  }),
-}));
-
-// Import AFTER mocks are set up
-import { handleWebhookEvent } from '../cryptomus.service';
+function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
+  return {
+    prepareDepositCheckout: jest.fn(),
+    confirmDepositTransaction: jest.fn(),
+    failDepositTransaction: jest.fn(),
+  };
+}
 
 function buildWebhook(bodyObj: Record<string, unknown>): string {
   const unsignedJson = JSON.stringify(bodyObj);
-  const sign = signRequestBody(unsignedJson, 'payment-key-xyz');
+  const sign = signRequestBody(unsignedJson, paymentKey);
   return JSON.stringify({ ...bodyObj, sign });
 }
 
-describe('Cryptomus service - deposit confirmation', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    transactionCallCount = 0;
-  });
-
-  it('wraps deposit confirmation in a transaction on paid status', async () => {
-    mockFindDepositByCryptomusOrderId.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      status: 'PENDING',
-    });
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      amount: 25,
-      status: 'PENDING',
-    });
-    mockGetOrCreateWallet.mockResolvedValue({
-      id: 'wallet-1',
-      balance: 0,
-      holdAmount: 0,
-    });
-    mockCreateLedgerEntry.mockResolvedValue({ id: 'ledger-1' });
-
-    const webhookBody = buildWebhook({
-      order_id: 'dep-1',
-      status: 'paid',
-      amount: '25.00',
+describe('Cryptomus payment service - webhook handling', () => {
+  it('dispatches paid status to lifecycle.confirmDepositTransaction', async () => {
+    const lifecycle = makeLifecycle();
+    const depositRepo = createFakeDepositRepository([
+      {
+        id: 'dep-1',
+        userId: 'user-1',
+        amount: 25,
+        status: 'PENDING',
+        cryptomusOrderId: 'dep-1',
+      },
+    ]);
+    const service = createCryptomusPaymentService({
+      depositRepo,
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
     });
 
-    await handleWebhookEvent(webhookBody);
+    const webhookBody = buildWebhook({ order_id: 'dep-1', status: 'paid', amount: '25.00' });
+    await service.handleWebhookEvent(webhookBody);
 
-    expect(transactionCallCount).toBe(1);
-    expect(mockUpdateBalance).toHaveBeenCalledWith(expect.objectContaining({ newBalance: 25 }));
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+    expect(lifecycle.confirmDepositTransaction).toHaveBeenCalledWith(
       'dep-1',
-      expect.objectContaining({ status: 'CONFIRMED' }),
-      expect.anything(),
+      'user-1',
+      'Cryptomus',
     );
   });
 
-  it('is idempotent: already-CONFIRMED deposit does not re-credit', async () => {
-    mockFindDepositByCryptomusOrderId.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      status: 'CONFIRMED',
+  it('dispatches paid_over status to lifecycle.confirmDepositTransaction', async () => {
+    const lifecycle = makeLifecycle();
+    const depositRepo = createFakeDepositRepository([
+      {
+        id: 'dep-1',
+        userId: 'user-1',
+        amount: 25,
+        status: 'PENDING',
+        cryptomusOrderId: 'dep-1',
+      },
+    ]);
+    const service = createCryptomusPaymentService({
+      depositRepo,
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
     });
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      amount: 25,
-      status: 'CONFIRMED',
-    });
-
-    const webhookBody = buildWebhook({
-      order_id: 'dep-1',
-      status: 'paid',
-      amount: '25.00',
-    });
-
-    await handleWebhookEvent(webhookBody);
-
-    expect(transactionCallCount).toBe(1);
-    expect(mockUpdateBalance).not.toHaveBeenCalled();
-    expect(mockCreateLedgerEntry).not.toHaveBeenCalled();
-    expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
-  });
-
-  it('confirms on paid_over status (overpayment)', async () => {
-    mockFindDepositByCryptomusOrderId.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      status: 'PENDING',
-    });
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      amount: 25,
-      status: 'PENDING',
-    });
-    mockGetOrCreateWallet.mockResolvedValue({
-      id: 'wallet-1',
-      balance: 0,
-      holdAmount: 0,
-    });
-    mockCreateLedgerEntry.mockResolvedValue({ id: 'ledger-1' });
 
     const webhookBody = buildWebhook({
       order_id: 'dep-1',
       status: 'paid_over',
       amount: '30.00',
     });
+    await service.handleWebhookEvent(webhookBody);
 
-    await handleWebhookEvent(webhookBody);
-
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
+    expect(lifecycle.confirmDepositTransaction).toHaveBeenCalledWith(
       'dep-1',
-      expect.objectContaining({ status: 'CONFIRMED' }),
-      expect.anything(),
+      'user-1',
+      'Cryptomus',
     );
   });
 
-  it('marks deposit FAILED on fail status inside transaction', async () => {
-    mockFindDepositByCryptomusOrderId.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      status: 'PENDING',
-    });
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      status: 'PENDING',
+  it('dispatches fail status to lifecycle.failDepositTransaction', async () => {
+    const lifecycle = makeLifecycle();
+    const depositRepo = createFakeDepositRepository([
+      {
+        id: 'dep-1',
+        userId: 'user-1',
+        status: 'PENDING',
+        cryptomusOrderId: 'dep-1',
+      },
+    ]);
+    const service = createCryptomusPaymentService({
+      depositRepo,
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
     });
 
-    const webhookBody = buildWebhook({
-      order_id: 'dep-1',
-      status: 'fail',
-    });
+    const webhookBody = buildWebhook({ order_id: 'dep-1', status: 'fail' });
+    await service.handleWebhookEvent(webhookBody);
 
-    await handleWebhookEvent(webhookBody);
-
-    expect(transactionCallCount).toBe(1);
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
-      'dep-1',
-      expect.objectContaining({ status: 'FAILED' }),
-      expect.anything(),
-    );
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-1', 'Cryptomus', 'fail');
   });
 
   it('throws on invalid webhook signature', async () => {
+    const lifecycle = makeLifecycle();
+    const service = createCryptomusPaymentService({
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
     const webhookBody = JSON.stringify({
       order_id: 'dep-1',
       status: 'paid',
       sign: 'invalid-signature',
     });
 
-    await expect(handleWebhookEvent(webhookBody)).rejects.toThrow(
+    await expect(service.handleWebhookEvent(webhookBody)).rejects.toThrow(
       /Invalid Cryptomus webhook signature/,
     );
-    expect(mockFindDepositByCryptomusOrderId).not.toHaveBeenCalled();
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
   });
 
   it('ignores webhook with unknown order_id', async () => {
-    mockFindDepositByCryptomusOrderId.mockResolvedValue(null);
-
-    const webhookBody = buildWebhook({
-      order_id: 'unknown',
-      status: 'paid',
+    const lifecycle = makeLifecycle();
+    const service = createCryptomusPaymentService({
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
     });
 
-    await handleWebhookEvent(webhookBody);
+    const webhookBody = buildWebhook({ order_id: 'unknown', status: 'paid' });
+    await service.handleWebhookEvent(webhookBody);
 
-    expect(mockUpdateBalance).not.toHaveBeenCalled();
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+    expect(lifecycle.failDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ignores replay on already-resolved expired deposit', async () => {
+    const lifecycle = makeLifecycle();
+    const depositRepo = createFakeDepositRepository([
+      {
+        id: 'dep-1',
+        userId: 'user-1',
+        status: 'CONFIRMED',
+        expiresAt: new Date(Date.now() - 1_000_000),
+        cryptomusOrderId: 'dep-1',
+      },
+    ]);
+    const service = createCryptomusPaymentService({
+      depositRepo,
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    const webhookBody = buildWebhook({ order_id: 'dep-1', status: 'paid' });
+    await service.handleWebhookEvent(webhookBody);
+
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-terminal statuses', async () => {
+    const lifecycle = makeLifecycle();
+    const depositRepo = createFakeDepositRepository([
+      {
+        id: 'dep-1',
+        userId: 'user-1',
+        status: 'PENDING',
+        cryptomusOrderId: 'dep-1',
+      },
+    ]);
+    const service = createCryptomusPaymentService({
+      depositRepo,
+      lifecycle,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    const webhookBody = buildWebhook({ order_id: 'dep-1', status: 'process' });
+    await service.handleWebhookEvent(webhookBody);
+
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+    expect(lifecycle.failDepositTransaction).not.toHaveBeenCalled();
   });
 });

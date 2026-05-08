@@ -1,27 +1,5 @@
-import {
-  createDeposit,
-  findDepositById,
-  findDepositsByUserId,
-  updateDepositStatus,
-} from '../deposit.repository';
-
-const mockCreate = jest.fn();
-const mockFindFirst = jest.fn();
-const mockFindMany = jest.fn();
-const mockCount = jest.fn();
-const mockUpdate = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: (): unknown => ({
-    deposit: {
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      findFirst: (...args: unknown[]): unknown => mockFindFirst(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      count: (...args: unknown[]): unknown => mockCount(...args),
-      update: (...args: unknown[]): unknown => mockUpdate(...args),
-    },
-  }),
-}));
+import type { PrismaClient } from '../../../generated/prisma';
+import { createDepositRepository } from '../deposit.repository';
 
 const mockDeposit = {
   id: 'dep-1',
@@ -39,16 +17,33 @@ const mockDeposit = {
   updatedAt: new Date(),
 };
 
-describe('Deposit Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+function makePrisma(): {
+  prisma: PrismaClient;
+  create: jest.Mock;
+  findFirst: jest.Mock;
+  findMany: jest.Mock;
+  count: jest.Mock;
+  update: jest.Mock;
+} {
+  const create = jest.fn();
+  const findFirst = jest.fn();
+  const findMany = jest.fn();
+  const count = jest.fn();
+  const update = jest.fn();
+  const prisma = {
+    deposit: { create, findFirst, findMany, count, update },
+  } as unknown as PrismaClient;
+  return { prisma, create, findFirst, findMany, count, update };
+}
 
+describe('Deposit Repository', () => {
   describe('createDeposit', () => {
     it('should create deposit with PENDING status', async () => {
-      mockCreate.mockResolvedValue(mockDeposit);
+      const { prisma, create } = makePrisma();
+      create.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
 
-      const result = await createDeposit({
+      const result = await repo.createDeposit({
         userId: 'user-1',
         amount: 100,
         cryptoAmount: 100,
@@ -58,7 +53,7 @@ describe('Deposit Repository', () => {
       });
 
       expect(result.id).toBe('dep-1');
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: 'user-1',
           status: 'PENDING',
@@ -70,37 +65,45 @@ describe('Deposit Repository', () => {
 
   describe('findDepositById', () => {
     it('should return deposit by id', async () => {
-      mockFindFirst.mockResolvedValue(mockDeposit);
+      const { prisma, findFirst } = makePrisma();
+      findFirst.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
 
-      const result = await findDepositById('dep-1');
+      const result = await repo.findDepositById('dep-1');
 
       expect(result?.id).toBe('dep-1');
     });
 
     it('should filter by userId when provided', async () => {
-      mockFindFirst.mockResolvedValue(mockDeposit);
+      const { prisma, findFirst } = makePrisma();
+      findFirst.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
 
-      await findDepositById('dep-1', 'user-1');
+      await repo.findDepositById('dep-1', 'user-1');
 
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      expect(findFirst).toHaveBeenCalledWith({
         where: { id: 'dep-1', userId: 'user-1' },
       });
     });
 
     it('should not include userId when not provided', async () => {
-      mockFindFirst.mockResolvedValue(mockDeposit);
+      const { prisma, findFirst } = makePrisma();
+      findFirst.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
 
-      await findDepositById('dep-1');
+      await repo.findDepositById('dep-1');
 
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      expect(findFirst).toHaveBeenCalledWith({
         where: { id: 'dep-1' },
       });
     });
 
     it('should return null when not found', async () => {
-      mockFindFirst.mockResolvedValue(null);
+      const { prisma, findFirst } = makePrisma();
+      findFirst.mockResolvedValue(null);
+      const repo = createDepositRepository(prisma);
 
-      const result = await findDepositById('dep-999');
+      const result = await repo.findDepositById('dep-999');
 
       expect(result).toBeNull();
     });
@@ -108,22 +111,26 @@ describe('Deposit Repository', () => {
 
   describe('findDepositsByUserId', () => {
     it('should return paginated deposits', async () => {
-      mockFindMany.mockResolvedValue([mockDeposit]);
-      mockCount.mockResolvedValue(1);
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([mockDeposit]);
+      count.mockResolvedValue(1);
+      const repo = createDepositRepository(prisma);
 
-      const result = await findDepositsByUserId('user-1', { page: 1, limit: 20 });
+      const result = await repo.findDepositsByUserId('user-1', { page: 1, limit: 20 });
 
       expect(result.deposits).toHaveLength(1);
       expect(result.total).toBe(1);
     });
 
     it('should filter by status when provided', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
 
-      await findDepositsByUserId('user-1', { status: 'CONFIRMED', page: 1, limit: 20 });
+      await repo.findDepositsByUserId('user-1', { status: 'CONFIRMED', page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 'user-1', status: 'CONFIRMED' },
         }),
@@ -131,12 +138,14 @@ describe('Deposit Repository', () => {
     });
 
     it('should apply pagination correctly', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
 
-      await findDepositsByUserId('user-1', { page: 3, limit: 10 });
+      await repo.findDepositsByUserId('user-1', { page: 3, limit: 10 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 20,
           take: 10,
@@ -145,12 +154,14 @@ describe('Deposit Repository', () => {
     });
 
     it('should order by createdAt descending', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
 
-      await findDepositsByUserId('user-1', { page: 1, limit: 20 });
+      await repo.findDepositsByUserId('user-1', { page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: { createdAt: 'desc' },
         }),
@@ -160,9 +171,11 @@ describe('Deposit Repository', () => {
 
   describe('updateDepositStatus', () => {
     it('should update deposit status', async () => {
-      mockUpdate.mockResolvedValue({ ...mockDeposit, status: 'CONFIRMED' });
+      const { prisma, update } = makePrisma();
+      update.mockResolvedValue({ ...mockDeposit, status: 'CONFIRMED' });
+      const repo = createDepositRepository(prisma);
 
-      const result = await updateDepositStatus('dep-1', {
+      const result = await repo.updateDepositStatus('dep-1', {
         status: 'CONFIRMED',
         txHash: '0xTxHash',
         confirmedAt: new Date(),
@@ -170,7 +183,7 @@ describe('Deposit Repository', () => {
       });
 
       expect(result.status).toBe('CONFIRMED');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(update).toHaveBeenCalledWith({
         where: { id: 'dep-1' },
         data: expect.objectContaining({
           status: 'CONFIRMED',
@@ -180,11 +193,13 @@ describe('Deposit Repository', () => {
     });
 
     it('should update to EXPIRED without txHash', async () => {
-      mockUpdate.mockResolvedValue({ ...mockDeposit, status: 'EXPIRED' });
+      const { prisma, update } = makePrisma();
+      update.mockResolvedValue({ ...mockDeposit, status: 'EXPIRED' });
+      const repo = createDepositRepository(prisma);
 
-      await updateDepositStatus('dep-1', { status: 'EXPIRED' });
+      await repo.updateDepositStatus('dep-1', { status: 'EXPIRED' });
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(update).toHaveBeenCalledWith({
         where: { id: 'dep-1' },
         data: { status: 'EXPIRED' },
       });

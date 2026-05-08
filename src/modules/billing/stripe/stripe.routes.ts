@@ -1,9 +1,13 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type {
+  FastifyPluginAsync,
+  FastifyRequest,
+  FastifyReply,
+  preHandlerAsyncHookHandler,
+} from 'fastify';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../../shared/errors';
-import { authenticate } from '../../auth';
-import * as stripeService from './stripe.service';
 import type { AuthenticatedUser } from '../../auth';
+import type { StripePaymentService } from './stripe.service';
 import { z } from 'zod/v4';
 
 // Extend FastifyRequest to include rawBody for webhook processing
@@ -38,56 +42,65 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
   return user;
 }
 
-export async function stripeRoutes(app: FastifyInstance): Promise<void> {
-  // Capture raw body for all JSON requests in this plugin scope.
-  // Fastify plugin encapsulation limits this parser to /billing/stripe/* routes,
-  // so other modules keep their default JSON parsing.
-  // rawBody is required by Stripe webhook signature verification (constructEvent).
-  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
-    const buf = body as Buffer;
-    req.rawBody = buf;
-    try {
-      done(null, JSON.parse(buf.toString('utf8')));
-    } catch (err) {
-      done(err as Error, undefined);
-    }
-  });
+export interface StripeRoutesDeps {
+  service: StripePaymentService;
+  authenticate: preHandlerAsyncHookHandler;
+}
 
-  // Create Stripe checkout session (authenticated)
-  app.post(
-    '/checkout',
-    { preHandler: [authenticate] },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const user = getAuthUser(request);
-      const input = validateBody(checkoutSchema, request.body);
-      const result = await stripeService.createCheckoutSession(user.userId, input);
-      return reply.status(StatusCodes.OK).send(result);
-    },
-  );
+export function createStripeRoutes(deps: StripeRoutesDeps): FastifyPluginAsync {
+  const { service, authenticate } = deps;
 
-  // Stripe webhook handler (no auth - Stripe signature verification)
-  app.post('/webhook', {}, async (request: FastifyRequest, reply: FastifyReply) => {
-    const signature = request.headers['stripe-signature'] as string;
-    if (!signature) {
-      return reply
-        .status(StatusCodes.BAD_REQUEST)
-        .send({ error: 'Missing stripe-signature header' });
-    }
+  return async (app) => {
+    // Capture raw body for all JSON requests in this plugin scope.
+    // Fastify plugin encapsulation limits this parser to /billing/stripe/* routes,
+    // so other modules keep their default JSON parsing.
+    // rawBody is required by Stripe webhook signature verification (constructEvent).
+    app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+      const buf = body as Buffer;
+      req.rawBody = buf;
+      try {
+        done(null, JSON.parse(buf.toString('utf8')));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    });
 
-    if (!request.rawBody) {
-      return reply
-        .status(StatusCodes.BAD_REQUEST)
-        .send({ error: 'Missing raw body for signature verification' });
-    }
+    // Create Stripe checkout session (authenticated)
+    app.post(
+      '/checkout',
+      { preHandler: [authenticate] },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const user = getAuthUser(request);
+        const input = validateBody(checkoutSchema, request.body);
+        const result = await service.createCheckoutSession(user.userId, input);
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
 
-    const rawBody = request.rawBody.toString('utf8');
+    // Stripe webhook handler (no auth - Stripe signature verification)
+    app.post('/webhook', {}, async (request: FastifyRequest, reply: FastifyReply) => {
+      const signature = request.headers['stripe-signature'] as string;
+      if (!signature) {
+        return reply
+          .status(StatusCodes.BAD_REQUEST)
+          .send({ error: 'Missing stripe-signature header' });
+      }
 
-    try {
-      await stripeService.handleWebhookEvent(rawBody, signature);
-      return reply.status(StatusCodes.OK).send({ received: true });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Webhook processing failed';
-      return reply.status(StatusCodes.BAD_REQUEST).send({ error: message });
-    }
-  });
+      if (!request.rawBody) {
+        return reply
+          .status(StatusCodes.BAD_REQUEST)
+          .send({ error: 'Missing raw body for signature verification' });
+      }
+
+      const rawBody = request.rawBody.toString('utf8');
+
+      try {
+        await service.handleWebhookEvent(rawBody, signature);
+        return reply.status(StatusCodes.OK).send({ received: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Webhook processing failed';
+        return reply.status(StatusCodes.BAD_REQUEST).send({ error: message });
+      }
+    });
+  };
 }

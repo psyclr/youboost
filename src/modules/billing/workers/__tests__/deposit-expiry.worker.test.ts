@@ -1,16 +1,11 @@
 import type { DepositRecord } from '../../deposit.types';
+import type { DepositRepository } from '../../deposit.repository';
+import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 
-const mockFindExpiredPendingDeposits = jest.fn();
-const mockUpdateDepositStatus = jest.fn();
-
-jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest
-    .fn()
-    .mockReturnValue({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }),
-}));
 jest.mock('../../../../shared/redis/redis', () => ({
   getRedis: jest.fn().mockReturnValue({ duplicate: jest.fn().mockReturnValue({}) }),
 }));
+
 jest.mock('bullmq', () => ({
   Queue: jest.fn().mockImplementation(() => ({
     add: jest.fn().mockResolvedValue(undefined),
@@ -24,13 +19,11 @@ jest.mock('bullmq', () => ({
     };
   }),
 }));
-jest.mock('../../deposit.repository', () => ({
-  findExpiredPendingDeposits: (...args: unknown[]): unknown =>
-    mockFindExpiredPendingDeposits(...args),
-  updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-}));
 
 const { Worker } = jest.requireMock<typeof import('bullmq')>('bullmq');
+
+import { createDepositExpiryWorker } from '../deposit-expiry.worker';
+import { silentLogger } from '../../__tests__/fakes';
 
 function makeDeposit(overrides: Partial<DepositRecord> = {}): DepositRecord {
   return {
@@ -51,64 +44,88 @@ function makeDeposit(overrides: Partial<DepositRecord> = {}): DepositRecord {
   };
 }
 
-/**
- * The worker's processExpiredDeposits is not exported directly.
- * We capture the processor callback passed to the BullMQ Worker constructor
- * via our mock, then invoke it to exercise the logic.
- */
-async function runProcessor(): Promise<void> {
-  const { startDepositExpiryWorker, stopDepositExpiryWorker } =
-    await import('../deposit-expiry.worker');
-  await startDepositExpiryWorker();
+function makeDepositRepo(
+  expired: DepositRecord[],
+): jest.Mocked<Pick<DepositRepository, 'findExpiredPendingDeposits'>> & DepositRepository {
+  const repo = {
+    createDeposit: jest.fn(),
+    findDepositById: jest.fn(),
+    findDepositsByUserId: jest.fn(),
+    findAllDeposits: jest.fn(),
+    findExpiredPendingDeposits: jest.fn().mockResolvedValue(expired),
+    updateDepositStripeSession: jest.fn(),
+    updateDepositCryptomusOrder: jest.fn(),
+    findDepositByCryptomusOrderId: jest.fn(),
+    updateDepositStatus: jest.fn(),
+  } as unknown as jest.Mocked<DepositRepository>;
+  return repo;
+}
+
+function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
+  return {
+    prepareDepositCheckout: jest.fn(),
+    confirmDepositTransaction: jest.fn(),
+    failDepositTransaction: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+async function runProcessor(
+  depositRepo: DepositRepository,
+  lifecycle: DepositLifecycleService,
+): Promise<void> {
+  const worker = createDepositExpiryWorker({ depositRepo, lifecycle, logger: silentLogger });
+  await worker.start();
   const processor = (Worker as unknown as { __processor: Function }).__processor;
   await processor({});
-  await stopDepositExpiryWorker();
+  await worker.stop();
 }
 
 describe('Deposit Expiry Worker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.resetModules();
-    mockFindExpiredPendingDeposits.mockResolvedValue([]);
-    mockUpdateDepositStatus.mockResolvedValue({});
   });
 
   it('should do nothing when no expired deposits', async () => {
-    mockFindExpiredPendingDeposits.mockResolvedValue([]);
-    await runProcessor();
-    expect(mockFindExpiredPendingDeposits).toHaveBeenCalled();
-    expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
+    const depositRepo = makeDepositRepo([]);
+    const lifecycle = makeLifecycle();
+
+    await runProcessor(depositRepo, lifecycle);
+
+    expect(depositRepo.findExpiredPendingDeposits).toHaveBeenCalled();
+    expect(lifecycle.failDepositTransaction).not.toHaveBeenCalled();
   });
 
-  it('should update each expired deposit to EXPIRED status', async () => {
+  it('should fail each expired deposit via lifecycle.failDepositTransaction', async () => {
     const dep1 = makeDeposit({ id: 'dep-1', userId: 'user-1' });
     const dep2 = makeDeposit({ id: 'dep-2', userId: 'user-2' });
     const dep3 = makeDeposit({ id: 'dep-3', userId: 'user-3' });
-    mockFindExpiredPendingDeposits.mockResolvedValue([dep1, dep2, dep3]);
+    const depositRepo = makeDepositRepo([dep1, dep2, dep3]);
+    const lifecycle = makeLifecycle();
 
-    await runProcessor();
+    await runProcessor(depositRepo, lifecycle);
 
-    expect(mockUpdateDepositStatus).toHaveBeenCalledTimes(3);
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-1', { status: 'EXPIRED' });
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-2', { status: 'EXPIRED' });
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-3', { status: 'EXPIRED' });
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledTimes(3);
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-1', 'expiry', 'expired');
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-2', 'expiry', 'expired');
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-3', 'expiry', 'expired');
   });
 
   it('should continue processing others when one deposit fails to expire', async () => {
     const dep1 = makeDeposit({ id: 'dep-1' });
     const dep2 = makeDeposit({ id: 'dep-2' });
     const dep3 = makeDeposit({ id: 'dep-3' });
-    mockFindExpiredPendingDeposits.mockResolvedValue([dep1, dep2, dep3]);
-    mockUpdateDepositStatus
-      .mockResolvedValueOnce({})
+    const depositRepo = makeDepositRepo([dep1, dep2, dep3]);
+    const lifecycle = makeLifecycle();
+    lifecycle.failDepositTransaction
+      .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('DB error'))
-      .mockResolvedValueOnce({});
+      .mockResolvedValueOnce(undefined);
 
-    await runProcessor();
+    await runProcessor(depositRepo, lifecycle);
 
-    expect(mockUpdateDepositStatus).toHaveBeenCalledTimes(3);
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-1', { status: 'EXPIRED' });
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-2', { status: 'EXPIRED' });
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith('dep-3', { status: 'EXPIRED' });
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledTimes(3);
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-1', 'expiry', 'expired');
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-2', 'expiry', 'expired');
+    expect(lifecycle.failDepositTransaction).toHaveBeenCalledWith('dep-3', 'expiry', 'expired');
   });
 });

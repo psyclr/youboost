@@ -1,53 +1,40 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { billingRoutes } from '../billing.routes';
-import { AppError } from '../../../shared/errors/app-error';
+import { createBillingRoutes } from '../billing.routes';
+import { AppError, UnauthorizedError } from '../../../shared/errors';
+import type { BillingService } from '../billing.service';
+import type { PaymentProviderRegistry } from '../providers/registry';
+import type { AuthenticatedUser } from '../../auth';
 
-const mockGetBalance = jest.fn();
-const mockGetTransactions = jest.fn();
-const mockGetTransactionById = jest.fn();
-const mockListDeposits = jest.fn();
-const mockGetDeposit = jest.fn();
-
-jest.mock('../billing.service', () => ({
-  getBalance: (...args: unknown[]): unknown => mockGetBalance(...args),
-  getTransactions: (...args: unknown[]): unknown => mockGetTransactions(...args),
-  getTransactionById: (...args: unknown[]): unknown => mockGetTransactionById(...args),
-  listDeposits: (...args: unknown[]): unknown => mockListDeposits(...args),
-  getDeposit: (...args: unknown[]): unknown => mockGetDeposit(...args),
-}));
-
-const mockVerifyAccessToken = jest.fn();
-const mockIsBlacklisted = jest.fn();
-
-jest.mock('../../auth/utils/tokens', () => ({
-  verifyAccessToken: (...args: unknown[]): unknown => mockVerifyAccessToken(...args),
-}));
-
-jest.mock('../../auth/token.repository', () => ({
-  isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const validUser = { userId: 'u1', email: 'a@b.com', role: 'USER', jti: 'jti-1' };
-
-function withAuth(): Record<string, string> {
-  mockVerifyAccessToken.mockReturnValue(validUser);
-  mockIsBlacklisted.mockResolvedValue(false);
-  return { authorization: 'Bearer valid-token' };
+function makeService(): jest.Mocked<BillingService> {
+  return {
+    getBalance: jest.fn(),
+    listDeposits: jest.fn(),
+    getDeposit: jest.fn(),
+    getTransactions: jest.fn(),
+    getTransactionById: jest.fn(),
+  };
 }
+
+function makeRegistry(): PaymentProviderRegistry {
+  return {
+    getAll: jest.fn().mockReturnValue([]),
+    get: jest.fn(),
+  };
+}
+
+const validUser: AuthenticatedUser = {
+  userId: 'u1',
+  email: 'a@b.com',
+  role: 'USER',
+  jti: 'jti-1',
+};
 
 describe('Billing Routes', () => {
   let app: FastifyInstance;
+  let service: jest.Mocked<BillingService>;
 
   beforeAll(async () => {
+    service = makeService();
     app = Fastify({ logger: false });
 
     app.setErrorHandler((error: Error, _request, reply) => {
@@ -57,7 +44,26 @@ describe('Billing Routes', () => {
       return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: error.message } });
     });
 
-    await app.register(billingRoutes, { prefix: '/billing' });
+    const authenticate = async function (
+      this: unknown,
+      req: { headers: Record<string, unknown>; user?: AuthenticatedUser },
+    ): Promise<void> {
+      const token = req.headers['authorization'];
+      if (token !== 'Bearer valid-token') {
+        throw new UnauthorizedError('Missing auth', 'MISSING_AUTH');
+      }
+      req.user = validUser;
+    } as never;
+
+    const registry = makeRegistry();
+    await app.register(
+      createBillingRoutes({
+        service,
+        providerRegistry: registry,
+        authenticate,
+      }),
+      { prefix: '/billing' },
+    );
     await app.ready();
   });
 
@@ -67,12 +73,14 @@ describe('Billing Routes', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Keep authenticate behavior; only clear service/registry mocks.
   });
+
+  const authHeaders = { authorization: 'Bearer valid-token' };
 
   describe('GET /billing/balance', () => {
     it('should return 200 with balance', async () => {
-      const headers = withAuth();
-      mockGetBalance.mockResolvedValue({
+      service.getBalance.mockResolvedValue({
         userId: 'u1',
         balance: 100,
         frozen: 10,
@@ -80,7 +88,11 @@ describe('Billing Routes', () => {
         currency: 'USD',
       });
 
-      const res = await app.inject({ method: 'GET', url: '/billing/balance', headers });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/billing/balance',
+        headers: authHeaders,
+      });
 
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -96,15 +108,18 @@ describe('Billing Routes', () => {
 
   describe('GET /billing/transactions', () => {
     it('should return 200 with paginated transactions', async () => {
-      const headers = withAuth();
-      mockGetTransactions.mockResolvedValue({
+      service.getTransactions.mockResolvedValue({
         transactions: [
           { id: 't1', type: 'DEPOSIT', amount: 50, description: null, createdAt: new Date() },
         ],
         pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
       });
 
-      const res = await app.inject({ method: 'GET', url: '/billing/transactions', headers });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/billing/transactions',
+        headers: authHeaders,
+      });
 
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
@@ -113,8 +128,7 @@ describe('Billing Routes', () => {
     });
 
     it('should pass query params to service', async () => {
-      const headers = withAuth();
-      mockGetTransactions.mockResolvedValue({
+      service.getTransactions.mockResolvedValue({
         transactions: [],
         pagination: { page: 2, limit: 10, total: 0, totalPages: 0 },
       });
@@ -122,15 +136,22 @@ describe('Billing Routes', () => {
       await app.inject({
         method: 'GET',
         url: '/billing/transactions?page=2&limit=10&type=HOLD',
-        headers,
+        headers: authHeaders,
       });
 
-      expect(mockGetTransactions).toHaveBeenCalledWith('u1', { page: 2, limit: 10, type: 'HOLD' });
+      expect(service.getTransactions).toHaveBeenCalledWith('u1', {
+        page: 2,
+        limit: 10,
+        type: 'HOLD',
+      });
     });
 
     it('should return 422 on invalid query params', async () => {
-      const headers = withAuth();
-      const res = await app.inject({ method: 'GET', url: '/billing/transactions?page=0', headers });
+      const res = await app.inject({
+        method: 'GET',
+        url: '/billing/transactions?page=0',
+        headers: authHeaders,
+      });
       expect(res.statusCode).toBe(422);
     });
 
@@ -144,8 +165,7 @@ describe('Billing Routes', () => {
     const txId = '550e8400-e29b-41d4-a716-446655440000';
 
     it('should return 200 with transaction detail', async () => {
-      const headers = withAuth();
-      mockGetTransactionById.mockResolvedValue({
+      service.getTransactionById.mockResolvedValue({
         id: txId,
         type: 'DEPOSIT',
         amount: 50,
@@ -161,7 +181,7 @@ describe('Billing Routes', () => {
       const res = await app.inject({
         method: 'GET',
         url: `/billing/transactions/${txId}`,
-        headers,
+        headers: authHeaders,
       });
 
       expect(res.statusCode).toBe(200);
@@ -169,11 +189,10 @@ describe('Billing Routes', () => {
     });
 
     it('should return 422 on invalid UUID', async () => {
-      const headers = withAuth();
       const res = await app.inject({
         method: 'GET',
         url: '/billing/transactions/not-a-uuid',
-        headers,
+        headers: authHeaders,
       });
       expect(res.statusCode).toBe(422);
     });

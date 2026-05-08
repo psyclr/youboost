@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { Prisma, PrismaClient } from '../../generated/prisma';
 import type { WalletRecord } from './billing.types';
 
@@ -63,24 +62,4 @@ export function createWalletRepository(prisma: PrismaClient): WalletRepository {
   }
 
   return { getOrCreateWallet, findWalletByUserId, updateBalance };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function getOrCreateWallet(
-  userId: string,
-  currency = 'USD',
-  tx?: PrismaTransactionClient,
-): Promise<WalletRecord> {
-  return createWalletRepository(getPrisma()).getOrCreateWallet(userId, currency, tx);
-}
-
-export async function findWalletByUserId(
-  userId: string,
-  currency = 'USD',
-): Promise<WalletRecord | null> {
-  return createWalletRepository(getPrisma()).findWalletByUserId(userId, currency);
-}
-
-export async function updateBalance(opts: UpdateBalanceOptions): Promise<WalletRecord> {
-  return createWalletRepository(getPrisma()).updateBalance(opts);
 }

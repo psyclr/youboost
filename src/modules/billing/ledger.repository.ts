@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { Prisma, PrismaClient, LedgerType } from '../../generated/prisma';
 import type { LedgerRecord, CreateLedgerData } from './billing.types';
 
@@ -65,23 +64,4 @@ export function createLedgerRepository(prisma: PrismaClient): LedgerRepository {
   }
 
   return { createLedgerEntry, findLedgerById, findLedgerEntries };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createLedgerEntry(
-  data: CreateLedgerData,
-  tx?: PrismaTransactionClient,
-): Promise<LedgerRecord> {
-  return createLedgerRepository(getPrisma()).createLedgerEntry(data, tx);
-}
-
-export async function findLedgerById(id: string, userId: string): Promise<LedgerRecord | null> {
-  return createLedgerRepository(getPrisma()).findLedgerById(id, userId);
-}
-
-export async function findLedgerEntries(
-  userId: string,
-  filters: { type?: LedgerType | undefined; page: number; limit: number },
-): Promise<{ entries: LedgerRecord[]; total: number }> {
-  return createLedgerRepository(getPrisma()).findLedgerEntries(userId, filters);
 }

@@ -7,25 +7,23 @@ import {
 const mockFindDepositById = jest.fn();
 const mockFindAllDeposits = jest.fn();
 const mockUpdateDepositStatus = jest.fn();
-
-jest.mock('../../billing/deposit.repository', () => ({
-  findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
-  findAllDeposits: (...args: unknown[]): unknown => mockFindAllDeposits(...args),
-  updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-}));
-
 const mockGetOrCreateWallet = jest.fn();
 const mockUpdateBalance = jest.fn();
-
-jest.mock('../../billing/wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
 const mockCreateLedgerEntry = jest.fn();
 
-jest.mock('../../billing/ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
+jest.mock('../../billing', () => ({
+  depositRepo: {
+    findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
+    findAllDeposits: (...args: unknown[]): unknown => mockFindAllDeposits(...args),
+    updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
+  },
+  walletRepo: {
+    getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
+    updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
+  },
+  ledgerRepo: {
+    createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
+  },
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({

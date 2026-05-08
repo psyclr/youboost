@@ -1,114 +1,39 @@
-import Stripe from 'stripe';
-import { handleWebhookEvent } from '../stripe.service';
+import type Stripe from 'stripe';
+import { createStripePaymentService } from '../stripe.service';
+import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
+import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
 
-// Mock dependencies BEFORE importing stripe.service
-jest.mock('../../../../shared/config', () => ({
-  getConfig: jest.fn().mockReturnValue({
-    stripe: {
-      secretKey: 'sk_test_fake',
-      webhookSecret: 'whsec_fake',
-    },
-    app: { url: 'http://localhost:3000' },
-  }),
-}));
+function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
+  return {
+    prepareDepositCheckout: jest.fn(),
+    confirmDepositTransaction: jest.fn(),
+    failDepositTransaction: jest.fn(),
+  };
+}
 
-jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-    error: jest.fn(),
-  }),
-}));
-
-const mockFindDepositById = jest.fn();
-const mockUpdateDepositStatus = jest.fn();
-jest.mock('../../deposit.repository', () => ({
-  findDepositById: (...args: unknown[]): unknown => mockFindDepositById(...args),
-  updateDepositStatus: (...args: unknown[]): unknown => mockUpdateDepositStatus(...args),
-  createDeposit: jest.fn(),
-  updateDepositStripeSession: jest.fn(),
-}));
-
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-jest.mock('../../wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
-const mockCreateLedgerEntry = jest.fn();
-jest.mock('../../ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-}));
-
-let transactionCallCount = 0;
-jest.mock('../../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    $transaction: async (fn: (tx: unknown) => unknown) => {
-      transactionCallCount++;
-      return fn({});
-    },
-  }),
-}));
-
-jest.mock('stripe', () =>
-  jest.fn().mockImplementation(() => ({
+function makeStripeClient(): Stripe {
+  return {
     webhooks: {
       constructEvent: jest.fn((payload: string) => JSON.parse(payload)),
     },
-  })),
-);
-
-describe('Stripe service - deposit confirmation', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    transactionCallCount = 0;
-  });
-
-  it('wraps deposit confirmation in a transaction', async () => {
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      amount: 25,
-      status: 'PENDING',
-    });
-    mockGetOrCreateWallet.mockResolvedValue({
-      id: 'wallet-1',
-      balance: 0,
-      holdAmount: 0,
-    });
-    mockCreateLedgerEntry.mockResolvedValue({ id: 'ledger-1' });
-    mockUpdateBalance.mockResolvedValue({});
-    mockUpdateDepositStatus.mockResolvedValue({});
-
-    const event = {
-      type: 'checkout.session.completed',
-      data: {
-        object: {
-          id: 'cs_1',
-          metadata: { userId: 'user-1', depositId: 'dep-1' },
-        } as unknown as Stripe.Checkout.Session,
+    checkout: {
+      sessions: {
+        create: jest.fn(),
       },
-    };
+    },
+  } as unknown as Stripe;
+}
 
-    await handleWebhookEvent(JSON.stringify(event), 'sig_fake');
-
-    expect(transactionCallCount).toBe(1);
-    expect(mockUpdateBalance).toHaveBeenCalledWith(expect.objectContaining({ newBalance: 25 }));
-    expect(mockUpdateDepositStatus).toHaveBeenCalledWith(
-      'dep-1',
-      expect.objectContaining({ status: 'CONFIRMED' }),
-      expect.anything(),
-    );
-  });
-
-  it('is idempotent: second call with already-processed deposit does nothing', async () => {
-    mockFindDepositById.mockResolvedValue({
-      id: 'dep-1',
-      userId: 'user-1',
-      amount: 25,
-      status: 'CONFIRMED',
+describe('Stripe payment service - webhook handling', () => {
+  it('dispatches checkout.session.completed to lifecycle.confirmDepositTransaction', async () => {
+    const lifecycle = makeLifecycle();
+    const service = createStripePaymentService({
+      stripeClient: makeStripeClient(),
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
     });
 
     const event = {
@@ -117,46 +42,104 @@ describe('Stripe service - deposit confirmation', () => {
         object: {
           id: 'cs_1',
           metadata: { userId: 'user-1', depositId: 'dep-1' },
-        } as unknown as Stripe.Checkout.Session,
+        },
       },
     };
 
-    await handleWebhookEvent(JSON.stringify(event), 'sig_fake');
+    await service.handleWebhookEvent(JSON.stringify(event), 'sig_fake');
 
-    expect(transactionCallCount).toBe(1);
-    expect(mockUpdateBalance).not.toHaveBeenCalled();
-    expect(mockCreateLedgerEntry).not.toHaveBeenCalled();
-    expect(mockUpdateDepositStatus).not.toHaveBeenCalled();
-  });
-
-  it('ignores webhook if deposit not found', async () => {
-    mockFindDepositById.mockResolvedValue(null);
-
-    const event = {
-      type: 'checkout.session.completed',
-      data: {
-        object: {
-          id: 'cs_1',
-          metadata: { userId: 'user-1', depositId: 'dep-missing' },
-        } as unknown as Stripe.Checkout.Session,
-      },
-    };
-
-    await expect(handleWebhookEvent(JSON.stringify(event), 'sig_fake')).resolves.not.toThrow();
-    expect(mockUpdateBalance).not.toHaveBeenCalled();
+    expect(lifecycle.confirmDepositTransaction).toHaveBeenCalledWith('dep-1', 'user-1', 'Stripe');
   });
 
   it('ignores webhook if metadata is missing', async () => {
+    const lifecycle = makeLifecycle();
+    const service = createStripePaymentService({
+      stripeClient: makeStripeClient(),
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
     const event = {
       type: 'checkout.session.completed',
-      data: {
-        object: { id: 'cs_1', metadata: {} } as Stripe.Checkout.Session,
-      },
+      data: { object: { id: 'cs_1', metadata: {} } },
     };
 
-    await handleWebhookEvent(JSON.stringify(event), 'sig_fake');
+    await service.handleWebhookEvent(JSON.stringify(event), 'sig_fake');
 
-    expect(transactionCallCount).toBe(0);
-    expect(mockFindDepositById).not.toHaveBeenCalled();
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-checkout-completed events', async () => {
+    const lifecycle = makeLifecycle();
+    const service = createStripePaymentService({
+      stripeClient: makeStripeClient(),
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    const event = {
+      type: 'payment_intent.succeeded',
+      data: { object: { id: 'pi_1', metadata: { userId: 'u1', depositId: 'd1' } } },
+    };
+
+    await service.handleWebhookEvent(JSON.stringify(event), 'sig_fake');
+
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('throws when stripe is not configured (null client)', async () => {
+    const service = createStripePaymentService({
+      stripeClient: null,
+      depositRepo: createFakeDepositRepository(),
+      lifecycle: makeLifecycle(),
+      stripeConfig: { secretKey: undefined, webhookSecret: undefined },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    await expect(service.handleWebhookEvent('{}', 'sig')).rejects.toThrow(/not configured/);
+  });
+
+  it('throws when webhook secret is missing', async () => {
+    const service = createStripePaymentService({
+      stripeClient: makeStripeClient(),
+      depositRepo: createFakeDepositRepository(),
+      lifecycle: makeLifecycle(),
+      stripeConfig: { secretKey: 'sk_test', webhookSecret: undefined },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    await expect(service.handleWebhookEvent('{}', 'sig')).rejects.toThrow(
+      /webhook secret not configured/,
+    );
+  });
+
+  it('provider.isConfigured reflects config presence', () => {
+    const configured = createStripePaymentService({
+      stripeClient: makeStripeClient(),
+      depositRepo: createFakeDepositRepository(),
+      lifecycle: makeLifecycle(),
+      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+    expect(configured.provider.isConfigured()).toBe(true);
+
+    const unconfigured = createStripePaymentService({
+      stripeClient: null,
+      depositRepo: createFakeDepositRepository(),
+      lifecycle: makeLifecycle(),
+      stripeConfig: { secretKey: undefined, webhookSecret: undefined },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+    expect(unconfigured.provider.isConfigured()).toBe(false);
   });
 });
