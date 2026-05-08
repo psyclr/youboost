@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import type { WebhookRecord } from './webhooks.types';
 
@@ -21,7 +20,7 @@ interface WebhookFilters {
   limit: number;
 }
 
-export interface WebhookRepository {
+export interface WebhooksRepository {
   createWebhook(data: CreateWebhookData): Promise<WebhookRecord>;
   findWebhooksByUserId(
     userId: string,
@@ -34,7 +33,7 @@ export interface WebhookRepository {
   updateLastTriggeredAt(webhookId: string): Promise<void>;
 }
 
-export function createWebhookRepository(prisma: PrismaClient): WebhookRepository {
+export function createWebhooksRepository(prisma: PrismaClient): WebhooksRepository {
   async function createWebhook(data: CreateWebhookData): Promise<WebhookRecord> {
     return prisma.webhook.create({
       data: {
@@ -132,46 +131,4 @@ export function createWebhookRepository(prisma: PrismaClient): WebhookRepository
     findActiveWebhooksByEvent,
     updateLastTriggeredAt,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createWebhook(data: CreateWebhookData): Promise<WebhookRecord> {
-  return createWebhookRepository(getPrisma()).createWebhook(data);
-}
-
-export async function findWebhooksByUserId(
-  userId: string,
-  filters: WebhookFilters,
-): Promise<{ webhooks: WebhookRecord[]; total: number }> {
-  return createWebhookRepository(getPrisma()).findWebhooksByUserId(userId, filters);
-}
-
-export async function findWebhookById(
-  webhookId: string,
-  userId: string,
-): Promise<WebhookRecord | null> {
-  return createWebhookRepository(getPrisma()).findWebhookById(webhookId, userId);
-}
-
-export async function updateWebhook(
-  webhookId: string,
-  userId: string,
-  data: UpdateWebhookData,
-): Promise<WebhookRecord> {
-  return createWebhookRepository(getPrisma()).updateWebhook(webhookId, userId, data);
-}
-
-export async function deleteWebhook(webhookId: string, userId: string): Promise<void> {
-  return createWebhookRepository(getPrisma()).deleteWebhook(webhookId, userId);
-}
-
-export async function findActiveWebhooksByEvent(
-  userId: string,
-  event: string,
-): Promise<WebhookRecord[]> {
-  return createWebhookRepository(getPrisma()).findActiveWebhooksByEvent(userId, event);
-}
-
-export async function updateLastTriggeredAt(webhookId: string): Promise<void> {
-  return createWebhookRepository(getPrisma()).updateLastTriggeredAt(webhookId);
 }

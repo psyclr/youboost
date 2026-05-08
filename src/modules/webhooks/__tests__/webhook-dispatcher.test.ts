@@ -1,76 +1,50 @@
-import {
-  signPayload,
-  enqueueWebhookDelivery,
-  processWebhookDelivery,
-  startWebhookWorker,
-  stopWebhookWorker,
-} from '../webhook-dispatcher';
 import type { Job } from 'bullmq';
 
-const mockFindActiveWebhooksByEvent = jest.fn();
-const mockUpdateLastTriggeredAt = jest.fn();
-const mockQueueAdd = jest.fn();
-const mockQueueClose = jest.fn();
-const mockWorkerClose = jest.fn();
+const mockStartNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockStopNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockQueueAdd = jest.fn().mockResolvedValue({});
+const mockGetNamedQueue = jest.fn().mockReturnValue({ add: mockQueueAdd });
 
-jest.mock('../webhooks.repository', () => ({
-  findActiveWebhooksByEvent: (...args: unknown[]): unknown =>
-    mockFindActiveWebhooksByEvent(...args),
-  updateLastTriggeredAt: (...args: unknown[]): unknown => mockUpdateLastTriggeredAt(...args),
+jest.mock('../../../shared/queue', () => ({
+  startNamedWorker: (...args: unknown[]): unknown => mockStartNamedWorker(...args),
+  stopNamedWorker: (...args: unknown[]): unknown => mockStopNamedWorker(...args),
+  getNamedQueue: (...args: unknown[]): unknown => mockGetNamedQueue(...args),
 }));
 
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
+import { createWebhookDispatcher, signPayload } from '../webhook-dispatcher';
+import type { WebhookJobData } from '../webhook-dispatcher';
+import { createFakeWebhooksRepository, silentLogger } from './fakes';
+import type { WebhookRecord } from '../webhooks.types';
 
-jest.mock('../../../shared/redis/redis', () => ({
-  getRedis: jest.fn().mockReturnValue({
-    duplicate: jest.fn().mockReturnValue({}),
-  }),
-}));
+function makeRecord(overrides: Partial<WebhookRecord> = {}): WebhookRecord {
+  return {
+    id: 'wh-1',
+    userId: 'user-1',
+    url: 'https://example.com/hook',
+    events: ['order.created'],
+    secret: 'test-secret',
+    isActive: true,
+    lastTriggeredAt: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
 
-let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
-const capturedEventHandlers: Record<string, (...args: unknown[]) => void> = {};
+const createJob = (data: WebhookJobData): Job<WebhookJobData> =>
+  ({ data }) as unknown as Job<WebhookJobData>;
 
-jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({
-    add: (...args: unknown[]): unknown => mockQueueAdd(...args),
-    close: (...args: unknown[]): unknown => mockQueueClose(...args),
-  })),
-  Worker: jest
-    .fn()
-    .mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-      capturedProcessor = processor;
-      return {
-        on: jest.fn().mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-          capturedEventHandlers[event] = handler;
-        }),
-        close: (...args: unknown[]): unknown => mockWorkerClose(...args),
-      };
-    }),
-}));
-
-// Mock global fetch
 const mockFetch = jest.fn();
-global.fetch = mockFetch;
+global.fetch = mockFetch as unknown as typeof fetch;
 
 describe('Webhook Dispatcher', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockUpdateLastTriggeredAt.mockResolvedValue(undefined);
-    capturedProcessor = null;
-    for (const key of Object.keys(capturedEventHandlers)) {
-      delete capturedEventHandlers[key];
-    }
-  });
-
-  afterEach(async () => {
-    await stopWebhookWorker();
+    mockStartNamedWorker.mockClear();
+    mockStopNamedWorker.mockClear();
+    mockQueueAdd.mockClear();
+    mockGetNamedQueue.mockClear();
+    mockQueueAdd.mockResolvedValue({});
+    mockGetNamedQueue.mockReturnValue({ add: mockQueueAdd });
+    mockFetch.mockReset();
   });
 
   describe('signPayload', () => {
@@ -101,27 +75,37 @@ describe('Webhook Dispatcher', () => {
 
   describe('enqueueWebhookDelivery', () => {
     it('should do nothing when no active webhooks', async () => {
-      mockFindActiveWebhooksByEvent.mockResolvedValue([]);
-      await enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+      const webhooksRepo = createFakeWebhooksRepository();
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
+      await dispatcher.enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
     it('should enqueue a job for each matching webhook', async () => {
-      mockFindActiveWebhooksByEvent.mockResolvedValue([
-        { id: 'wh-1', url: 'https://a.com/hook', secret: 's1', events: ['order.created'] },
-        { id: 'wh-2', url: 'https://b.com/hook', secret: 's2', events: ['order.created'] },
-      ]);
-      mockQueueAdd.mockResolvedValue({});
-      await enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+      const webhooksRepo = createFakeWebhooksRepository({
+        webhooks: [
+          makeRecord({ id: 'wh-1', url: 'https://a.com/hook', secret: 's1' }),
+          makeRecord({ id: 'wh-2', url: 'https://b.com/hook', secret: 's2' }),
+        ],
+      });
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
+      await dispatcher.enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+
+      expect(mockGetNamedQueue).toHaveBeenCalledWith('webhook-delivery');
       expect(mockQueueAdd).toHaveBeenCalledTimes(2);
     });
 
     it('should include webhook data in job', async () => {
-      mockFindActiveWebhooksByEvent.mockResolvedValue([
-        { id: 'wh-1', url: 'https://a.com/hook', secret: 's1', events: ['order.created'] },
-      ]);
-      mockQueueAdd.mockResolvedValue({});
-      await enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+      const webhooksRepo = createFakeWebhooksRepository({
+        webhooks: [makeRecord({ id: 'wh-1', url: 'https://a.com/hook', secret: 's1' })],
+      });
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
+      await dispatcher.enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' });
+
       expect(mockQueueAdd).toHaveBeenCalledWith(
         'deliver:order.created',
         expect.objectContaining({
@@ -134,33 +118,32 @@ describe('Webhook Dispatcher', () => {
     });
 
     it('should not throw when enqueue fails', async () => {
-      mockFindActiveWebhooksByEvent.mockRejectedValue(new Error('DB error'));
+      const webhooksRepo = createFakeWebhooksRepository();
+      webhooksRepo.setFindActiveWebhooksByEventFailure(new Error('DB error'));
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
       await expect(
-        enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' }),
+        dispatcher.enqueueWebhookDelivery('user-1', 'order.created', { orderId: 'o1' }),
       ).resolves.toBeUndefined();
     });
   });
 
   describe('processWebhookDelivery', () => {
-    const mockJob = {
-      data: {
-        webhookId: 'wh-1',
-        url: 'https://example.com/hook',
-        secret: 'test-secret',
-        event: 'order.created',
-        payload: { event: 'order.created', data: { orderId: 'o1' } },
-      },
-    } as unknown as Job<{
-      webhookId: string;
-      url: string;
-      secret: string;
-      event: string;
-      payload: Record<string, unknown>;
-    }>;
+    const jobData: WebhookJobData = {
+      webhookId: 'wh-1',
+      url: 'https://example.com/hook',
+      secret: 'test-secret',
+      event: 'order.created',
+      payload: { event: 'order.created', data: { orderId: 'o1' } },
+    };
 
     it('should POST to webhook URL with signature', async () => {
+      const webhooksRepo = createFakeWebhooksRepository({ webhooks: [makeRecord()] });
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
       mockFetch.mockResolvedValue({ ok: true, status: 200 });
-      await processWebhookDelivery(mockJob);
+
+      await dispatcher.processWebhookDelivery(createJob(jobData));
+
       expect(mockFetch).toHaveBeenCalledWith(
         'https://example.com/hook',
         expect.objectContaining({
@@ -175,78 +158,82 @@ describe('Webhook Dispatcher', () => {
     });
 
     it('should throw on non-2xx response', async () => {
+      const webhooksRepo = createFakeWebhooksRepository();
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
       mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
-      await expect(processWebhookDelivery(mockJob)).rejects.toThrow('Webhook delivery failed');
+
+      await expect(dispatcher.processWebhookDelivery(createJob(jobData))).rejects.toThrow(
+        'Webhook delivery failed',
+      );
     });
 
     it('should update lastTriggeredAt on success', async () => {
+      const webhooksRepo = createFakeWebhooksRepository({ webhooks: [makeRecord()] });
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
       mockFetch.mockResolvedValue({ ok: true, status: 200 });
-      await processWebhookDelivery(mockJob);
-      expect(mockUpdateLastTriggeredAt).toHaveBeenCalledWith('wh-1');
+
+      await dispatcher.processWebhookDelivery(createJob(jobData));
+      // Fire-and-forget; yield once to let microtasks drain.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(webhooksRepo.calls.updateLastTriggeredAt).toEqual(['wh-1']);
     });
 
     it('should not propagate updateLastTriggeredAt rejection', async () => {
+      const webhooksRepo = createFakeWebhooksRepository({ webhooks: [makeRecord()] });
+      webhooksRepo.setUpdateLastTriggeredAtFailure(new Error('DB error'));
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
       mockFetch.mockResolvedValue({ ok: true, status: 200 });
-      mockUpdateLastTriggeredAt.mockRejectedValue(new Error('DB error'));
-      await expect(processWebhookDelivery(mockJob)).resolves.toBeUndefined();
+
+      await expect(dispatcher.processWebhookDelivery(createJob(jobData))).resolves.toBeUndefined();
       // Let fire-and-forget catch handler run
       await new Promise((r) => setTimeout(r, 0));
     });
   });
 
-  describe('startWebhookWorker / stopWebhookWorker', () => {
+  describe('start / stop', () => {
     it('should start worker without errors', async () => {
-      await expect(startWebhookWorker()).resolves.toBeUndefined();
+      const webhooksRepo = createFakeWebhooksRepository();
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
+      await expect(dispatcher.start()).resolves.toBeUndefined();
+      expect(mockStartNamedWorker).toHaveBeenCalledWith(
+        'webhook-delivery',
+        expect.any(Function),
+        expect.objectContaining({ retryable: true, concurrency: 3 }),
+      );
     });
 
     it('should stop worker without errors', async () => {
-      mockWorkerClose.mockResolvedValue(undefined);
-      mockQueueClose.mockResolvedValue(undefined);
-      await expect(stopWebhookWorker()).resolves.toBeUndefined();
+      const webhooksRepo = createFakeWebhooksRepository();
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
+
+      await dispatcher.start();
+      await expect(dispatcher.stop()).resolves.toBeUndefined();
+      expect(mockStopNamedWorker).toHaveBeenCalledWith('webhook-delivery');
     });
 
-    it('should log warning and return early when worker already started', async () => {
-      await startWebhookWorker();
-      await expect(startWebhookWorker()).resolves.toBeUndefined();
-    });
-  });
-
-  describe('worker processor and event handlers', () => {
     it('should invoke processWebhookDelivery via worker processor', async () => {
-      await startWebhookWorker();
-      expect(capturedProcessor).toBeDefined();
-
+      const webhooksRepo = createFakeWebhooksRepository({ webhooks: [makeRecord()] });
+      const dispatcher = createWebhookDispatcher({ webhooksRepo, logger: silentLogger });
       mockFetch.mockResolvedValue({ ok: true, status: 200 });
-      const fakeJob = {
-        name: 'deliver:order.created',
-        data: {
+
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0]?.[1] as (
+        job: Job<WebhookJobData>,
+      ) => Promise<void>;
+
+      await processor(
+        createJob({
           webhookId: 'wh-1',
           url: 'https://example.com/hook',
           secret: 'test-secret',
           event: 'order.created',
           payload: { event: 'order.created', data: {} },
-        },
-      };
-      await capturedProcessor!(fakeJob);
+        }),
+      );
+
       expect(mockFetch).toHaveBeenCalledWith('https://example.com/hook', expect.any(Object));
-    });
-
-    it('should not throw from failed event handler', async () => {
-      await startWebhookWorker();
-      const handler = capturedEventHandlers['failed'];
-      if (!handler) throw new Error('failed handler not registered');
-      expect(() => {
-        handler({ name: 'test-job' }, new Error('fail'));
-      }).not.toThrow();
-    });
-
-    it('should not throw from completed event handler', async () => {
-      await startWebhookWorker();
-      const handler = capturedEventHandlers['completed'];
-      if (!handler) throw new Error('completed handler not registered');
-      expect(() => {
-        handler({ name: 'test-job' });
-      }).not.toThrow();
     });
   });
 });

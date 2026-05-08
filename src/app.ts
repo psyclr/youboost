@@ -20,7 +20,9 @@ import { cryptomusRoutes } from './modules/billing/cryptomus/cryptomus.routes';
 import { orderRoutes } from './modules/orders/orders.routes';
 import { providerRoutes } from './modules/providers/providers.routes';
 import { apiKeyRoutes } from './modules/api-keys/api-keys.routes';
-import { webhookRoutes } from './modules/webhooks/webhooks.routes';
+import { createWebhooksRepository } from './modules/webhooks/webhooks.repository';
+import { createWebhooksService } from './modules/webhooks/webhooks.service';
+import { createWebhookRoutes } from './modules/webhooks/webhooks.routes';
 import { createCatalogRepository } from './modules/catalog/catalog.repository';
 import { createCatalogService } from './modules/catalog/catalog.service';
 import { createCatalogRoutes } from './modules/catalog/catalog.routes';
@@ -182,6 +184,16 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('notifications'),
   });
 
+  const webhooksRepo = createWebhooksRepository(prisma);
+  // NOTE: webhookDispatcher is currently constructed via the transitional shims
+  // in src/modules/webhooks/index.ts (driven by src/index.ts). Explicit
+  // composition-root wiring will land in sweep phase F17 once start/stop
+  // become explicit here. See webhooks/index.ts.
+  const webhooksService = createWebhooksService({
+    webhooksRepo,
+    logger: createServiceLogger('webhooks'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -189,7 +201,9 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(orderRoutes, { prefix: '/orders' });
   await app.register(providerRoutes, { prefix: '/providers' });
   await app.register(apiKeyRoutes, { prefix: '/api-keys' });
-  await app.register(webhookRoutes, { prefix: '/webhooks' });
+  await app.register(createWebhookRoutes({ service: webhooksService, authenticate }), {
+    prefix: '/webhooks',
+  });
   await app.register(createCatalogRoutes(catalogService), { prefix: '/catalog' });
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(createNotificationRoutes({ service: notificationsService, authenticate }), {

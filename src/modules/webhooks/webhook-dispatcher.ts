@@ -1,10 +1,8 @@
 import crypto from 'node:crypto';
 import type { Job } from 'bullmq';
+import type { Logger } from 'pino';
 import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../shared/queue';
-import { createServiceLogger } from '../../shared/utils/logger';
-import * as repo from './webhooks.repository';
-
-const log = createServiceLogger('webhook-dispatcher');
+import type { WebhooksRepository } from './webhooks.repository';
 
 const QUEUE_NAME = 'webhook-delivery';
 
@@ -20,77 +18,99 @@ export interface WebhookJobData {
   payload: Record<string, unknown>;
 }
 
-export async function enqueueWebhookDelivery(
-  userId: string,
-  event: string,
-  data: Record<string, unknown>,
-): Promise<void> {
-  try {
-    const webhooks = await repo.findActiveWebhooksByEvent(userId, event);
-    if (webhooks.length === 0) return;
+export interface WebhookDispatcher {
+  enqueueWebhookDelivery(
+    userId: string,
+    event: string,
+    data: Record<string, unknown>,
+  ): Promise<void>;
+  processWebhookDelivery(job: Job<WebhookJobData>): Promise<void>;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
 
-    const q = getNamedQueue(QUEUE_NAME);
+export interface WebhookDispatcherDeps {
+  webhooksRepo: WebhooksRepository;
+  logger: Logger;
+}
 
-    for (const webhook of webhooks) {
-      const jobData: WebhookJobData = {
-        webhookId: webhook.id,
-        url: webhook.url,
-        secret: webhook.secret,
-        event,
-        payload: { event, data, timestamp: new Date().toISOString() },
-      };
+export function createWebhookDispatcher(deps: WebhookDispatcherDeps): WebhookDispatcher {
+  const { webhooksRepo, logger } = deps;
 
-      await q.add(`deliver:${event}`, jobData, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 10_000 },
-      });
+  async function enqueueWebhookDelivery(
+    userId: string,
+    event: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const webhooks = await webhooksRepo.findActiveWebhooksByEvent(userId, event);
+      if (webhooks.length === 0) return;
+
+      const q = getNamedQueue(QUEUE_NAME);
+
+      for (const webhook of webhooks) {
+        const jobData: WebhookJobData = {
+          webhookId: webhook.id,
+          url: webhook.url,
+          secret: webhook.secret,
+          event,
+          payload: { event, data, timestamp: new Date().toISOString() },
+        };
+
+        await q.add(`deliver:${event}`, jobData, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 10_000 },
+        });
+      }
+
+      logger.info({ userId, event, webhookCount: webhooks.length }, 'Webhook deliveries enqueued');
+    } catch (err) {
+      logger.error({ err, userId, event }, 'Failed to enqueue webhook deliveries');
+    }
+  }
+
+  async function processWebhookDelivery(job: Job<WebhookJobData>): Promise<void> {
+    const { webhookId, url, secret, event, payload } = job.data;
+    const body = JSON.stringify(payload);
+    const signature = signPayload(body, secret);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Signature': signature,
+        'X-Webhook-Event': event,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Webhook delivery failed: ${response.status} ${response.statusText}`);
     }
 
-    log.info({ userId, event, webhookCount: webhooks.length }, 'Webhook deliveries enqueued');
-  } catch (err) {
-    log.error({ err, userId, event }, 'Failed to enqueue webhook deliveries');
-  }
-}
+    webhooksRepo.updateLastTriggeredAt(webhookId).catch((err) => {
+      logger.error({ err, webhookId }, 'Failed to update lastTriggeredAt');
+    });
 
-export async function processWebhookDelivery(job: Job<WebhookJobData>): Promise<void> {
-  const { webhookId, url, secret, event, payload } = job.data;
-  const body = JSON.stringify(payload);
-  const signature = signPayload(body, secret);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Webhook-Signature': signature,
-      'X-Webhook-Event': event,
-    },
-    body,
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Webhook delivery failed: ${response.status} ${response.statusText}`);
+    logger.info({ webhookId, event, status: response.status }, 'Webhook delivered');
   }
 
-  repo.updateLastTriggeredAt(webhookId).catch((err) => {
-    log.error({ err, webhookId }, 'Failed to update lastTriggeredAt');
-  });
+  async function start(): Promise<void> {
+    await startNamedWorker<WebhookJobData>(
+      QUEUE_NAME,
+      async (job) => {
+        await processWebhookDelivery(job);
+      },
+      { retryable: true, concurrency: 3 },
+    );
+    logger.info('Webhook worker started');
+  }
 
-  log.info({ webhookId, event, status: response.status }, 'Webhook delivered');
-}
+  async function stop(): Promise<void> {
+    await stopNamedWorker(QUEUE_NAME);
+    logger.info('Webhook worker stopped');
+  }
 
-export async function startWebhookWorker(): Promise<void> {
-  await startNamedWorker<WebhookJobData>(
-    QUEUE_NAME,
-    async (job) => {
-      await processWebhookDelivery(job);
-    },
-    { retryable: true, concurrency: 3 },
-  );
-  log.info('Webhook worker started');
-}
-
-export async function stopWebhookWorker(): Promise<void> {
-  await stopNamedWorker(QUEUE_NAME);
-  log.info('Webhook worker stopped');
+  return { enqueueWebhookDelivery, processWebhookDelivery, start, stop };
 }
