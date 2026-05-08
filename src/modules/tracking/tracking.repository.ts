@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient, TrackingLink } from '../../generated/prisma';
 
 export interface TrackingRepository {
@@ -92,34 +91,4 @@ export function createTrackingRepository(prisma: PrismaClient): TrackingReposito
     findByCode,
     deleteById,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function create(data: { code: string; name: string }): Promise<TrackingLink> {
-  return createTrackingRepository(getPrisma()).create(data);
-}
-
-export async function findAll(): Promise<
-  {
-    id: string;
-    code: string;
-    name: string;
-    createdAt: Date;
-    registrations: number;
-    lastRegistration: Date | null;
-  }[]
-> {
-  return createTrackingRepository(getPrisma()).findAll();
-}
-
-export async function findById(id: string): Promise<TrackingLink | null> {
-  return createTrackingRepository(getPrisma()).findById(id);
-}
-
-export async function findByCode(code: string): Promise<TrackingLink | null> {
-  return createTrackingRepository(getPrisma()).findByCode(code);
-}
-
-export async function deleteById(id: string): Promise<void> {
-  return createTrackingRepository(getPrisma()).deleteById(id);
 }

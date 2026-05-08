@@ -29,7 +29,11 @@ import { notificationRoutes } from './modules/notifications/notifications.routes
 import { supportRoutes, adminSupportRoutes } from './modules/support/support.routes';
 import { referralRoutes } from './modules/referrals/referrals.routes';
 import { couponRoutes, adminCouponRoutes } from './modules/coupons/coupons.routes';
-import { adminTrackingRoutes } from './modules/tracking/tracking.routes';
+import { createTrackingRepository } from './modules/tracking/tracking.repository';
+import { createTrackingService } from './modules/tracking/tracking.service';
+import { createAdminTrackingRoutes } from './modules/tracking/tracking.routes';
+import { authenticate } from './modules/auth/auth.middleware';
+import { requireAdmin } from './modules/providers/providers.middleware';
 
 const log = createServiceLogger('http');
 
@@ -140,6 +144,12 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('catalog'),
   });
 
+  const trackingRepo = createTrackingRepository(prisma);
+  const trackingService = createTrackingService({
+    trackingRepo,
+    logger: createServiceLogger('tracking'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -156,7 +166,10 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(referralRoutes, { prefix: '/referrals' });
   await app.register(couponRoutes, { prefix: '/coupons' });
   await app.register(adminCouponRoutes, { prefix: '/admin/coupons' });
-  await app.register(adminTrackingRoutes, { prefix: '/admin/tracking-links' });
+  await app.register(
+    createAdminTrackingRoutes({ service: trackingService, authenticate, requireAdmin }),
+    { prefix: '/admin/tracking-links' },
+  );
 
   return app;
 }

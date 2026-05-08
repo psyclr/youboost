@@ -1,24 +1,28 @@
-import { create, findAll, findById, findByCode, deleteById } from '../tracking.repository';
+import { createTrackingRepository } from '../tracking.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
-const mockCreate = jest.fn();
-const mockFindMany = jest.fn();
-const mockFindUnique = jest.fn();
-const mockDelete = jest.fn();
-const mockGroupBy = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    trackingLink: {
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
-      delete: (...args: unknown[]): unknown => mockDelete(...args),
-    },
-    user: {
-      groupBy: (...args: unknown[]): unknown => mockGroupBy(...args),
-    },
-  }),
-}));
+function createFakePrisma(): {
+  prisma: PrismaClient;
+  mocks: {
+    create: jest.Mock;
+    findMany: jest.Mock;
+    findUnique: jest.Mock;
+    delete: jest.Mock;
+    groupBy: jest.Mock;
+  };
+} {
+  const create = jest.fn();
+  const findMany = jest.fn();
+  const findUnique = jest.fn();
+  const del = jest.fn();
+  const groupBy = jest.fn();
+  const prisma = {
+    trackingLink: { create, findMany, findUnique, delete: del },
+    user: { groupBy },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any as PrismaClient;
+  return { prisma, mocks: { create, findMany, findUnique, delete: del, groupBy } };
+}
 
 const mockLink = {
   id: 'link-1',
@@ -28,36 +32,35 @@ const mockLink = {
 };
 
 describe('Tracking Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('create', () => {
-    it('should call prisma.trackingLink.create with code and name', async () => {
-      mockCreate.mockResolvedValue(mockLink);
+    it('calls prisma.trackingLink.create with code and name', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.create.mockResolvedValue(mockLink);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await create({ code: 'promo2024', name: 'Promo Campaign' });
+      const result = await repo.create({ code: 'promo2024', name: 'Promo Campaign' });
 
       expect(result).toEqual(mockLink);
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(mocks.create).toHaveBeenCalledWith({
         data: { code: 'promo2024', name: 'Promo Campaign' },
       });
     });
   });
 
   describe('findAll', () => {
-    it('should return links with stats from groupBy', async () => {
-      const links = [mockLink];
-      mockFindMany.mockResolvedValue(links);
-      mockGroupBy.mockResolvedValue([
+    it('returns links with stats from groupBy', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockLink]);
+      mocks.groupBy.mockResolvedValue([
         {
           referralCode: 'promo2024',
           _count: { id: 3 },
           _max: { createdAt: new Date('2024-06-15') },
         },
       ]);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findAll();
+      const result = await repo.findAll();
 
       expect(result).toEqual([
         {
@@ -69,8 +72,8 @@ describe('Tracking Repository', () => {
           lastRegistration: new Date('2024-06-15'),
         },
       ]);
-      expect(mockFindMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
-      expect(mockGroupBy).toHaveBeenCalledWith({
+      expect(mocks.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: 'desc' } });
+      expect(mocks.groupBy).toHaveBeenCalledWith({
         by: ['referralCode'],
         where: { referralCode: { in: ['promo2024'] } },
         _count: { id: true },
@@ -78,20 +81,24 @@ describe('Tracking Repository', () => {
       });
     });
 
-    it('should return empty array when no links exist', async () => {
-      mockFindMany.mockResolvedValue([]);
+    it('returns empty array when no links exist', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findAll();
+      const result = await repo.findAll();
 
       expect(result).toEqual([]);
-      expect(mockGroupBy).not.toHaveBeenCalled();
+      expect(mocks.groupBy).not.toHaveBeenCalled();
     });
 
-    it('should return zero registrations for links without stats', async () => {
-      mockFindMany.mockResolvedValue([mockLink]);
-      mockGroupBy.mockResolvedValue([]);
+    it('returns zero registrations for links without stats', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockLink]);
+      mocks.groupBy.mockResolvedValue([]);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findAll();
+      const result = await repo.findAll();
 
       expect(result).toEqual([
         {
@@ -107,50 +114,60 @@ describe('Tracking Repository', () => {
   });
 
   describe('findById', () => {
-    it('should return link when found', async () => {
-      mockFindUnique.mockResolvedValue(mockLink);
+    it('returns link when found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(mockLink);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findById('link-1');
+      const result = await repo.findById('link-1');
 
       expect(result).toEqual(mockLink);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: 'link-1' } });
+      expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id: 'link-1' } });
     });
 
-    it('should return null when not found', async () => {
-      mockFindUnique.mockResolvedValue(null);
+    it('returns null when not found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(null);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findById('nonexistent');
+      const result = await repo.findById('nonexistent');
 
       expect(result).toBeNull();
     });
   });
 
   describe('findByCode', () => {
-    it('should return link when found', async () => {
-      mockFindUnique.mockResolvedValue(mockLink);
+    it('returns link when found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(mockLink);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findByCode('promo2024');
+      const result = await repo.findByCode('promo2024');
 
       expect(result).toEqual(mockLink);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { code: 'promo2024' } });
+      expect(mocks.findUnique).toHaveBeenCalledWith({ where: { code: 'promo2024' } });
     });
 
-    it('should return null when not found', async () => {
-      mockFindUnique.mockResolvedValue(null);
+    it('returns null when not found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(null);
+      const repo = createTrackingRepository(prisma);
 
-      const result = await findByCode('nonexistent');
+      const result = await repo.findByCode('nonexistent');
 
       expect(result).toBeNull();
     });
   });
 
   describe('deleteById', () => {
-    it('should call prisma.trackingLink.delete', async () => {
-      mockDelete.mockResolvedValue(mockLink);
+    it('calls prisma.trackingLink.delete', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.delete.mockResolvedValue(mockLink);
+      const repo = createTrackingRepository(prisma);
 
-      await deleteById('link-1');
+      await repo.deleteById('link-1');
 
-      expect(mockDelete).toHaveBeenCalledWith({ where: { id: 'link-1' } });
+      expect(mocks.delete).toHaveBeenCalledWith({ where: { id: 'link-1' } });
     });
   });
 });
