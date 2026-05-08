@@ -1,358 +1,363 @@
-import { createOrder, getOrder, listOrders, cancelOrder } from '../orders.service';
+import { createOrdersService, type OrdersService } from '../orders.service';
+import {
+  createFakeOrdersRepository,
+  createFakeServicesRepository,
+  createFakeBilling,
+  createFakeProviderSelector,
+  createFakeProviderClient,
+  createFakeCouponsService,
+  createFakeOutbox,
+  createFakePrisma,
+  makeServiceRecord,
+  silentLogger,
+  type FakeOrdersRepository,
+  type FakeServicesRepository,
+  type FakeBilling,
+  type FakeOutbox,
+  type FakeCouponsService,
+} from './fakes';
+import type { ProviderClient } from '../utils/provider-client';
+import type { ProviderSelectorPort } from '../ports/provider-selector.port';
 
-const mockFindServiceById = jest.fn();
-jest.mock('../service.repository', () => ({
-  findServiceById: (...args: unknown[]): unknown => mockFindServiceById(...args),
-}));
-
-const mockCreateOrder = jest.fn();
-const mockFindOrderById = jest.fn();
-const mockFindOrders = jest.fn();
-const mockUpdateOrderStatus = jest.fn();
-jest.mock('../orders.repository', () => ({
-  createOrder: (...args: unknown[]): unknown => mockCreateOrder(...args),
-  findOrderById: (...args: unknown[]): unknown => mockFindOrderById(...args),
-  findOrders: (...args: unknown[]): unknown => mockFindOrders(...args),
-  updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
-}));
-
-const mockHoldFunds = jest.fn();
-const mockReleaseFunds = jest.fn();
-jest.mock('../../billing', () => ({
-  holdFunds: (...args: unknown[]): unknown => mockHoldFunds(...args),
-  releaseFunds: (...args: unknown[]): unknown => mockReleaseFunds(...args),
-}));
-
-const mockSubmitOrder = jest.fn();
-const mockSelectProviderById = jest.fn();
-jest.mock('../../providers', () => ({
-  selectProviderById: (...args: unknown[]): unknown => mockSelectProviderById(...args),
-}));
-
-const mockEnqueueWebhookDelivery = jest.fn();
-jest.mock('../../webhooks', () => ({
-  enqueueWebhookDelivery: (...args: unknown[]): unknown => mockEnqueueWebhookDelivery(...args),
-}));
-
-const mockEnqueueNotification = jest.fn();
-jest.mock('../../notifications', () => ({
-  enqueueNotification: (...args: unknown[]): unknown => mockEnqueueNotification(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest
-    .fn()
-    .mockReturnValue({ info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() }),
-}));
-
-const mockService = {
-  id: 'svc-1',
-  name: 'YouTube Views',
-  platform: 'YOUTUBE',
-  type: 'VIEWS',
-  pricePer1000: 2.5,
-  minQuantity: 100,
-  maxQuantity: 100_000,
-  isActive: true,
-  providerId: 'prov-1',
-  externalServiceId: '101',
-  refillDays: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
-
-const mockOrder = {
-  id: 'order-1',
-  userId: 'user-1',
-  serviceId: 'svc-1',
-  providerId: null,
-  externalOrderId: 'ext-1',
-  link: 'https://youtube.com/watch?v=test',
-  quantity: 1000,
-  price: 2.5,
-  status: 'PROCESSING',
-  startCount: null,
-  remains: 1000,
-  isDripFeed: false,
-  dripFeedRuns: null,
-  dripFeedInterval: null,
-  dripFeedRunsCompleted: 0,
-  dripFeedPausedAt: null,
-  refillEligibleUntil: null,
-  refillCount: 0,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  completedAt: null,
-};
-
-function setupCreateOrder(): void {
-  mockFindServiceById.mockResolvedValue(mockService);
-  mockCreateOrder.mockResolvedValue({ ...mockOrder, status: 'PENDING' });
-  mockHoldFunds.mockResolvedValue(undefined);
-  mockSubmitOrder.mockResolvedValue({ externalOrderId: 'ext-1', status: 'processing' });
-  mockUpdateOrderStatus.mockResolvedValue(mockOrder);
+interface Harness {
+  service: OrdersService;
+  ordersRepo: FakeOrdersRepository;
+  servicesRepo: FakeServicesRepository;
+  billing: FakeBilling;
+  outbox: FakeOutbox;
+  couponsService: FakeCouponsService;
+  providerClient: jest.Mocked<ProviderClient>;
+  providerSelector: ReturnType<typeof createFakeProviderSelector>;
 }
 
-describe('Orders Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
-    mockEnqueueNotification.mockResolvedValue(undefined);
-    mockSelectProviderById.mockResolvedValue({
-      providerId: 'prov-1',
-      client: { submitOrder: mockSubmitOrder, checkStatus: jest.fn() },
-    });
+function buildHarness(
+  opts: {
+    service?: ReturnType<typeof makeServiceRecord>;
+    clientOverrides?: Partial<ProviderClient>;
+    selectByIdImpl?: Parameters<typeof createFakeProviderSelector>[0]['selectByIdImpl'];
+    couponResults?: Record<
+      string,
+      { valid: boolean; discount: number; couponId: string | null; reason?: string }
+    >;
+  } = {},
+): Harness {
+  const servicesRepo = createFakeServicesRepository({
+    services: [opts.service ?? makeServiceRecord()],
+  });
+  const ordersRepo = createFakeOrdersRepository();
+  const billing = createFakeBilling();
+  const providerClient = createFakeProviderClient(opts.clientOverrides);
+  const providerSelector = createFakeProviderSelector({
+    client: providerClient,
+    providerId: 'prov-1',
+    ...(opts.selectByIdImpl ? { selectByIdImpl: opts.selectByIdImpl } : {}),
+  });
+  const outbox = createFakeOutbox();
+  const couponsService = createFakeCouponsService(opts.couponResults ?? {});
+  const fakePrisma = createFakePrisma();
+
+  const service = createOrdersService({
+    prisma: fakePrisma.client,
+    ordersRepo,
+    servicesRepo,
+    billing: {
+      holdFunds: billing.holdFunds,
+      releaseFunds: billing.releaseFunds,
+    },
+    providerSelector: providerSelector as unknown as ProviderSelectorPort,
+    couponsService,
+    outbox: outbox.port,
+    logger: silentLogger,
   });
 
+  return {
+    service,
+    ordersRepo,
+    servicesRepo,
+    billing,
+    outbox,
+    couponsService,
+    providerClient,
+    providerSelector,
+  };
+}
+
+const validInput = {
+  serviceId: 'svc-1',
+  link: 'https://youtube.com/watch?v=test',
+  quantity: 1000,
+  isDripFeed: false as const,
+};
+
+describe('Orders Service', () => {
   describe('createOrder', () => {
-    const input = {
-      serviceId: 'svc-1',
-      link: 'https://youtube.com/watch?v=test',
-      quantity: 1000,
-      isDripFeed: false as const,
-    };
+    it('creates order and holds funds', async () => {
+      const h = buildHarness();
+      const result = await h.service.createOrder('user-1', validInput);
 
-    it('should create order and hold funds', async () => {
-      setupCreateOrder();
-      const result = await createOrder('user-1', input);
-      expect(result.orderId).toBe('order-1');
       expect(result.status).toBe('PROCESSING');
-      expect(mockHoldFunds).toHaveBeenCalledWith('user-1', 2.5, 'order-1');
+      expect(h.billing.calls.holdFunds).toEqual([
+        { userId: 'user-1', amount: 2.5, orderId: result.orderId },
+      ]);
     });
 
-    it('should calculate price correctly', async () => {
-      mockFindServiceById.mockResolvedValue({ ...mockService, pricePer1000: 5 });
-      mockCreateOrder.mockResolvedValue({ ...mockOrder, id: 'o2' });
-      mockHoldFunds.mockResolvedValue(undefined);
-      mockSubmitOrder.mockResolvedValue({ externalOrderId: 'e2', status: 'ok' });
-      mockUpdateOrderStatus.mockResolvedValue(mockOrder);
-      await createOrder('user-1', { ...input, quantity: 5000 });
-      expect(mockCreateOrder).toHaveBeenCalledWith(expect.objectContaining({ price: 25 }));
-    });
-
-    it('should throw NotFoundError if service not found', async () => {
-      mockFindServiceById.mockResolvedValue(null);
-      await expect(createOrder('user-1', input)).rejects.toThrow('Service not found');
-    });
-
-    it('should throw ValidationError if service inactive', async () => {
-      mockFindServiceById.mockResolvedValue({ ...mockService, isActive: false });
-      await expect(createOrder('user-1', input)).rejects.toThrow('Service is not available');
-    });
-
-    it('should throw ValidationError if quantity below minimum', async () => {
-      mockFindServiceById.mockResolvedValue(mockService);
-      await expect(createOrder('user-1', { ...input, quantity: 50 })).rejects.toThrow(
-        'Quantity must be between',
-      );
-    });
-
-    it('should throw ValidationError if quantity above maximum', async () => {
-      mockFindServiceById.mockResolvedValue(mockService);
-      await expect(createOrder('user-1', { ...input, quantity: 200_000 })).rejects.toThrow(
-        'Quantity must be between',
-      );
-    });
-
-    it('should throw ValidationError if service has no provider', async () => {
-      mockFindServiceById.mockResolvedValue({
-        ...mockService,
-        providerId: null,
-        externalServiceId: null,
+    it('calculates price from quantity * pricePer1000 / 1000', async () => {
+      const h = buildHarness({
+        service: makeServiceRecord({
+          pricePer1000: 5 as unknown as ReturnType<typeof makeServiceRecord>['pricePer1000'],
+        }),
       });
-      await expect(createOrder('user-1', input)).rejects.toThrow(
+      await h.service.createOrder('user-1', { ...validInput, quantity: 5000 });
+      expect(h.ordersRepo.calls.createOrder[0]).toMatchObject({ price: 25 });
+    });
+
+    it('throws NotFoundError when service does not exist', async () => {
+      const h = buildHarness({ service: makeServiceRecord({ id: 'other-svc' }) });
+      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow(
+        'Service not found',
+      );
+    });
+
+    it('throws ValidationError when service inactive', async () => {
+      const h = buildHarness({ service: makeServiceRecord({ isActive: false }) });
+      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow(
+        'Service is not available',
+      );
+    });
+
+    it('throws ValidationError when quantity below minQuantity', async () => {
+      const h = buildHarness();
+      await expect(
+        h.service.createOrder('user-1', { ...validInput, quantity: 50 }),
+      ).rejects.toThrow('Quantity must be between');
+    });
+
+    it('throws ValidationError when quantity above maxQuantity', async () => {
+      const h = buildHarness();
+      await expect(
+        h.service.createOrder('user-1', { ...validInput, quantity: 200_000 }),
+      ).rejects.toThrow('Quantity must be between');
+    });
+
+    it('throws ValidationError when service has no provider', async () => {
+      const h = buildHarness({
+        service: makeServiceRecord({ providerId: null, externalServiceId: null }),
+      });
+      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow(
         'Service is not linked to a provider',
       );
     });
 
-    it('should use selectProviderById with service providerId', async () => {
-      setupCreateOrder();
-      await createOrder('user-1', input);
-      expect(mockSelectProviderById).toHaveBeenCalledWith('prov-1');
+    it('submits to provider via selectProviderById with service.providerId', async () => {
+      const h = buildHarness();
+      await h.service.createOrder('user-1', validInput);
+      expect(h.providerSelector.calls.selectProviderById).toContain('prov-1');
     });
 
-    it('should submit to provider with externalServiceId', async () => {
-      setupCreateOrder();
-      await createOrder('user-1', input);
-      expect(mockSubmitOrder).toHaveBeenCalledWith({
+    it('submits externalServiceId + link + quantity to provider', async () => {
+      const h = buildHarness();
+      await h.service.createOrder('user-1', validInput);
+      expect(h.providerClient.submitOrder).toHaveBeenCalledWith({
         serviceId: '101',
         link: 'https://youtube.com/watch?v=test',
         quantity: 1000,
       });
     });
 
-    it('should dispatch order.created webhook event', async () => {
-      setupCreateOrder();
-      await createOrder('user-1', input);
-      expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
-        'user-1',
-        'order.created',
-        expect.objectContaining({ orderId: 'order-1' }),
-      );
-    });
+    it('emits order.created outbox event in a transaction', async () => {
+      const h = buildHarness();
+      const result = await h.service.createOrder('user-1', validInput);
 
-    it('should not fail if webhook dispatch throws', async () => {
-      setupCreateOrder();
-      mockEnqueueWebhookDelivery.mockRejectedValue(new Error('webhook error'));
-      const result = await createOrder('user-1', input);
-      expect(result.orderId).toBe('order-1');
-    });
-
-    it('should update order with externalOrderId and PROCESSING status', async () => {
-      mockFindServiceById.mockResolvedValue(mockService);
-      mockCreateOrder.mockResolvedValue({ ...mockOrder, id: 'o3', status: 'PENDING' });
-      mockHoldFunds.mockResolvedValue(undefined);
-      mockSubmitOrder.mockResolvedValue({ externalOrderId: 'ext-99', status: 'ok' });
-      mockUpdateOrderStatus.mockResolvedValue(mockOrder);
-      await createOrder('user-1', input);
-      expect(mockUpdateOrderStatus).toHaveBeenCalledWith('o3', {
-        status: 'PROCESSING',
-        externalOrderId: 'ext-99',
-        providerId: 'prov-1',
-        remains: 1000,
+      const created = h.outbox.events.find((e) => e.event.type === 'order.created');
+      expect(created).toBeDefined();
+      expect(created?.event).toMatchObject({
+        type: 'order.created',
+        aggregateType: 'order',
+        aggregateId: result.orderId,
+        userId: 'user-1',
+        payload: { orderId: result.orderId, userId: 'user-1', status: 'PROCESSING' },
       });
     });
 
-    it('should throw when externalServiceId is null but providerId exists', async () => {
-      mockFindServiceById.mockResolvedValue({
-        ...mockService,
-        providerId: 'prov-1',
-        externalServiceId: null,
+    it('emits coupon.used event when a coupon is applied', async () => {
+      const h = buildHarness({
+        couponResults: { SAVE5: { valid: true, discount: 0.5, couponId: 'c1' } },
       });
-      await expect(createOrder('user-1', input)).rejects.toThrow(
-        'Service is not linked to a provider',
-      );
+      const result = await h.service.createOrder('user-1', {
+        ...validInput,
+        couponCode: 'SAVE5',
+      });
+      const couponEvent = h.outbox.events.find((e) => e.event.type === 'coupon.used');
+      expect(couponEvent?.event).toMatchObject({
+        type: 'coupon.used',
+        payload: { couponId: 'c1', orderId: result.orderId },
+      });
     });
 
-    it('should propagate selectProviderById errors', async () => {
-      mockFindServiceById.mockResolvedValue(mockService);
-      mockCreateOrder.mockResolvedValue(mockOrder);
-      mockHoldFunds.mockResolvedValue(undefined);
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue(mockOrder);
-      mockSelectProviderById.mockRejectedValue(new Error('Linked provider is not available'));
+    it('does not emit coupon.used when no coupon was applied', async () => {
+      const h = buildHarness();
+      await h.service.createOrder('user-1', validInput);
+      expect(h.outbox.events.find((e) => e.event.type === 'coupon.used')).toBeUndefined();
+    });
 
-      await expect(createOrder('user-1', input)).rejects.toThrow(
-        'Linked provider is not available',
+    it('throws ValidationError when coupon invalid', async () => {
+      const h = buildHarness({
+        couponResults: {
+          BADCODE: { valid: false, discount: 0, couponId: null, reason: 'Coupon expired' },
+        },
+      });
+      await expect(
+        h.service.createOrder('user-1', { ...validInput, couponCode: 'BADCODE' }),
+      ).rejects.toThrow('Coupon expired');
+    });
+
+    it('updates order status to PROCESSING with externalOrderId + remains', async () => {
+      const h = buildHarness({
+        clientOverrides: {
+          submitOrder: jest
+            .fn()
+            .mockResolvedValue({ externalOrderId: 'ext-99', status: 'processing' }),
+        },
+      });
+      const result = await h.service.createOrder('user-1', validInput);
+      expect(h.ordersRepo.calls.updateOrderStatus[0]).toMatchObject({
+        orderId: result.orderId,
+        data: {
+          status: 'PROCESSING',
+          externalOrderId: 'ext-99',
+          providerId: 'prov-1',
+          remains: 1000,
+        },
+      });
+    });
+
+    it('releases funds and marks order FAILED when provider submit throws', async () => {
+      const h = buildHarness({
+        clientOverrides: {
+          submitOrder: jest.fn().mockRejectedValue(new Error('provider down')),
+        },
+      });
+      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow('provider down');
+      expect(h.billing.calls.releaseFunds.length).toBeGreaterThan(0);
+      expect(h.ordersRepo.calls.updateOrderStatus.some((c) => c.data.status === 'FAILED')).toBe(
+        true,
       );
     });
   });
 
   describe('getOrder', () => {
-    it('should return order details', async () => {
-      mockFindOrderById.mockResolvedValue(mockOrder);
-      const result = await getOrder('user-1', 'order-1');
-      expect(result.orderId).toBe('order-1');
-      expect(result.link).toBe('https://youtube.com/watch?v=test');
+    it('returns order details', async () => {
+      const h = buildHarness();
+      const result = await h.service.createOrder('user-1', validInput);
+      const fetched = await h.service.getOrder('user-1', result.orderId);
+      expect(fetched.orderId).toBe(result.orderId);
+      expect(fetched.link).toBe('https://youtube.com/watch?v=test');
     });
 
-    it('should throw NotFoundError if order not found', async () => {
-      mockFindOrderById.mockResolvedValue(null);
-      await expect(getOrder('user-1', 'bad-id')).rejects.toThrow('Order not found');
+    it('throws NotFoundError when order not found', async () => {
+      const h = buildHarness();
+      await expect(h.service.getOrder('user-1', 'missing')).rejects.toThrow('Order not found');
     });
 
-    it('should scope by userId', async () => {
-      mockFindOrderById.mockResolvedValue(mockOrder);
-      await getOrder('user-1', 'order-1');
-      expect(mockFindOrderById).toHaveBeenCalledWith('order-1', 'user-1');
+    it('scopes by userId', async () => {
+      const h = buildHarness();
+      const result = await h.service.createOrder('user-1', validInput);
+      await expect(h.service.getOrder('user-2', result.orderId)).rejects.toThrow('Order not found');
     });
   });
 
   describe('listOrders', () => {
-    it('should return paginated orders', async () => {
-      mockFindOrders.mockResolvedValue({ orders: [mockOrder], total: 1 });
-      const result = await listOrders('user-1', { page: 1, limit: 20 });
+    it('returns paginated orders', async () => {
+      const h = buildHarness();
+      await h.service.createOrder('user-1', validInput);
+      const result = await h.service.listOrders('user-1', { page: 1, limit: 20 });
       expect(result.orders).toHaveLength(1);
       expect(result.pagination.total).toBe(1);
       expect(result.pagination.totalPages).toBe(1);
     });
 
-    it('should pass filters to repository', async () => {
-      mockFindOrders.mockResolvedValue({ orders: [], total: 0 });
-      await listOrders('user-1', { page: 2, limit: 10, status: 'PENDING', serviceId: 'svc-1' });
-      expect(mockFindOrders).toHaveBeenCalledWith('user-1', {
+    it('filters by status', async () => {
+      const h = buildHarness();
+      await h.service.createOrder('user-1', validInput);
+      const result = await h.service.listOrders('user-1', {
+        page: 1,
+        limit: 20,
         status: 'PENDING',
-        serviceId: 'svc-1',
-        page: 2,
-        limit: 10,
       });
+      expect(result.orders).toHaveLength(0); // Created orders are PROCESSING
     });
 
-    it('should calculate totalPages correctly', async () => {
-      mockFindOrders.mockResolvedValue({ orders: [], total: 45 });
-      const result = await listOrders('user-1', { page: 1, limit: 20 });
+    it('computes totalPages correctly', async () => {
+      const h = buildHarness();
+      for (let i = 0; i < 45; i++) await h.service.createOrder('user-1', validInput);
+      const result = await h.service.listOrders('user-1', { page: 1, limit: 20 });
       expect(result.pagination.totalPages).toBe(3);
     });
 
-    it('should return empty orders array when none found', async () => {
-      mockFindOrders.mockResolvedValue({ orders: [], total: 0 });
-      const result = await listOrders('user-1', { page: 1, limit: 20 });
+    it('returns empty list when no orders', async () => {
+      const h = buildHarness();
+      const result = await h.service.listOrders('user-1', { page: 1, limit: 20 });
       expect(result.orders).toHaveLength(0);
       expect(result.pagination.totalPages).toBe(0);
     });
   });
 
   describe('cancelOrder', () => {
-    function setupCancel(): void {
-      mockFindOrderById.mockResolvedValue({ ...mockOrder, status: 'PENDING' });
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({
-        ...mockOrder,
-        status: 'CANCELLED',
-        completedAt: new Date(),
-      });
-    }
+    it('cancels PROCESSING order and releases funds', async () => {
+      const h = buildHarness();
+      const created = await h.service.createOrder('user-1', validInput);
+      const result = await h.service.cancelOrder('user-1', created.orderId);
 
-    it('should cancel PENDING order and release funds', async () => {
-      setupCancel();
-      const result = await cancelOrder('user-1', 'order-1');
       expect(result.status).toBe('CANCELLED');
       expect(result.refundAmount).toBe(2.5);
-      expect(mockReleaseFunds).toHaveBeenCalledWith('user-1', 2.5, 'order-1');
-    });
-
-    it('should cancel PROCESSING order', async () => {
-      mockFindOrderById.mockResolvedValue({ ...mockOrder, status: 'PROCESSING' });
-      mockReleaseFunds.mockResolvedValue(undefined);
-      mockUpdateOrderStatus.mockResolvedValue({
-        ...mockOrder,
-        status: 'CANCELLED',
-        completedAt: new Date(),
-      });
-      const result = await cancelOrder('user-1', 'order-1');
-      expect(result.status).toBe('CANCELLED');
-    });
-
-    it('should throw NotFoundError if order not found', async () => {
-      mockFindOrderById.mockResolvedValue(null);
-      await expect(cancelOrder('user-1', 'bad-id')).rejects.toThrow('Order not found');
-    });
-
-    it('should throw ValidationError if order is COMPLETED', async () => {
-      mockFindOrderById.mockResolvedValue({ ...mockOrder, status: 'COMPLETED' });
-      await expect(cancelOrder('user-1', 'order-1')).rejects.toThrow('Order cannot be cancelled');
-    });
-
-    it('should throw ValidationError if order is already CANCELLED', async () => {
-      mockFindOrderById.mockResolvedValue({ ...mockOrder, status: 'CANCELLED' });
-      await expect(cancelOrder('user-1', 'order-1')).rejects.toThrow('Order cannot be cancelled');
-    });
-
-    it('should dispatch order.cancelled webhook event', async () => {
-      setupCancel();
-      await cancelOrder('user-1', 'order-1');
-      expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
-        'user-1',
-        'order.cancelled',
-        expect.objectContaining({ orderId: 'order-1' }),
+      expect(h.billing.calls.releaseFunds).toEqual(
+        expect.arrayContaining([{ userId: 'user-1', amount: 2.5, orderId: created.orderId }]),
       );
     });
 
-    it('should not fail cancel if webhook dispatch throws', async () => {
-      setupCancel();
-      mockEnqueueWebhookDelivery.mockRejectedValue(new Error('fail'));
-      const result = await cancelOrder('user-1', 'order-1');
-      expect(result.status).toBe('CANCELLED');
+    it('emits order.cancelled outbox event', async () => {
+      const h = buildHarness();
+      const created = await h.service.createOrder('user-1', validInput);
+      await h.service.cancelOrder('user-1', created.orderId);
+
+      const cancelled = h.outbox.events.find((e) => e.event.type === 'order.cancelled');
+      expect(cancelled?.event).toMatchObject({
+        type: 'order.cancelled',
+        aggregateType: 'order',
+        aggregateId: created.orderId,
+        userId: 'user-1',
+        payload: { orderId: created.orderId, refundAmount: 2.5 },
+      });
+    });
+
+    it('throws NotFoundError when order not found', async () => {
+      const h = buildHarness();
+      await expect(h.service.cancelOrder('user-1', 'missing')).rejects.toThrow('Order not found');
+    });
+
+    it('throws ValidationError when order already COMPLETED', async () => {
+      const h = buildHarness();
+      const created = await h.service.createOrder('user-1', validInput);
+      // manually mutate to completed via repo
+      await h.ordersRepo.updateOrderStatus(created.orderId, {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+      });
+      await expect(h.service.cancelOrder('user-1', created.orderId)).rejects.toThrow(
+        'Order cannot be cancelled',
+      );
+    });
+
+    it('throws ValidationError when order already CANCELLED', async () => {
+      const h = buildHarness();
+      const created = await h.service.createOrder('user-1', validInput);
+      await h.ordersRepo.updateOrderStatus(created.orderId, {
+        status: 'CANCELLED',
+        completedAt: new Date(),
+      });
+      await expect(h.service.cancelOrder('user-1', created.orderId)).rejects.toThrow(
+        'Order cannot be cancelled',
+      );
     });
   });
 });

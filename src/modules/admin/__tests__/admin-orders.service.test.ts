@@ -3,11 +3,17 @@ import { listAllOrders, getAnyOrder, forceOrderStatus, refundOrder } from '../ad
 const mockFindAllOrders = jest.fn();
 const mockFindOrderByIdAdmin = jest.fn();
 const mockUpdateOrderStatus = jest.fn();
+const mockPauseDripFeed = jest.fn();
+const mockResumeDripFeed = jest.fn();
 
-jest.mock('../../orders/orders.repository', () => ({
-  findAllOrders: (...args: unknown[]): unknown => mockFindAllOrders(...args),
-  findOrderByIdAdmin: (...args: unknown[]): unknown => mockFindOrderByIdAdmin(...args),
-  updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
+jest.mock('../../orders', () => ({
+  orderRepo: {
+    findAllOrders: (...args: unknown[]): unknown => mockFindAllOrders(...args),
+    findOrderByIdAdmin: (...args: unknown[]): unknown => mockFindOrderByIdAdmin(...args),
+    updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
+    pauseDripFeed: (...args: unknown[]): unknown => mockPauseDripFeed(...args),
+    resumeDripFeed: (...args: unknown[]): unknown => mockResumeDripFeed(...args),
+  },
 }));
 
 const mockRefundFunds = jest.fn();

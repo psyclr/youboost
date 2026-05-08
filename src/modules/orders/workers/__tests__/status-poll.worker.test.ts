@@ -1,377 +1,295 @@
-import { pollOrderStatuses } from '../status-poll.worker';
+import { createStatusPollWorker } from '../status-poll.worker';
 import type { OrderRecord } from '../../orders.types';
-import type { StatusResult } from '../../utils/provider-client';
+import type { StatusResult, ProviderClient } from '../../utils/provider-client';
+import {
+  createFakeOrdersRepository,
+  createFakeServicesRepository,
+  createFakeFundSettlement,
+  createFakeCircuitBreaker,
+  createFakeOutbox,
+  createFakePrisma,
+  createFakeProviderClient,
+  createFakeProviderSelector,
+  silentLogger,
+  makeOrderRecord,
+  type FakeOrdersRepository,
+} from '../../__tests__/fakes';
 
-const mockFindProcessingOrders = jest.fn();
-const mockUpdateOrderStatus = jest.fn();
-const mockFindProviderById = jest.fn();
-const mockDecryptApiKey = jest.fn();
-const mockCreateSmmApiClient = jest.fn();
-const mockCheckStatus = jest.fn();
-const mockSettleFunds = jest.fn();
-
-jest.mock('../../../../shared/config', () => ({
-  getConfig: jest.fn().mockReturnValue({
-    polling: { batchSize: 100, circuitBreakerThreshold: 5, circuitBreakerCooldownMs: 60_000 },
-  }),
-}));
-jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest
-    .fn()
-    .mockReturnValue({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }),
-}));
-jest.mock('../../orders.repository', () => ({
-  findProcessingOrders: (...args: unknown[]): unknown => mockFindProcessingOrders(...args),
-  updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
-}));
-jest.mock('../../../providers', () => ({
-  providersRepo: {
-    findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
-  },
-  decryptApiKey: (...args: unknown[]): unknown => mockDecryptApiKey(...args),
-  createSmmApiClient: (...args: unknown[]): unknown => mockCreateSmmApiClient(...args),
-}));
-jest.mock('../../utils/stub-provider-client', () => ({
-  providerClient: { checkStatus: (...args: unknown[]): unknown => mockCheckStatus(...args) },
-}));
-jest.mock('../../utils/circuit-breaker', () => ({
-  isCircuitOpen: jest.fn().mockReturnValue(false),
-  recordFailure: jest.fn(),
-  recordSuccess: jest.fn(),
-}));
-const mockEnqueueWebhookDelivery = jest.fn();
-
-jest.mock('../../../webhooks', () => ({
-  enqueueWebhookDelivery: (...args: unknown[]): unknown => mockEnqueueWebhookDelivery(...args),
-}));
-
-const mockEnqueueNotification = jest.fn();
-
-jest.mock('../../../notifications', () => ({
-  enqueueNotification: (...args: unknown[]): unknown => mockEnqueueNotification(...args),
-}));
-
-jest.mock('../../utils/fund-settlement', () => ({
-  settleFunds: (...args: unknown[]): unknown => mockSettleFunds(...args),
-}));
-
-const { isCircuitOpen, recordFailure, recordSuccess } = jest.requireMock<
-  typeof import('../../utils/circuit-breaker')
->('../../utils/circuit-breaker');
-
-function makeOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
-  return {
-    id: 'order-1',
-    userId: 'user-1',
-    serviceId: 'svc-1',
+function makeProcessingOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
+  return makeOrderRecord({
+    status: 'PROCESSING',
     providerId: 'stub',
     externalOrderId: 'ext-1',
-    link: 'https://youtube.com/watch?v=test',
-    quantity: 1000,
-    price: 10.0 as unknown as OrderRecord['price'],
-    status: 'PROCESSING',
-    startCount: null,
-    remains: null,
-    isDripFeed: false,
-    dripFeedRuns: null,
-    dripFeedInterval: null,
-    dripFeedRunsCompleted: 0,
-    dripFeedPausedAt: null,
-    refillEligibleUntil: null,
-    refillCount: 0,
-    couponId: null,
-    discount: 0 as unknown as OrderRecord['discount'],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    completedAt: null,
     ...overrides,
-  };
+  });
 }
 
 function makeStatus(overrides: Partial<StatusResult> = {}): StatusResult {
   return { status: 'completed', startCount: 100, completed: 1000, remains: 0, ...overrides };
 }
 
-describe('Status Poll Worker', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockFindProcessingOrders.mockResolvedValue([]);
-    mockUpdateOrderStatus.mockResolvedValue({});
-    mockSettleFunds.mockResolvedValue(undefined);
-    mockEnqueueWebhookDelivery.mockResolvedValue(undefined);
-    mockEnqueueNotification.mockResolvedValue(undefined);
-    (isCircuitOpen as jest.Mock).mockReturnValue(false);
+interface Harness {
+  pollOrderStatuses: () => Promise<void>;
+  ordersRepo: FakeOrdersRepository;
+  outbox: ReturnType<typeof createFakeOutbox>;
+  circuitBreaker: ReturnType<typeof createFakeCircuitBreaker>;
+  fundSettlement: ReturnType<typeof createFakeFundSettlement>;
+  stubClient: jest.Mocked<ProviderClient>;
+  realClient: jest.Mocked<ProviderClient>;
+  providerSelectorCalls: { selectProviderById: string[]; selectProvider: number };
+}
+
+function buildHarness(initialOrders: OrderRecord[] = []): Harness {
+  const ordersRepo = createFakeOrdersRepository({ orders: initialOrders });
+  const servicesRepo = createFakeServicesRepository();
+  const fundSettlement = createFakeFundSettlement();
+  const circuitBreaker = createFakeCircuitBreaker();
+  const outbox = createFakeOutbox();
+  const prisma = createFakePrisma();
+  const stubClient = createFakeProviderClient();
+  const realClient = createFakeProviderClient();
+  const providerSelector = createFakeProviderSelector({
+    client: realClient,
+    providerId: 'prov-1',
   });
 
+  const worker = createStatusPollWorker({
+    prisma: prisma.client,
+    ordersRepo,
+    servicesRepo,
+    providerSelector,
+    stubClient,
+    fundSettlement,
+    circuitBreaker,
+    outbox: outbox.port,
+    config: {
+      intervalMs: 30_000,
+      batchSize: 100,
+      circuitBreakerThreshold: 5,
+      circuitBreakerCooldownMs: 60_000,
+    },
+    logger: silentLogger,
+  });
+
+  return {
+    pollOrderStatuses: worker.pollOrderStatuses,
+    ordersRepo,
+    outbox,
+    circuitBreaker,
+    fundSettlement,
+    stubClient,
+    realClient,
+    providerSelectorCalls: providerSelector.calls,
+  };
+}
+
+describe('Status Poll Worker (factory)', () => {
   it('should do nothing when no processing orders', async () => {
-    await pollOrderStatuses();
-    expect(mockUpdateOrderStatus).not.toHaveBeenCalled();
+    const h = buildHarness();
+    await h.pollOrderStatuses();
+    expect(h.ordersRepo.calls.updateOrderStatus).toHaveLength(0);
+    expect(h.stubClient.checkStatus).not.toHaveBeenCalled();
   });
 
   it('should poll status for stub provider orders', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed' }));
-    await pollOrderStatuses();
-    expect(mockCheckStatus).toHaveBeenCalledWith('ext-1');
-    expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-      'order-1',
-      expect.objectContaining({ status: 'COMPLETED' }),
-    );
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'completed' }));
+    await h.pollOrderStatuses();
+    expect(h.stubClient.checkStatus).toHaveBeenCalledWith('ext-1');
+    expect(h.ordersRepo.calls.updateOrderStatus[0]?.data.status).toBe('COMPLETED');
   });
 
   it('should settle funds on terminal status', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
-    await pollOrderStatuses();
-    expect(mockSettleFunds).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'order-1', remains: 0 }),
-      'COMPLETED',
-    );
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
+    await h.pollOrderStatuses();
+    expect(h.fundSettlement.calls.settleFunds[0]?.status).toBe('COMPLETED');
+    expect(h.fundSettlement.calls.settleFunds[0]?.order.remains).toBe(0);
   });
 
   it('should not settle funds on non-terminal status', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    await pollOrderStatuses();
-    expect(mockSettleFunds).not.toHaveBeenCalled();
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.fundSettlement.calls.settleFunds).toHaveLength(0);
   });
 
   it('should skip update when status unchanged and non-terminal', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ status: 'PROCESSING' })]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    await pollOrderStatuses();
-    expect(mockUpdateOrderStatus).not.toHaveBeenCalled();
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.ordersRepo.calls.updateOrderStatus).toHaveLength(0);
   });
 
   it('should skip providers with open circuit breaker', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ providerId: 'provider-1' })]);
-    (isCircuitOpen as jest.Mock).mockReturnValue(true);
-    await pollOrderStatuses();
-    expect(mockCheckStatus).not.toHaveBeenCalled();
+    const h = buildHarness([makeProcessingOrder({ providerId: 'provider-1' })]);
+    h.circuitBreaker.state.open.set('provider-1', true);
+    await h.pollOrderStatuses();
+    expect(h.stubClient.checkStatus).not.toHaveBeenCalled();
+    expect(h.realClient.checkStatus).not.toHaveBeenCalled();
   });
 
   it('should record success on successful poll', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    await pollOrderStatuses();
-    expect(recordSuccess).toHaveBeenCalledWith('stub');
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.circuitBreaker.state.successes.get('stub')).toBe(1);
   });
 
   it('should record failure on poll error', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockRejectedValue(new Error('Provider error'));
-    await pollOrderStatuses();
-    expect(recordFailure).toHaveBeenCalledWith('stub');
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockRejectedValue(new Error('provider error'));
+    await h.pollOrderStatuses();
+    expect(h.circuitBreaker.state.failures.get('stub')).toBe(1);
   });
 
   it('should continue processing other orders after individual failure', async () => {
-    const order1 = makeOrder({ id: 'order-1', externalOrderId: 'ext-1' });
-    const order2 = makeOrder({ id: 'order-2', externalOrderId: 'ext-2' });
-    mockFindProcessingOrders.mockResolvedValue([order1, order2]);
-    mockCheckStatus
+    const order1 = makeProcessingOrder({ id: 'order-1', externalOrderId: 'ext-1' });
+    const order2 = makeProcessingOrder({ id: 'order-2', externalOrderId: 'ext-2' });
+    const h = buildHarness([order1, order2]);
+    h.stubClient.checkStatus
       .mockRejectedValueOnce(new Error('fail'))
       .mockResolvedValueOnce(makeStatus({ status: 'completed' }));
-    await pollOrderStatuses();
-    expect(mockCheckStatus).toHaveBeenCalledTimes(2);
-    expect(mockUpdateOrderStatus).toHaveBeenCalledTimes(1);
+    await h.pollOrderStatuses();
+    expect(h.stubClient.checkStatus).toHaveBeenCalledTimes(2);
+    expect(h.ordersRepo.calls.updateOrderStatus).toHaveLength(1);
   });
 
   it('should group orders by providerId', async () => {
-    const order1 = makeOrder({ id: 'o1', providerId: 'stub' });
-    const order2 = makeOrder({ id: 'o2', providerId: 'provider-2' });
-    mockFindProcessingOrders.mockResolvedValue([order1, order2]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    mockFindProviderById.mockResolvedValue({
-      id: 'provider-2',
-      apiEndpoint: 'https://api.test.com',
-      apiKeyEncrypted: 'encrypted-key',
-    });
-    mockDecryptApiKey.mockReturnValue('decrypted-key');
-    const realClient = {
-      checkStatus: jest.fn().mockResolvedValue(makeStatus({ status: 'processing' })),
-    };
-    mockCreateSmmApiClient.mockReturnValue(realClient);
-    await pollOrderStatuses();
-    expect(mockCheckStatus).toHaveBeenCalledTimes(1);
-    expect(realClient.checkStatus).toHaveBeenCalledTimes(1);
+    const order1 = makeProcessingOrder({ id: 'o1', providerId: 'stub' });
+    const order2 = makeProcessingOrder({ id: 'o2', providerId: 'provider-2' });
+    const h = buildHarness([order1, order2]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    h.realClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.stubClient.checkStatus).toHaveBeenCalledTimes(1);
+    expect(h.realClient.checkStatus).toHaveBeenCalledTimes(1);
   });
 
-  it('should resolve real provider client via decryption', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ providerId: 'real-provider' })]);
-    mockFindProviderById.mockResolvedValue({
-      id: 'real-provider',
-      apiEndpoint: 'https://smm.api.com',
-      apiKeyEncrypted: 'encrypted',
-    });
-    mockDecryptApiKey.mockReturnValue('api-key-123');
-    const client = {
-      checkStatus: jest.fn().mockResolvedValue(makeStatus({ status: 'processing' })),
-    };
-    mockCreateSmmApiClient.mockReturnValue(client);
-    await pollOrderStatuses();
-    expect(mockDecryptApiKey).toHaveBeenCalledWith('encrypted');
-    expect(mockCreateSmmApiClient).toHaveBeenCalledWith({
-      apiEndpoint: 'https://smm.api.com',
-      apiKey: 'api-key-123',
-    });
+  it('should resolve real provider via selectProviderById', async () => {
+    const h = buildHarness([makeProcessingOrder({ providerId: 'real-provider' })]);
+    h.realClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.providerSelectorCalls.selectProviderById).toContain('real-provider');
   });
 
-  it('should record failure when provider not found', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ providerId: 'missing-provider' })]);
-    mockFindProviderById.mockResolvedValue(null);
-    await pollOrderStatuses();
-    expect(recordFailure).toHaveBeenCalledWith('missing-provider');
+  it('should record failure when provider resolution fails', async () => {
+    const ordersRepo = createFakeOrdersRepository({
+      orders: [makeProcessingOrder({ providerId: 'missing-provider' })],
+    });
+    const servicesRepo = createFakeServicesRepository();
+    const fundSettlement = createFakeFundSettlement();
+    const circuitBreaker = createFakeCircuitBreaker();
+    const outbox = createFakeOutbox();
+    const prisma = createFakePrisma();
+    const stubClient = createFakeProviderClient();
+    const failingSelector = createFakeProviderSelector({
+      client: createFakeProviderClient(),
+      selectByIdImpl: async () => {
+        throw new Error('provider not found');
+      },
+    });
+
+    const worker = createStatusPollWorker({
+      prisma: prisma.client,
+      ordersRepo,
+      servicesRepo,
+      providerSelector: failingSelector,
+      stubClient,
+      fundSettlement,
+      circuitBreaker,
+      outbox: outbox.port,
+      config: {
+        intervalMs: 30_000,
+        batchSize: 100,
+        circuitBreakerThreshold: 5,
+        circuitBreakerCooldownMs: 60_000,
+      },
+      logger: silentLogger,
+    });
+
+    await worker.pollOrderStatuses();
+    expect(circuitBreaker.state.failures.get('missing-provider')).toBe(1);
   });
 
   it('should set completedAt for terminal statuses', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed' }));
-    await pollOrderStatuses();
-    expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-      'order-1',
-      expect.objectContaining({ completedAt: expect.any(Date) }),
-    );
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'completed' }));
+    await h.pollOrderStatuses();
+    expect(h.ordersRepo.calls.updateOrderStatus[0]?.data.completedAt).toBeInstanceOf(Date);
   });
 
   it('should handle orders with null providerId as stub', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ providerId: null })]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    await pollOrderStatuses();
-    expect(mockCheckStatus).toHaveBeenCalled();
+    const h = buildHarness([makeProcessingOrder({ providerId: null })]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.stubClient.checkStatus).toHaveBeenCalled();
   });
 
   it('should update startCount and remains from provider response', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(
       makeStatus({ status: 'partial', startCount: 500, remains: 200 }),
     );
-    await pollOrderStatuses();
-    expect(mockUpdateOrderStatus).toHaveBeenCalledWith(
-      'order-1',
-      expect.objectContaining({
-        status: 'PARTIAL',
-        startCount: 500,
-        remains: 200,
-      }),
-    );
+    await h.pollOrderStatuses();
+    expect(h.ordersRepo.calls.updateOrderStatus[0]?.data).toMatchObject({
+      status: 'PARTIAL',
+      startCount: 500,
+      remains: 200,
+    });
   });
 
   it('should pass updated remains to settleFunds for partial orders', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder({ quantity: 1000 })]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 300 }));
-    await pollOrderStatuses();
-    expect(mockSettleFunds).toHaveBeenCalledWith(
-      expect.objectContaining({ remains: 300 }),
-      'PARTIAL',
-    );
+    const h = buildHarness([makeProcessingOrder({ quantity: 1000 })]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 300 }));
+    await h.pollOrderStatuses();
+    expect(h.fundSettlement.calls.settleFunds[0]?.order.remains).toBe(300);
+    expect(h.fundSettlement.calls.settleFunds[0]?.status).toBe('PARTIAL');
   });
 
   it('should use batchSize from config', async () => {
-    await pollOrderStatuses();
-    expect(mockFindProcessingOrders).toHaveBeenCalledWith(100);
+    const h = buildHarness();
+    await h.pollOrderStatuses();
+    expect(h.ordersRepo.calls.findProcessingOrders).toContain(100);
   });
 
-  it('should dispatch order.completed webhook on COMPLETED status', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
-    await pollOrderStatuses();
-    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
-      'user-1',
-      'order.completed',
-      expect.objectContaining({ orderId: 'order-1', status: 'COMPLETED' }),
-    );
+  it('should emit order.completed event on COMPLETED status', async () => {
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
+    await h.pollOrderStatuses();
+    const completed = h.outbox.events.find((e) => e.event.type === 'order.completed');
+    expect(completed?.event).toMatchObject({
+      type: 'order.completed',
+      aggregateType: 'order',
+      aggregateId: 'order-1',
+      userId: 'user-1',
+      payload: { orderId: 'order-1', remains: 0 },
+    });
   });
 
-  it('should dispatch order.failed webhook on FAILED status', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'error' }));
-    await pollOrderStatuses();
-    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
-      'user-1',
-      'order.failed',
-      expect.objectContaining({ orderId: 'order-1', status: 'FAILED' }),
-    );
+  it('should emit order.failed event on FAILED status', async () => {
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'error' }));
+    await h.pollOrderStatuses();
+    const failed = h.outbox.events.find((e) => e.event.type === 'order.failed');
+    expect(failed?.event.payload).toMatchObject({
+      orderId: 'order-1',
+      reason: 'provider-terminal',
+    });
   });
 
-  it('should dispatch order.partial webhook on PARTIAL status', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 300 }));
-    await pollOrderStatuses();
-    expect(mockEnqueueWebhookDelivery).toHaveBeenCalledWith(
-      'user-1',
-      'order.partial',
-      expect.objectContaining({ orderId: 'order-1', status: 'PARTIAL', remains: 300 }),
-    );
+  it('should emit order.partial event on PARTIAL status', async () => {
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 300 }));
+    await h.pollOrderStatuses();
+    const partial = h.outbox.events.find((e) => e.event.type === 'order.partial');
+    expect(partial?.event.payload).toMatchObject({ orderId: 'order-1', remains: 300 });
   });
 
-  it('should not dispatch webhook for non-terminal statuses', async () => {
-    mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-    mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-    await pollOrderStatuses();
-    expect(mockEnqueueWebhookDelivery).not.toHaveBeenCalled();
-  });
-
-  describe('dispatchTerminalNotifications', () => {
-    it('should enqueue notification on COMPLETED status', async () => {
-      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
-      await pollOrderStatuses();
-      // Let fire-and-forget promises settle
-      await new Promise((r) => setTimeout(r, 0));
-      expect(mockEnqueueNotification).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'user-1',
-          type: 'EMAIL',
-          subject: 'Order Completed',
-          eventType: 'order.completed',
-          referenceType: 'order',
-          referenceId: 'order-1',
-        }),
-      );
-    });
-
-    it('should enqueue notification on FAILED status', async () => {
-      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'error' }));
-      await pollOrderStatuses();
-      await new Promise((r) => setTimeout(r, 0));
-      expect(mockEnqueueNotification).toHaveBeenCalledWith(
-        expect.objectContaining({
-          subject: 'Order Failed',
-          eventType: 'order.failed',
-        }),
-      );
-    });
-
-    it('should enqueue notification on PARTIAL status', async () => {
-      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'partial', remains: 200 }));
-      await pollOrderStatuses();
-      await new Promise((r) => setTimeout(r, 0));
-      expect(mockEnqueueNotification).toHaveBeenCalledWith(
-        expect.objectContaining({
-          subject: 'Order Partially Completed',
-          eventType: 'order.partial',
-        }),
-      );
-    });
-
-    it('should not enqueue notification for non-terminal statuses', async () => {
-      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
-      await pollOrderStatuses();
-      await new Promise((r) => setTimeout(r, 0));
-      expect(mockEnqueueNotification).not.toHaveBeenCalled();
-    });
-
-    it('should not fail pollOrderStatuses when webhook and notification reject', async () => {
-      mockFindProcessingOrders.mockResolvedValue([makeOrder()]);
-      mockCheckStatus.mockResolvedValue(makeStatus({ status: 'completed', remains: 0 }));
-      mockEnqueueWebhookDelivery.mockRejectedValue(new Error('webhook fail'));
-      mockEnqueueNotification.mockRejectedValue(new Error('notification fail'));
-      await expect(pollOrderStatuses()).resolves.toBeUndefined();
-      // Let fire-and-forget catch handlers run
-      await new Promise((r) => setTimeout(r, 0));
-    });
+  it('should not emit an outbox event for non-terminal statuses', async () => {
+    const h = buildHarness([makeProcessingOrder()]);
+    h.stubClient.checkStatus.mockResolvedValue(makeStatus({ status: 'processing' }));
+    await h.pollOrderStatuses();
+    expect(h.outbox.events).toHaveLength(0);
   });
 });

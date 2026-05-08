@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { OrderStatus, PrismaClient } from '../../generated/prisma';
 import type { OrderRecord, CreateOrderData, UpdateOrderData } from './orders.types';
 
@@ -227,69 +226,4 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
     findAllOrders,
     findOrderByIdAdmin,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createOrder(data: CreateOrderData): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).createOrder(data);
-}
-
-export async function findOrderById(orderId: string, userId: string): Promise<OrderRecord | null> {
-  return createOrdersRepository(getPrisma()).findOrderById(orderId, userId);
-}
-
-export async function findOrders(
-  userId: string,
-  filters: OrderFilters,
-): Promise<{ orders: OrderRecord[]; total: number }> {
-  return createOrdersRepository(getPrisma()).findOrders(userId, filters);
-}
-
-export async function findProcessingOrders(batchSize: number): Promise<OrderRecord[]> {
-  return createOrdersRepository(getPrisma()).findProcessingOrders(batchSize);
-}
-
-export async function updateOrderStatus(
-  orderId: string,
-  data: UpdateOrderData,
-): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).updateOrderStatus(orderId, data);
-}
-
-export async function findDripFeedOrdersDue(): Promise<OrderRecord[]> {
-  return createOrdersRepository(getPrisma()).findDripFeedOrdersDue();
-}
-
-export async function incrementDripFeedRun(orderId: string): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).incrementDripFeedRun(orderId);
-}
-
-export async function incrementRefillCount(orderId: string): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).incrementRefillCount(orderId);
-}
-
-export async function pauseDripFeed(orderId: string): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).pauseDripFeed(orderId);
-}
-
-export async function resumeDripFeed(orderId: string): Promise<OrderRecord> {
-  return createOrdersRepository(getPrisma()).resumeDripFeed(orderId);
-}
-
-export async function findTimedOutOrders(timeoutHours: number): Promise<OrderRecord[]> {
-  return createOrdersRepository(getPrisma()).findTimedOutOrders(timeoutHours);
-}
-
-export async function findAllOrders(filters: {
-  status?: string | undefined;
-  userId?: string | undefined;
-  isDripFeed?: boolean | undefined;
-  page: number;
-  limit: number;
-}): Promise<{ orders: OrderRecord[]; total: number }> {
-  return createOrdersRepository(getPrisma()).findAllOrders(filters);
-}
-
-export async function findOrderByIdAdmin(orderId: string): Promise<OrderRecord | null> {
-  return createOrdersRepository(getPrisma()).findOrderByIdAdmin(orderId);
 }

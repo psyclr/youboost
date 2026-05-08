@@ -13,17 +13,6 @@ import {
   connectRedisClient,
   disconnectRedisClient,
 } from './shared/redis/redis';
-import {
-  startOrderPolling,
-  stopOrderPolling,
-  startDripFeedWorker,
-  stopDripFeedWorker,
-  startOrderTimeoutWorker,
-  stopOrderTimeoutWorker,
-} from './modules/orders/workers';
-import { startWebhookWorker, stopWebhookWorker } from './modules/webhooks';
-import { startNotificationWorker, stopNotificationWorker } from './modules/notifications';
-import { startDepositExpiryWorker, stopDepositExpiryWorker } from './modules/billing';
 import { createApp } from './app';
 
 const log = createServiceLogger('main');
@@ -40,26 +29,16 @@ async function main(): Promise<void> {
   setSharedRedis(redis);
   await connectRedisClient(redis);
 
-  const app = await createApp();
+  const { app, workers } = await createApp();
   await app.listen({ port: config.app.port, host: '0.0.0.0' });
   log.info({ port: config.app.port }, 'Server listening');
 
-  await startOrderPolling();
-  await startDripFeedWorker();
-  await startOrderTimeoutWorker();
-  await startDepositExpiryWorker();
-  await startWebhookWorker();
-  await startNotificationWorker();
+  await workers.start();
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info({ signal }, 'Graceful shutdown initiated');
     await app.close();
-    await stopNotificationWorker();
-    await stopWebhookWorker();
-    await stopDepositExpiryWorker();
-    await stopOrderTimeoutWorker();
-    await stopDripFeedWorker();
-    await stopOrderPolling();
+    await workers.stop();
     await disconnectRedisClient(redis);
     await disconnectPrisma(prisma);
     log.info('Shutdown complete');

@@ -42,7 +42,6 @@ export type { DepositDetailResponse } from './deposit.types';
 
 import type { Prisma } from '../../generated/prisma';
 import { getPrisma } from '../../shared/database';
-import { getConfig } from '../../shared/config';
 import { createServiceLogger } from '../../shared/utils/logger';
 import type { DepositRecord } from './deposit.types';
 import type { LedgerRecord, WalletRecord, CreateLedgerData } from './billing.types';
@@ -51,12 +50,7 @@ import { createWalletRepository } from './wallet.repository';
 import { createLedgerRepository } from './ledger.repository';
 import { createDepositRepository } from './deposit.repository';
 import { createBillingInternalService } from './billing-internal.service';
-import { createDepositLifecycleService } from './deposit-lifecycle.service';
-import { createDepositExpiryWorker } from './workers/deposit-expiry.worker';
-import { createOutboxRepository, createOutboxService } from '../../shared/outbox';
 import type { BillingInternalService } from './billing-internal.service';
-import type { DepositLifecycleService } from './deposit-lifecycle.service';
-import type { DepositExpiryWorker } from './workers/deposit-expiry.worker';
 
 let _internal: BillingInternalService | null = null;
 function getInternal(): BillingInternalService {
@@ -72,14 +66,9 @@ function getInternal(): BillingInternalService {
   return _internal;
 }
 
-// Shims for orders/admin still importing top-level fund ops.
-export async function holdFunds(
-  userId: string,
-  amount: number,
-  referenceId: string,
-): Promise<void> {
-  return getInternal().holdFunds(userId, amount, referenceId);
-}
+// Shims for admin still importing top-level fund ops (F16 sweep target).
+// holdFunds shim dropped — orders injects billing.holdFunds via deps, no
+// other caller remained after F15.
 export async function releaseFunds(
   userId: string,
   amount: number,
@@ -167,49 +156,3 @@ export const depositRepo = {
     return createDepositRepository(getPrisma()).updateDepositStatus(depositId, data, tx);
   },
 };
-
-// Deposit-expiry worker shim for src/index.ts. Lazily wires lifecycle + outbox
-// using the shared prisma. Delete in sweep phase once index.ts wires workers
-// from app-scoped instances.
-let _lifecycle: DepositLifecycleService | null = null;
-function getLifecycle(): DepositLifecycleService {
-  if (!_lifecycle) {
-    const prisma = getPrisma();
-    const outboxRepo = createOutboxRepository(prisma);
-    const outbox = createOutboxService({
-      outboxRepo,
-      logger: createServiceLogger('outbox'),
-    });
-    _lifecycle = createDepositLifecycleService({
-      prisma,
-      walletRepo: createWalletRepository(prisma),
-      ledgerRepo: createLedgerRepository(prisma),
-      depositRepo: createDepositRepository(prisma),
-      outbox,
-      billingConfig: getConfig().billing,
-      logger: createServiceLogger('deposit-lifecycle'),
-    });
-  }
-  return _lifecycle;
-}
-
-let _expiryWorker: DepositExpiryWorker | null = null;
-function getExpiryWorker(): DepositExpiryWorker {
-  if (!_expiryWorker) {
-    const prisma = getPrisma();
-    _expiryWorker = createDepositExpiryWorker({
-      depositRepo: createDepositRepository(prisma),
-      lifecycle: getLifecycle(),
-      logger: createServiceLogger('deposit-expiry'),
-    });
-  }
-  return _expiryWorker;
-}
-
-export async function startDepositExpiryWorker(): Promise<void> {
-  await getExpiryWorker().start();
-}
-
-export async function stopDepositExpiryWorker(): Promise<void> {
-  await getExpiryWorker().stop();
-}

@@ -1,37 +1,14 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { orderRoutes } from '../orders.routes';
+import { createOrderRoutes } from '../orders.routes';
 import { AppError } from '../../../shared/errors/app-error';
-
-const mockCreateOrder = jest.fn();
-const mockGetOrder = jest.fn();
-const mockListOrders = jest.fn();
-const mockCancelOrder = jest.fn();
-
-jest.mock('../orders.service', () => ({
-  createOrder: (...args: unknown[]): unknown => mockCreateOrder(...args),
-  getOrder: (...args: unknown[]): unknown => mockGetOrder(...args),
-  listOrders: (...args: unknown[]): unknown => mockListOrders(...args),
-  cancelOrder: (...args: unknown[]): unknown => mockCancelOrder(...args),
-}));
+import { createAuthenticate } from '../../auth';
+import type { OrdersService } from '../orders.service';
 
 const mockVerifyAccessToken = jest.fn();
 const mockIsBlacklisted = jest.fn();
 
 jest.mock('../../auth/utils/tokens', () => ({
   verifyAccessToken: (...args: unknown[]): unknown => mockVerifyAccessToken(...args),
-}));
-
-jest.mock('../../auth/token.repository', () => ({
-  isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
 }));
 
 const validUser = { userId: 'u1', email: 'a@b.com', role: 'USER', jti: 'jti-1' };
@@ -42,10 +19,25 @@ function withAuth(): Record<string, string> {
   return { authorization: 'Bearer valid-token' };
 }
 
-describe('Order Routes', () => {
+function buildFakeService(overrides: Partial<OrdersService> = {}): jest.Mocked<OrdersService> {
+  return {
+    createOrder: jest.fn(),
+    getOrder: jest.fn(),
+    listOrders: jest.fn(),
+    cancelOrder: jest.fn(),
+    refillOrder: jest.fn(),
+    setRefillEligibility: jest.fn(),
+    createBulkOrders: jest.fn(),
+    ...overrides,
+  } as unknown as jest.Mocked<OrdersService>;
+}
+
+describe('Order Routes (factory)', () => {
   let app: FastifyInstance;
+  let service: jest.Mocked<OrdersService>;
 
   beforeAll(async () => {
+    service = buildFakeService();
     app = Fastify({ logger: false });
 
     app.setErrorHandler((error: Error, _request, reply) => {
@@ -55,7 +47,12 @@ describe('Order Routes', () => {
       return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: error.message } });
     });
 
-    await app.register(orderRoutes, { prefix: '/orders' });
+    const tokenStore = {
+      isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
+    } as unknown as Parameters<typeof createAuthenticate>[0]['tokenStore'];
+
+    const authenticate = createAuthenticate({ tokenStore });
+    await app.register(createOrderRoutes({ service, authenticate }), { prefix: '/orders' });
     await app.ready();
   });
 
@@ -76,7 +73,7 @@ describe('Order Routes', () => {
 
     it('should return 201 on valid order', async () => {
       const headers = withAuth();
-      mockCreateOrder.mockResolvedValue({
+      service.createOrder.mockResolvedValue({
         orderId: 'o1',
         serviceId: validOrder.serviceId,
         status: 'PROCESSING',
@@ -89,6 +86,12 @@ describe('Order Routes', () => {
         remains: 1000,
         updatedAt: new Date(),
         comments: null,
+        isDripFeed: false,
+        dripFeedRuns: null,
+        dripFeedInterval: null,
+        dripFeedRunsCompleted: 0,
+        refillEligibleUntil: null,
+        refillCount: 0,
       });
 
       const res = await app.inject({
@@ -144,7 +147,7 @@ describe('Order Routes', () => {
   describe('GET /orders', () => {
     it('should return 200 with paginated orders', async () => {
       const headers = withAuth();
-      mockListOrders.mockResolvedValue({
+      service.listOrders.mockResolvedValue({
         orders: [
           {
             orderId: 'o1',
@@ -154,6 +157,7 @@ describe('Order Routes', () => {
             completed: 0,
             price: 1,
             createdAt: new Date(),
+            isDripFeed: false,
           },
         ],
         pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
@@ -169,14 +173,18 @@ describe('Order Routes', () => {
 
     it('should pass query params to service', async () => {
       const headers = withAuth();
-      mockListOrders.mockResolvedValue({
+      service.listOrders.mockResolvedValue({
         orders: [],
         pagination: { page: 2, limit: 10, total: 0, totalPages: 0 },
       });
 
       await app.inject({ method: 'GET', url: '/orders?page=2&limit=10&status=PENDING', headers });
 
-      expect(mockListOrders).toHaveBeenCalledWith('u1', { page: 2, limit: 10, status: 'PENDING' });
+      expect(service.listOrders).toHaveBeenCalledWith('u1', {
+        page: 2,
+        limit: 10,
+        status: 'PENDING',
+      });
     });
 
     it('should return 422 on invalid query params', async () => {
@@ -196,7 +204,7 @@ describe('Order Routes', () => {
 
     it('should return 200 with order detail', async () => {
       const headers = withAuth();
-      mockGetOrder.mockResolvedValue({
+      service.getOrder.mockResolvedValue({
         orderId,
         serviceId: 's1',
         status: 'PROCESSING',
@@ -209,6 +217,12 @@ describe('Order Routes', () => {
         remains: 1000,
         updatedAt: new Date(),
         comments: null,
+        isDripFeed: false,
+        dripFeedRuns: null,
+        dripFeedInterval: null,
+        dripFeedRunsCompleted: 0,
+        refillEligibleUntil: null,
+        refillCount: 0,
       });
 
       const res = await app.inject({ method: 'GET', url: `/orders/${orderId}`, headers });
@@ -234,7 +248,7 @@ describe('Order Routes', () => {
 
     it('should return 200 on successful cancel', async () => {
       const headers = withAuth();
-      mockCancelOrder.mockResolvedValue({
+      service.cancelOrder.mockResolvedValue({
         orderId,
         status: 'CANCELLED',
         refundAmount: 2.5,

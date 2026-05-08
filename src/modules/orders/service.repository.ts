@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import type { ServiceRecord, CreateServiceData, UpdateServiceData } from './orders.types';
 
@@ -32,7 +31,7 @@ function buildUpdateData(data: UpdateServiceData): Record<string, unknown> {
   return updateData;
 }
 
-export interface ServiceRepository {
+export interface ServicesRepository {
   findServiceById(serviceId: string): Promise<ServiceRecord | null>;
   findActiveServices(filters?: ServiceFilters): Promise<ServiceRecord[]>;
   findAllServices(filters?: { isActive?: boolean }): Promise<ServiceRecord[]>;
@@ -51,7 +50,7 @@ export interface ServiceRepository {
   deactivateService(serviceId: string): Promise<ServiceRecord>;
 }
 
-export function createServiceRepository(prisma: PrismaClient): ServiceRepository {
+export function createServicesRepository(prisma: PrismaClient): ServicesRepository {
   async function findServiceById(serviceId: string): Promise<ServiceRecord | null> {
     return prisma.service.findUnique({
       where: { id: serviceId },
@@ -153,48 +152,4 @@ export function createServiceRepository(prisma: PrismaClient): ServiceRepository
     updateService,
     deactivateService,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function findServiceById(serviceId: string): Promise<ServiceRecord | null> {
-  return createServiceRepository(getPrisma()).findServiceById(serviceId);
-}
-
-export async function findActiveServices(filters?: ServiceFilters): Promise<ServiceRecord[]> {
-  return createServiceRepository(getPrisma()).findActiveServices(filters);
-}
-
-export async function findAllServices(filters?: { isActive?: boolean }): Promise<ServiceRecord[]> {
-  return createServiceRepository(getPrisma()).findAllServices(filters);
-}
-
-export async function findAllServicesPaginatedWithProvider(
-  page: number,
-  limit: number,
-): Promise<{
-  services: Array<ServiceRecord & { provider: { id: string; name: string } | null }>;
-  total: number;
-}> {
-  return createServiceRepository(getPrisma()).findAllServicesPaginatedWithProvider(page, limit);
-}
-
-export async function findServiceWithProvider(
-  id: string,
-): Promise<(ServiceRecord & { provider: { id: string; name: string } | null }) | null> {
-  return createServiceRepository(getPrisma()).findServiceWithProvider(id);
-}
-
-export async function createService(data: CreateServiceData): Promise<ServiceRecord> {
-  return createServiceRepository(getPrisma()).createService(data);
-}
-
-export async function updateService(
-  serviceId: string,
-  data: UpdateServiceData,
-): Promise<ServiceRecord> {
-  return createServiceRepository(getPrisma()).updateService(serviceId, data);
-}
-
-export async function deactivateService(serviceId: string): Promise<ServiceRecord> {
-  return createServiceRepository(getPrisma()).deactivateService(serviceId);
 }

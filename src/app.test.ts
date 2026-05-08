@@ -41,7 +41,8 @@ describe('App Factory', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = await createApp();
+    const created = await createApp();
+    app = created.app;
 
     app.get('/test/app-error', async () => {
       throw new AppError('Test error', {

@@ -1,100 +1,120 @@
+import type { Logger } from 'pino';
 import { getNamedQueue, startNamedWorker, stopNamedWorker } from '../../../shared/queue';
-import { createServiceLogger } from '../../../shared/utils/logger';
-import { selectProviderById } from '../../providers';
-import * as ordersRepo from '../orders.repository';
-import * as serviceRepo from '../service.repository';
-import { setRefillEligibility } from '../orders.service';
+import type { ProviderSelectorPort } from '../ports/provider-selector.port';
+import type { OrdersService } from '../orders.service';
+import type { OrdersRepository } from '../orders.repository';
+import type { ServicesRepository } from '../service.repository';
 import type { OrderRecord } from '../orders.types';
 
-const log = createServiceLogger('drip-feed-worker');
-
 const QUEUE_NAME = 'drip-feed';
+const TICK_INTERVAL_MS = 60_000;
 
-async function processDripFeedRun(order: OrderRecord): Promise<void> {
-  if (order.dripFeedPausedAt) {
-    return;
-  }
-  if (!order.dripFeedRuns || !order.dripFeedInterval) {
-    log.warn({ orderId: order.id }, 'Drip-feed order missing runs/interval configuration');
-    return;
-  }
+export interface DripFeedWorker {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  /** Exposed for tests — process a single batch synchronously. */
+  processDripFeedBatch(): Promise<void>;
+}
 
-  const service = await serviceRepo.findServiceById(order.serviceId);
-  if (!service?.providerId || !service?.externalServiceId) {
-    log.error({ orderId: order.id }, 'Service not available for drip-feed run');
-    return;
-  }
+export interface DripFeedWorkerDeps {
+  ordersRepo: OrdersRepository;
+  servicesRepo: ServicesRepository;
+  providerSelector: ProviderSelectorPort;
+  ordersService: Pick<OrdersService, 'setRefillEligibility'>;
+  logger: Logger;
+}
 
-  const chunkSize = Math.ceil(order.quantity / order.dripFeedRuns);
-  const { client } = await selectProviderById(service.providerId);
+export function createDripFeedWorker(deps: DripFeedWorkerDeps): DripFeedWorker {
+  const { ordersRepo, servicesRepo, providerSelector, ordersService, logger } = deps;
 
-  await client.submitOrder({
-    serviceId: service.externalServiceId,
-    link: order.link,
-    quantity: chunkSize,
-  });
-
-  const updated = await ordersRepo.incrementDripFeedRun(order.id);
-  log.info(
-    {
-      orderId: order.id,
-      run: updated.dripFeedRunsCompleted,
-      totalRuns: order.dripFeedRuns,
-      chunkSize,
-    },
-    'Drip-feed run submitted',
-  );
-
-  if (updated.dripFeedRunsCompleted >= order.dripFeedRuns) {
-    if (service.refillDays) {
-      await setRefillEligibility(order.id, service.refillDays);
-    } else {
-      await ordersRepo.updateOrderStatus(order.id, {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        remains: 0,
-      });
+  async function processDripFeedRun(order: OrderRecord): Promise<void> {
+    if (order.dripFeedPausedAt) {
+      return;
+    }
+    if (!order.dripFeedRuns || !order.dripFeedInterval) {
+      logger.warn({ orderId: order.id }, 'Drip-feed order missing runs/interval configuration');
+      return;
     }
 
-    log.info({ orderId: order.id }, 'All drip-feed runs completed, order marked COMPLETED');
-  }
-}
+    const service = await servicesRepo.findServiceById(order.serviceId);
+    if (!service?.providerId || !service?.externalServiceId) {
+      logger.error({ orderId: order.id }, 'Service not available for drip-feed run');
+      return;
+    }
 
-async function processDripFeedBatch(): Promise<void> {
-  const dueOrders = await ordersRepo.findDripFeedOrdersDue();
-  if (dueOrders.length === 0) {
-    log.debug('No drip-feed orders due');
-    return;
-  }
+    const chunkSize = Math.ceil(order.quantity / order.dripFeedRuns);
+    const { client } = await providerSelector.selectProviderById(service.providerId);
 
-  log.info({ count: dueOrders.length }, 'Processing due drip-feed orders');
+    await client.submitOrder({
+      serviceId: service.externalServiceId,
+      link: order.link,
+      quantity: chunkSize,
+    });
 
-  for (const order of dueOrders) {
-    try {
-      await processDripFeedRun(order);
-    } catch (err) {
-      log.error({ orderId: order.id, err }, 'Failed to process drip-feed run');
-      throw err;
+    const updated = await ordersRepo.incrementDripFeedRun(order.id);
+    logger.info(
+      {
+        orderId: order.id,
+        run: updated.dripFeedRunsCompleted,
+        totalRuns: order.dripFeedRuns,
+        chunkSize,
+      },
+      'Drip-feed run submitted',
+    );
+
+    if (updated.dripFeedRunsCompleted >= order.dripFeedRuns) {
+      if (service.refillDays) {
+        await ordersService.setRefillEligibility(order.id, service.refillDays);
+      } else {
+        await ordersRepo.updateOrderStatus(order.id, {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          remains: 0,
+        });
+      }
+
+      logger.info({ orderId: order.id }, 'All drip-feed runs completed, order marked COMPLETED');
     }
   }
-}
 
-export async function startDripFeedWorker(): Promise<void> {
-  await startNamedWorker(
-    QUEUE_NAME,
-    async () => {
-      await processDripFeedBatch();
-    },
-    { retryable: true, concurrency: 1 },
-  );
+  async function processDripFeedBatch(): Promise<void> {
+    const dueOrders = await ordersRepo.findDripFeedOrdersDue();
+    if (dueOrders.length === 0) {
+      logger.debug('No drip-feed orders due');
+      return;
+    }
 
-  const q = getNamedQueue(QUEUE_NAME);
-  await q.add('drip-feed-tick', {}, { repeat: { every: 60_000 } });
+    logger.info({ count: dueOrders.length }, 'Processing due drip-feed orders');
 
-  log.info('Drip-feed worker started (interval: 60s)');
-}
+    for (const order of dueOrders) {
+      try {
+        await processDripFeedRun(order);
+      } catch (err) {
+        logger.error({ orderId: order.id, err }, 'Failed to process drip-feed run');
+        throw err;
+      }
+    }
+  }
 
-export async function stopDripFeedWorker(): Promise<void> {
-  await stopNamedWorker(QUEUE_NAME);
-  log.info('Drip-feed worker stopped');
+  async function start(): Promise<void> {
+    await startNamedWorker(
+      QUEUE_NAME,
+      async () => {
+        await processDripFeedBatch();
+      },
+      { retryable: true, concurrency: 1 },
+    );
+
+    const q = getNamedQueue(QUEUE_NAME);
+    await q.add('drip-feed-tick', {}, { repeat: { every: TICK_INTERVAL_MS } });
+
+    logger.info('Drip-feed worker started (interval: 60s)');
+  }
+
+  async function stop(): Promise<void> {
+    await stopNamedWorker(QUEUE_NAME);
+    logger.info('Drip-feed worker stopped');
+  }
+
+  return { start, stop, processDripFeedBatch };
 }

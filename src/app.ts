@@ -1,154 +1,70 @@
-import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
-import cors from '@fastify/cors';
-import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
-import swagger from '@fastify/swagger';
-import swaggerUi from '@fastify/swagger-ui';
-import { StatusCodes } from 'http-status-codes';
+import type { FastifyInstance } from 'fastify';
 import Stripe from 'stripe';
-import { openapiSpec } from './shared/swagger/openapi-spec';
-import { AppError } from './shared/errors/app-error';
-import { checkHealth } from './shared/health/health';
 import { createServiceLogger } from './shared/utils/logger';
 import { getConfig } from './shared/config';
 import { getPrisma } from './shared/database/prisma';
 import { getRedis } from './shared/redis/redis';
 import { createRedisCache } from './shared/cache/redis-cache';
+import { setupFastifyApp } from './composition/setup-fastify';
+import { buildOutboxHandlers } from './composition/outbox-handlers';
+import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthEmailService } from './modules/auth';
-import { createAuthRoutes } from './modules/auth/auth.routes';
 // prettier-ignore
-import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createBillingRoutes, createStripeRoutes, createCryptomusRoutes } from './modules/billing';
-import { createOutboxRepository, createOutboxService } from './shared/outbox';
-import { orderRoutes } from './modules/orders/orders.routes';
+import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createDepositExpiryWorker } from './modules/billing';
 // prettier-ignore
-import { createProvidersRepository, createProvidersService, createProviderRoutes, createEncryptionService, requireAdmin } from './modules/providers';
+import { createOutboxRepository, createOutboxService, createOutboxWorker, createHandlerRegistry } from './shared/outbox';
+import { createSystemClock } from './shared/utils/clock';
+// prettier-ignore
+import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, createOrderTimeoutWorker, createStatusPollWorker, createDripFeedWorker, stubProviderClient } from './modules/orders';
+// prettier-ignore
+import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector } from './modules/providers';
 import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
 import { createApiKeysService } from './modules/api-keys/api-keys.service';
-import { createApiKeyRoutes } from './modules/api-keys/api-keys.routes';
 import { createWebhooksRepository } from './modules/webhooks/webhooks.repository';
 import { createWebhooksService } from './modules/webhooks/webhooks.service';
-import { createWebhookRoutes } from './modules/webhooks/webhooks.routes';
+import { createWebhookDispatcher } from './modules/webhooks/webhook-dispatcher';
 import { createCatalogRepository } from './modules/catalog/catalog.repository';
 import { createCatalogService } from './modules/catalog/catalog.service';
-import { createCatalogRoutes } from './modules/catalog/catalog.routes';
-import { adminRoutes } from './modules/admin/admin.routes';
 import { createNotificationRepository } from './modules/notifications/notification.repository';
 import { createNotificationsService } from './modules/notifications/notifications.service';
 import { createNotificationDispatcher } from './modules/notifications/notification-dispatcher';
-import { createNotificationRoutes } from './modules/notifications/notifications.routes';
 import { getEmailProvider } from './modules/notifications/utils/email-provider-factory';
 import { createSupportRepository } from './modules/support/support.repository';
 import { createSupportService } from './modules/support/support.service';
-import { createSupportRoutes, createAdminSupportRoutes } from './modules/support/support.routes';
 import { createReferralsRepository } from './modules/referrals/referrals.repository';
 import { createReferralsService } from './modules/referrals/referrals.service';
-import { createReferralRoutes } from './modules/referrals/referrals.routes';
 import type { ReferralsWalletPort } from './modules/referrals';
 import type { LedgerType } from './generated/prisma';
 import { createCouponsRepository } from './modules/coupons/coupons.repository';
 import { createCouponsService } from './modules/coupons/coupons.service';
-import { createCouponRoutes, createAdminCouponRoutes } from './modules/coupons/coupons.routes';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
-import { createAdminTrackingRoutes } from './modules/tracking/tracking.routes';
 
 const log = createServiceLogger('http');
 
-export async function createApp(): Promise<FastifyInstance> {
+export interface AppWorkers {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface CreatedApp {
+  app: FastifyInstance;
+  workers: AppWorkers;
+}
+
+export async function createApp(): Promise<CreatedApp> {
   const config = getConfig();
-  const app = Fastify({
-    logger: false,
-    requestIdHeader: 'x-request-id',
-    genReqId: () => crypto.randomUUID(),
-  });
-
-  const corsOrigins = config.security.corsOrigin
-    .split(',')
-    .map((o) => o.trim())
-    .filter((o) => o.length > 0);
-
-  await app.register(cors, {
-    origin: corsOrigins,
-  });
-
-  await app.register(helmet);
-
-  await app.register(rateLimit, {
-    max: config.security.rateLimitMax,
-    timeWindow: config.security.rateLimitWindowMs,
-  });
-
-  await app.register(swagger, {
-    mode: 'static',
-    specification: { document: openapiSpec },
-  });
-
-  await app.register(swaggerUi, {
-    routePrefix: '/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: true,
+  const app = await setupFastifyApp(
+    {
+      corsOrigin: config.security.corsOrigin,
+      rateLimitMax: config.security.rateLimitMax,
+      rateLimitWindowMs: config.security.rateLimitWindowMs,
     },
-  });
-
-  app.addHook('onRequest', (request: FastifyRequest, _reply: FastifyReply, done: () => void) => {
-    log.info({ method: request.method, url: request.url, reqId: request.id }, 'request received');
-    done();
-  });
-
-  app.addHook('onResponse', (request: FastifyRequest, reply: FastifyReply, done: () => void) => {
-    log.info(
-      { method: request.method, url: request.url, statusCode: reply.statusCode, reqId: request.id },
-      'request completed',
-    );
-    done();
-  });
-
-  app.setErrorHandler((error: Error, _request, reply) => {
-    if (error instanceof AppError) {
-      return reply.status(error.statusCode).send(error.toJSON());
-    }
-
-    const fastifyError = error as Error & { validation?: unknown; statusCode?: number };
-    if (fastifyError.validation) {
-      return reply.status(StatusCodes.UNPROCESSABLE_ENTITY).send({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Request validation failed',
-          details: fastifyError.validation,
-        },
-      });
-    }
-
-    log.error({ err: error }, 'Unhandled error');
-
-    return reply.status(StatusCodes.INTERNAL_SERVER_ERROR).send({
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Internal server error',
-      },
-    });
-  });
-
-  app.setNotFoundHandler((_request, reply) =>
-    reply.status(StatusCodes.NOT_FOUND).send({
-      error: {
-        code: 'NOT_FOUND',
-        message: 'Route not found',
-      },
-    }),
+    log,
   );
 
-  app.get('/health', async () => checkHealth());
-
-  app.get('/', async () => ({
-    name: 'youboost-api',
-    version: '0.1.0-alpha',
-    status: 'running',
-  }));
-
-  // Composition root — factory-based DI. Unconverted modules still use singletons.
+  // Composition root — factory-based DI.
   const prisma = getPrisma();
   const redis = getRedis();
   const cache = createRedisCache(redis);
@@ -175,12 +91,17 @@ export async function createApp(): Promise<FastifyInstance> {
   const encryption = createEncryptionService({ encryptionKey: config.provider.encryptionKey });
   // prettier-ignore
   const providersService = createProvidersService({ providersRepo, encryption, logger: createServiceLogger('providers') });
+  const providerSelector = createProviderSelector({
+    providersRepo,
+    encryption,
+    stubClient: stubProviderClient,
+    providerMode: config.provider.mode,
+    logger: createServiceLogger('provider-selector'),
+  });
 
   const couponsRepo = createCouponsRepository(prisma);
-  const couponsService = createCouponsService({
-    couponsRepo,
-    logger: createServiceLogger('coupons'),
-  });
+  // prettier-ignore
+  const couponsService = createCouponsService({ couponsRepo, logger: createServiceLogger('coupons') });
 
   const emailProvider = getEmailProvider();
   const notificationRepo = createNotificationRepository(prisma);
@@ -195,18 +116,17 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('notifications'),
   });
 
-  // webhookDispatcher still lives in webhooks/index.ts shim (inlined in F17).
   const webhooksRepo = createWebhooksRepository(prisma);
-  const webhooksService = createWebhooksService({
+  // prettier-ignore
+  const webhooksService = createWebhooksService({ webhooksRepo, logger: createServiceLogger('webhooks') });
+  const webhookDispatcher = createWebhookDispatcher({
     webhooksRepo,
-    logger: createServiceLogger('webhooks'),
+    logger: createServiceLogger('webhook-dispatcher'),
   });
 
   const apiKeysRepo = createApiKeysRepository(prisma);
-  const apiKeysService = createApiKeysService({
-    apiKeysRepo,
-    logger: createServiceLogger('api-keys'),
-  });
+  // prettier-ignore
+  const apiKeysService = createApiKeysService({ apiKeysRepo, logger: createServiceLogger('api-keys') });
 
   // Billing module — factory-wired. Repos shared with referrals walletOps adapter.
   const walletRepo = createWalletRepository(prisma);
@@ -217,6 +137,12 @@ export async function createApp(): Promise<FastifyInstance> {
   const outbox = createOutboxService({ outboxRepo, logger: createServiceLogger('outbox') });
   // prettier-ignore
   const billingService = createBillingService({ walletRepo, ledgerRepo, depositRepo, logger: createServiceLogger('billing') });
+  const billingInternal = createBillingInternalService({
+    prisma,
+    walletRepo,
+    ledgerRepo,
+    logger: createServiceLogger('billing-internal'),
+  });
   // prettier-ignore
   const depositLifecycle = createDepositLifecycleService({ prisma, walletRepo, ledgerRepo, depositRepo, outbox, billingConfig: config.billing, logger: createServiceLogger('deposit-lifecycle') });
   // prettier-ignore
@@ -246,50 +172,126 @@ export async function createApp(): Promise<FastifyInstance> {
   // prettier-ignore
   const authService = createAuthService({ userRepo, tokenStore: tokenRepo, sendVerificationEmail: authEmailService.sendVerificationEmail, applyReferral: referralsService.applyReferral, logger: createServiceLogger('auth') });
 
-  await app.register(createAuthRoutes({ authService, authEmailService, authenticate }), {
-    prefix: '/auth',
+  // Orders module — factory-wired with outbox producer semantics.
+  const ordersRepo = createOrdersRepository(prisma);
+  const servicesRepo = createServicesRepository(prisma);
+  const fundSettlement = createFundSettlement({
+    billing: {
+      chargeFunds: billingInternal.chargeFunds,
+      releaseFunds: billingInternal.releaseFunds,
+      refundFunds: billingInternal.refundFunds,
+    },
+    logger: createServiceLogger('fund-settlement'),
   });
-  // prettier-ignore
-  await app.register(createBillingRoutes({ service: billingService, providerRegistry: paymentProviderRegistry, authenticate }), { prefix: '/billing' });
-  // prettier-ignore
-  await app.register(createStripeRoutes({ service: stripePayment, authenticate }), { prefix: '/billing/stripe' });
-  // prettier-ignore
-  await app.register(createCryptomusRoutes({ service: cryptomusPayment, authenticate }), { prefix: '/billing/cryptomus' });
-  await app.register(orderRoutes, { prefix: '/orders' });
-  // prettier-ignore
-  await app.register(createProviderRoutes({ service: providersService, authenticate, requireAdmin }), { prefix: '/providers' });
-  await app.register(createApiKeyRoutes({ service: apiKeysService, authenticate }), {
-    prefix: '/api-keys',
+  const circuitBreaker = createCircuitBreaker();
+  const ordersService = createOrdersService({
+    prisma,
+    ordersRepo,
+    servicesRepo,
+    billing: {
+      holdFunds: billingInternal.holdFunds,
+      releaseFunds: billingInternal.releaseFunds,
+    },
+    providerSelector,
+    couponsService,
+    outbox,
+    logger: createServiceLogger('orders'),
   });
-  await app.register(createWebhookRoutes({ service: webhooksService, authenticate }), {
-    prefix: '/webhooks',
-  });
-  await app.register(createCatalogRoutes(catalogService), { prefix: '/catalog' });
-  await app.register(adminRoutes, { prefix: '/admin' });
-  await app.register(createNotificationRoutes({ service: notificationsService, authenticate }), {
-    prefix: '/notifications',
-  });
-  await app.register(createSupportRoutes({ service: supportService, authenticate }), {
-    prefix: '/support',
-  });
-  await app.register(
-    createAdminSupportRoutes({ service: supportService, authenticate, requireAdmin }),
-    { prefix: '/admin/support' },
-  );
-  await app.register(createReferralRoutes({ service: referralsService, authenticate }), {
-    prefix: '/referrals',
-  });
-  await app.register(createCouponRoutes({ service: couponsService, authenticate }), {
-    prefix: '/coupons',
-  });
-  await app.register(
-    createAdminCouponRoutes({ service: couponsService, authenticate, requireAdmin }),
-    { prefix: '/admin/coupons' },
-  );
-  await app.register(
-    createAdminTrackingRoutes({ service: trackingService, authenticate, requireAdmin }),
-    { prefix: '/admin/tracking-links' },
-  );
 
-  return app;
+  // Workers (lifecycle-only instances; started/stopped via returned workers facade).
+  const orderTimeoutWorker = createOrderTimeoutWorker({
+    prisma,
+    ordersRepo,
+    providerSelector,
+    stubClient: stubProviderClient,
+    fundSettlement,
+    outbox,
+    config: { orderTimeoutHours: config.polling.orderTimeoutHours },
+    logger: createServiceLogger('order-timeout'),
+  });
+  const statusPollWorker = createStatusPollWorker({
+    prisma,
+    ordersRepo,
+    servicesRepo,
+    providerSelector,
+    stubClient: stubProviderClient,
+    fundSettlement,
+    circuitBreaker,
+    outbox,
+    config: {
+      intervalMs: config.polling.intervalMs,
+      batchSize: config.polling.batchSize,
+      circuitBreakerThreshold: config.polling.circuitBreakerThreshold,
+      circuitBreakerCooldownMs: config.polling.circuitBreakerCooldownMs,
+    },
+    logger: createServiceLogger('status-poll'),
+  });
+  const dripFeedWorker = createDripFeedWorker({
+    ordersRepo,
+    servicesRepo,
+    providerSelector,
+    ordersService,
+    logger: createServiceLogger('drip-feed-worker'),
+  });
+  const depositExpiryWorker = createDepositExpiryWorker({
+    depositRepo,
+    lifecycle: depositLifecycle,
+    logger: createServiceLogger('deposit-expiry'),
+  });
+
+  // Outbox handler registry — wires domain events to side-effect producers.
+  const handlerRegistry = createHandlerRegistry(
+    buildOutboxHandlers({ webhookDispatcher, notificationsService, couponsService }),
+  );
+  const outboxWorker = createOutboxWorker({
+    outboxRepo,
+    handlers: handlerRegistry,
+    clock: createSystemClock(),
+    logger: createServiceLogger('outbox-worker'),
+  });
+
+  // Route registration — delegated to registerRoutes to keep this file lean.
+  await registerRoutes({
+    app,
+    authenticate,
+    authService,
+    authEmailService,
+    billingService,
+    paymentProviderRegistry,
+    stripePayment,
+    cryptomusPayment,
+    ordersService,
+    providersService,
+    apiKeysService,
+    webhooksService,
+    catalogService,
+    notificationsService,
+    supportService,
+    referralsService,
+    couponsService,
+    trackingService,
+  });
+
+  const workers: AppWorkers = {
+    async start(): Promise<void> {
+      await statusPollWorker.start();
+      await dripFeedWorker.start();
+      await orderTimeoutWorker.start();
+      await depositExpiryWorker.start();
+      await webhookDispatcher.start();
+      await notificationDispatcher.start();
+      outboxWorker.start();
+    },
+    async stop(): Promise<void> {
+      await outboxWorker.stop();
+      await notificationDispatcher.stop();
+      await webhookDispatcher.stop();
+      await depositExpiryWorker.stop();
+      await orderTimeoutWorker.stop();
+      await dripFeedWorker.stop();
+      await statusPollWorker.stop();
+    },
+  };
+
+  return { app, workers };
 }

@@ -1,65 +1,68 @@
-import { isCircuitOpen, recordFailure, recordSuccess, resetAllBreakers } from '../circuit-breaker';
+import { createCircuitBreaker } from '../circuit-breaker';
 
-describe('Circuit Breaker', () => {
-  beforeEach(() => {
-    resetAllBreakers();
-  });
-
-  describe('isCircuitOpen', () => {
+describe('Circuit Breaker (factory)', () => {
+  describe('isOpen', () => {
     it('should return false for unknown provider', () => {
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
+      const cb = createCircuitBreaker();
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
     });
 
     it('should return false when failures below threshold', () => {
-      recordFailure('provider-1');
-      recordFailure('provider-1');
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
+      const cb = createCircuitBreaker();
+      cb.recordFailure('provider-1');
+      cb.recordFailure('provider-1');
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
     });
 
     it('should return true when failures reach threshold within cooldown', () => {
+      const cb = createCircuitBreaker();
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
+        cb.recordFailure('provider-1');
       }
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(true);
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(true);
     });
 
     it('should return false when failures reach threshold but cooldown expired', () => {
+      const cb = createCircuitBreaker();
       const now = Date.now();
       jest.spyOn(Date, 'now').mockReturnValue(now);
 
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
+        cb.recordFailure('provider-1');
       }
 
       jest.spyOn(Date, 'now').mockReturnValue(now + 60_001);
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
 
       jest.restoreAllMocks();
     });
 
     it('should track providers independently', () => {
+      const cb = createCircuitBreaker();
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
+        cb.recordFailure('provider-1');
       }
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(true);
-      expect(isCircuitOpen('provider-2', 5, 60_000)).toBe(false);
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(true);
+      expect(cb.isOpen('provider-2', 5, 60_000)).toBe(false);
     });
   });
 
   describe('recordFailure', () => {
     it('should increment failure count', () => {
-      recordFailure('provider-1');
-      expect(isCircuitOpen('provider-1', 1, 60_000)).toBe(true);
+      const cb = createCircuitBreaker();
+      cb.recordFailure('provider-1');
+      expect(cb.isOpen('provider-1', 1, 60_000)).toBe(true);
     });
 
     it('should update lastFailure timestamp', () => {
+      const cb = createCircuitBreaker();
       const now = Date.now();
       jest.spyOn(Date, 'now').mockReturnValue(now);
 
-      recordFailure('provider-1');
+      cb.recordFailure('provider-1');
 
       jest.spyOn(Date, 'now').mockReturnValue(now + 60_001);
-      expect(isCircuitOpen('provider-1', 1, 60_000)).toBe(false);
+      expect(cb.isOpen('provider-1', 1, 60_000)).toBe(false);
 
       jest.restoreAllMocks();
     });
@@ -67,37 +70,50 @@ describe('Circuit Breaker', () => {
 
   describe('recordSuccess', () => {
     it('should reset breaker state', () => {
+      const cb = createCircuitBreaker();
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
+        cb.recordFailure('provider-1');
       }
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(true);
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(true);
 
-      recordSuccess('provider-1');
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
+      cb.recordSuccess('provider-1');
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
     });
 
     it('should not affect other providers', () => {
+      const cb = createCircuitBreaker();
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
-        recordFailure('provider-2');
+        cb.recordFailure('provider-1');
+        cb.recordFailure('provider-2');
       }
 
-      recordSuccess('provider-1');
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
-      expect(isCircuitOpen('provider-2', 5, 60_000)).toBe(true);
+      cb.recordSuccess('provider-1');
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
+      expect(cb.isOpen('provider-2', 5, 60_000)).toBe(true);
     });
   });
 
-  describe('resetAllBreakers', () => {
+  describe('reset', () => {
     it('should clear all breaker states', () => {
+      const cb = createCircuitBreaker();
       for (let i = 0; i < 5; i++) {
-        recordFailure('provider-1');
-        recordFailure('provider-2');
+        cb.recordFailure('provider-1');
+        cb.recordFailure('provider-2');
       }
 
-      resetAllBreakers();
-      expect(isCircuitOpen('provider-1', 5, 60_000)).toBe(false);
-      expect(isCircuitOpen('provider-2', 5, 60_000)).toBe(false);
+      cb.reset();
+      expect(cb.isOpen('provider-1', 5, 60_000)).toBe(false);
+      expect(cb.isOpen('provider-2', 5, 60_000)).toBe(false);
+    });
+  });
+
+  describe('isolation between instances', () => {
+    it('should not share state between factory instances', () => {
+      const a = createCircuitBreaker();
+      const b = createCircuitBreaker();
+      for (let i = 0; i < 5; i++) a.recordFailure('p');
+      expect(a.isOpen('p', 5, 60_000)).toBe(true);
+      expect(b.isOpen('p', 5, 60_000)).toBe(false);
     });
   });
 });

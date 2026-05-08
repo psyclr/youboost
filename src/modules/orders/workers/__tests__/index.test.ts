@@ -1,4 +1,15 @@
-import { startOrderPolling, stopOrderPolling } from '../index';
+import { createStatusPollWorker, createDripFeedWorker, createOrderTimeoutWorker } from '../index';
+import {
+  createFakeOrdersRepository,
+  createFakeServicesRepository,
+  createFakeFundSettlement,
+  createFakeCircuitBreaker,
+  createFakeOutbox,
+  createFakePrisma,
+  createFakeProviderClient,
+  createFakeProviderSelector,
+  silentLogger,
+} from '../../__tests__/fakes';
 
 const mockStartNamedWorker = jest.fn().mockResolvedValue(undefined);
 const mockStopNamedWorker = jest.fn().mockResolvedValue(undefined);
@@ -11,46 +22,66 @@ jest.mock('../../../../shared/queue', () => ({
   getNamedQueue: (...args: unknown[]): unknown => mockGetNamedQueue(...args),
 }));
 
-jest.mock('../../../../shared/config', () => ({
-  getConfig: jest.fn().mockReturnValue({
-    polling: {
+function buildStatusPollWorker(): ReturnType<typeof createStatusPollWorker> {
+  const prisma = createFakePrisma();
+  return createStatusPollWorker({
+    prisma: prisma.client,
+    ordersRepo: createFakeOrdersRepository(),
+    servicesRepo: createFakeServicesRepository(),
+    providerSelector: createFakeProviderSelector({ client: createFakeProviderClient() }),
+    stubClient: createFakeProviderClient(),
+    fundSettlement: createFakeFundSettlement(),
+    circuitBreaker: createFakeCircuitBreaker(),
+    outbox: createFakeOutbox().port,
+    config: {
       intervalMs: 30_000,
+      batchSize: 100,
+      circuitBreakerThreshold: 5,
+      circuitBreakerCooldownMs: 60_000,
     },
-  }),
-}));
+    logger: silentLogger,
+  });
+}
 
-jest.mock('../../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
+function buildOrderTimeoutWorker(): ReturnType<typeof createOrderTimeoutWorker> {
+  const prisma = createFakePrisma();
+  return createOrderTimeoutWorker({
+    prisma: prisma.client,
+    ordersRepo: createFakeOrdersRepository(),
+    providerSelector: createFakeProviderSelector({ client: createFakeProviderClient() }),
+    stubClient: createFakeProviderClient(),
+    fundSettlement: createFakeFundSettlement(),
+    outbox: createFakeOutbox().port,
+    config: { orderTimeoutHours: 48 },
+    logger: silentLogger,
+  });
+}
 
-jest.mock('../status-poll.worker', () => ({
-  pollOrderStatuses: jest.fn().mockResolvedValue(undefined),
-}));
+function buildDripFeedWorker(): ReturnType<typeof createDripFeedWorker> {
+  return createDripFeedWorker({
+    ordersRepo: createFakeOrdersRepository(),
+    servicesRepo: createFakeServicesRepository(),
+    providerSelector: createFakeProviderSelector({ client: createFakeProviderClient() }),
+    ordersService: { setRefillEligibility: jest.fn().mockResolvedValue(undefined) },
+    logger: silentLogger,
+  });
+}
 
-describe('Order Polling Bootstrap', () => {
+describe('Orders Workers — lifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('startOrderPolling', () => {
-    it('should start a named worker for order-polling', async () => {
-      await startOrderPolling();
+  describe('statusPollWorker', () => {
+    it('should start a named worker and schedule a repeating job', async () => {
+      const worker = buildStatusPollWorker();
+      await worker.start();
 
       expect(mockStartNamedWorker).toHaveBeenCalledWith(
         'order-polling',
         expect.any(Function),
         expect.objectContaining({ retryable: false, concurrency: 1 }),
       );
-    });
-
-    it('should schedule a repeating job on the named queue', async () => {
-      await startOrderPolling();
-
       expect(mockGetNamedQueue).toHaveBeenCalledWith('order-polling');
       expect(mockQueueAdd).toHaveBeenCalledWith(
         'poll-order-statuses',
@@ -58,17 +89,47 @@ describe('Order Polling Bootstrap', () => {
         { repeat: { every: 30_000 } },
       );
     });
-  });
 
-  describe('stopOrderPolling', () => {
     it('should stop the named worker', async () => {
-      await stopOrderPolling();
-
+      const worker = buildStatusPollWorker();
+      await worker.stop();
       expect(mockStopNamedWorker).toHaveBeenCalledWith('order-polling');
     });
+  });
 
-    it('should resolve without errors', async () => {
-      await expect(stopOrderPolling()).resolves.toBeUndefined();
+  describe('orderTimeoutWorker', () => {
+    it('should start a named worker on the order-timeout queue', async () => {
+      const worker = buildOrderTimeoutWorker();
+      await worker.start();
+      expect(mockStartNamedWorker).toHaveBeenCalledWith(
+        'order-timeout',
+        expect.any(Function),
+        expect.objectContaining({ retryable: false, concurrency: 1 }),
+      );
+    });
+
+    it('should stop the named worker', async () => {
+      const worker = buildOrderTimeoutWorker();
+      await worker.stop();
+      expect(mockStopNamedWorker).toHaveBeenCalledWith('order-timeout');
+    });
+  });
+
+  describe('dripFeedWorker', () => {
+    it('should start a retryable named worker on the drip-feed queue', async () => {
+      const worker = buildDripFeedWorker();
+      await worker.start();
+      expect(mockStartNamedWorker).toHaveBeenCalledWith(
+        'drip-feed',
+        expect.any(Function),
+        expect.objectContaining({ retryable: true, concurrency: 1 }),
+      );
+    });
+
+    it('should stop the named worker', async () => {
+      const worker = buildDripFeedWorker();
+      await worker.stop();
+      expect(mockStopNamedWorker).toHaveBeenCalledWith('drip-feed');
     });
   });
 });

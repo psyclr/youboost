@@ -12,14 +12,16 @@ const mockDeactivateService = jest.fn();
 const mockFindServiceById = jest.fn();
 const mockFindServiceWithProvider = jest.fn();
 
-jest.mock('../../orders/service.repository', () => ({
-  findAllServicesPaginatedWithProvider: (...args: unknown[]): unknown =>
-    mockFindAllServicesPaginatedWithProvider(...args),
-  createService: (...args: unknown[]): unknown => mockCreateService(...args),
-  updateService: (...args: unknown[]): unknown => mockUpdateService(...args),
-  deactivateService: (...args: unknown[]): unknown => mockDeactivateService(...args),
-  findServiceById: (...args: unknown[]): unknown => mockFindServiceById(...args),
-  findServiceWithProvider: (...args: unknown[]): unknown => mockFindServiceWithProvider(...args),
+jest.mock('../../orders', () => ({
+  serviceRepo: {
+    findAllServicesPaginatedWithProvider: (...args: unknown[]): unknown =>
+      mockFindAllServicesPaginatedWithProvider(...args),
+    createService: (...args: unknown[]): unknown => mockCreateService(...args),
+    updateService: (...args: unknown[]): unknown => mockUpdateService(...args),
+    deactivateService: (...args: unknown[]): unknown => mockDeactivateService(...args),
+    findServiceById: (...args: unknown[]): unknown => mockFindServiceById(...args),
+    findServiceWithProvider: (...args: unknown[]): unknown => mockFindServiceWithProvider(...args),
+  },
 }));
 
 jest.mock('../../../shared/utils/logger', () => ({

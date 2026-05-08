@@ -1,27 +1,19 @@
-import {
-  findServiceById,
-  findActiveServices,
-  findAllServices,
-  createService,
-  updateService,
-  deactivateService,
-} from '../service.repository';
+import { createServicesRepository } from '../service.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
 const mockFindUnique = jest.fn();
 const mockFindMany = jest.fn();
 const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    service: {
-      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      update: (...args: unknown[]): unknown => mockUpdate(...args),
-    },
-  }),
-}));
+const fakePrisma = {
+  service: {
+    findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
+    findMany: (...args: unknown[]): unknown => mockFindMany(...args),
+    create: (...args: unknown[]): unknown => mockCreate(...args),
+    update: (...args: unknown[]): unknown => mockUpdate(...args),
+  },
+} as unknown as PrismaClient;
 
 const mockService = {
   id: 'svc-1',
@@ -37,7 +29,7 @@ const mockService = {
   updatedAt: new Date(),
 };
 
-describe('Service Repository', () => {
+describe('Services Repository (factory)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -46,7 +38,8 @@ describe('Service Repository', () => {
     it('should return service when found', async () => {
       mockFindUnique.mockResolvedValue(mockService);
 
-      const result = await findServiceById('svc-1');
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.findServiceById('svc-1');
 
       expect(result).toEqual(mockService);
       expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: 'svc-1' } });
@@ -55,7 +48,8 @@ describe('Service Repository', () => {
     it('should return null when not found', async () => {
       mockFindUnique.mockResolvedValue(null);
 
-      const result = await findServiceById('nonexistent');
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.findServiceById('nonexistent');
 
       expect(result).toBeNull();
     });
@@ -65,7 +59,8 @@ describe('Service Repository', () => {
     it('should return active services', async () => {
       mockFindMany.mockResolvedValue([mockService]);
 
-      const result = await findActiveServices();
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.findActiveServices();
 
       expect(result).toHaveLength(1);
       expect(mockFindMany).toHaveBeenCalledWith({
@@ -77,7 +72,8 @@ describe('Service Repository', () => {
     it('should filter by platform', async () => {
       mockFindMany.mockResolvedValue([]);
 
-      await findActiveServices({ platform: 'YOUTUBE' });
+      const repo = createServicesRepository(fakePrisma);
+      await repo.findActiveServices({ platform: 'YOUTUBE' });
 
       expect(mockFindMany).toHaveBeenCalledWith({
         where: { isActive: true, platform: 'YOUTUBE' },
@@ -88,7 +84,8 @@ describe('Service Repository', () => {
     it('should filter by type', async () => {
       mockFindMany.mockResolvedValue([]);
 
-      await findActiveServices({ type: 'VIEWS' });
+      const repo = createServicesRepository(fakePrisma);
+      await repo.findActiveServices({ type: 'VIEWS' });
 
       expect(mockFindMany).toHaveBeenCalledWith({
         where: { isActive: true, type: 'VIEWS' },
@@ -99,7 +96,8 @@ describe('Service Repository', () => {
     it('should filter by both platform and type', async () => {
       mockFindMany.mockResolvedValue([]);
 
-      await findActiveServices({ platform: 'TIKTOK', type: 'LIKES' });
+      const repo = createServicesRepository(fakePrisma);
+      await repo.findActiveServices({ platform: 'TIKTOK', type: 'LIKES' });
 
       expect(mockFindMany).toHaveBeenCalledWith({
         where: { isActive: true, platform: 'TIKTOK', type: 'LIKES' },
@@ -109,7 +107,8 @@ describe('Service Repository', () => {
 
     it('should return empty array when no services match', async () => {
       mockFindMany.mockResolvedValue([]);
-      const result = await findActiveServices();
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.findActiveServices();
       expect(result).toHaveLength(0);
     });
   });
@@ -117,14 +116,16 @@ describe('Service Repository', () => {
   describe('findAllServices', () => {
     it('should return all services without filter', async () => {
       mockFindMany.mockResolvedValue([mockService]);
-      const result = await findAllServices();
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.findAllServices();
       expect(result).toHaveLength(1);
       expect(mockFindMany).toHaveBeenCalledWith({ where: {}, orderBy: { name: 'asc' } });
     });
 
     it('should filter by isActive', async () => {
       mockFindMany.mockResolvedValue([]);
-      await findAllServices({ isActive: false });
+      const repo = createServicesRepository(fakePrisma);
+      await repo.findAllServices({ isActive: false });
       expect(mockFindMany).toHaveBeenCalledWith({
         where: { isActive: false },
         orderBy: { name: 'asc' },
@@ -135,7 +136,8 @@ describe('Service Repository', () => {
   describe('createService', () => {
     it('should create a service', async () => {
       mockCreate.mockResolvedValue(mockService);
-      const result = await createService({
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.createService({
         name: 'YouTube Views',
         platform: 'YOUTUBE',
         type: 'VIEWS',
@@ -151,7 +153,8 @@ describe('Service Repository', () => {
 
     it('should pass null description when not provided', async () => {
       mockCreate.mockResolvedValue(mockService);
-      await createService({
+      const repo = createServicesRepository(fakePrisma);
+      await repo.createService({
         name: 'Test',
         platform: 'YOUTUBE',
         type: 'VIEWS',
@@ -168,7 +171,8 @@ describe('Service Repository', () => {
   describe('updateService', () => {
     it('should update specified fields', async () => {
       mockUpdate.mockResolvedValue({ ...mockService, name: 'Updated' });
-      const result = await updateService('svc-1', { name: 'Updated' });
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.updateService('svc-1', { name: 'Updated' });
       expect(result.name).toBe('Updated');
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'svc-1' },
@@ -178,7 +182,8 @@ describe('Service Repository', () => {
 
     it('should not include undefined fields in update', async () => {
       mockUpdate.mockResolvedValue(mockService);
-      await updateService('svc-1', { pricePer1000: 9.99 });
+      const repo = createServicesRepository(fakePrisma);
+      await repo.updateService('svc-1', { pricePer1000: 9.99 });
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'svc-1' },
         data: { pricePer1000: 9.99 },
@@ -189,7 +194,8 @@ describe('Service Repository', () => {
   describe('deactivateService', () => {
     it('should set isActive to false', async () => {
       mockUpdate.mockResolvedValue({ ...mockService, isActive: false });
-      const result = await deactivateService('svc-1');
+      const repo = createServicesRepository(fakePrisma);
+      const result = await repo.deactivateService('svc-1');
       expect(result.isActive).toBe(false);
       expect(mockUpdate).toHaveBeenCalledWith({
         where: { id: 'svc-1' },

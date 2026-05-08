@@ -1,34 +1,20 @@
+import type { Logger } from 'pino';
 import { ValidationError, NotFoundError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import { fireAndForget } from '../../shared/utils/fire-and-forget';
-import { releaseFunds } from '../billing';
-import { validateCoupon } from '../coupons';
-import { selectProviderById } from '../providers';
-import { enqueueWebhookDelivery } from '../webhooks';
-import { enqueueNotification } from '../notifications';
-import * as ordersRepo from './orders.repository';
+import type { OrdersRepository } from './orders.repository';
 import type { ServiceRecord, OrderRecord } from './orders.types';
+import type { ProviderSelectorPort } from './ports/provider-selector.port';
 
-const log = createServiceLogger('orders');
+type ValidateCouponFn = (
+  code: string,
+  orderAmount?: number,
+) => Promise<{
+  valid: boolean;
+  discount: number;
+  couponId: string | null;
+  reason?: string;
+}>;
 
-export async function warnIfProviderBalanceLow(
-  providerId: string | null,
-  orderPrice: number,
-): Promise<void> {
-  if (!providerId) return;
-  try {
-    const { client } = await selectProviderById(providerId);
-    const providerBalance = await client.checkBalance();
-    if (providerBalance.balance < orderPrice) {
-      log.warn(
-        { providerId, providerBalance: providerBalance.balance, orderPrice },
-        'Provider balance may be insufficient for order',
-      );
-    }
-  } catch {
-    // Non-blocking — provider balance check failure should never prevent orders
-  }
-}
+type ReleaseFundsFn = (userId: string, amount: number, referenceId: string) => Promise<void>;
 
 export function calculatePrice(quantity: number, pricePer1000: number): number {
   const priceInCents = Math.round((quantity * pricePer1000 * 100) / 1000);
@@ -57,6 +43,7 @@ export function validateQuantity(quantity: number, minQuantity: number, maxQuant
 }
 
 export async function applyOrderCoupon(
+  validateCoupon: ValidateCouponFn,
   couponCode: string | undefined,
   price: number,
 ): Promise<{ finalPrice: number; couponId: string | null; discount: number }> {
@@ -74,16 +61,41 @@ export async function applyOrderCoupon(
   return { finalPrice, couponId: couponResult.couponId, discount };
 }
 
-export async function handleOrderCreationFailure(params: {
-  userId: string;
-  orderId: string;
-  price: number;
-  error: unknown;
-}): Promise<void> {
+export async function warnIfProviderBalanceLow(
+  deps: { providerSelector: ProviderSelectorPort; logger: Logger },
+  providerId: string | null,
+  orderPrice: number,
+): Promise<void> {
+  if (!providerId) return;
+  const { providerSelector, logger } = deps;
+  try {
+    const { client } = await providerSelector.selectProviderById(providerId);
+    const providerBalance = await client.checkBalance();
+    if (providerBalance.balance < orderPrice) {
+      logger.warn(
+        { providerId, providerBalance: providerBalance.balance, orderPrice },
+        'Provider balance may be insufficient for order',
+      );
+    }
+  } catch {
+    // Non-blocking — provider balance check failure should never prevent orders
+  }
+}
+
+export async function handleOrderCreationFailure(
+  deps: { ordersRepo: OrdersRepository; releaseFunds: ReleaseFundsFn; logger: Logger },
+  params: {
+    userId: string;
+    orderId: string;
+    price: number;
+    error: unknown;
+  },
+): Promise<void> {
+  const { ordersRepo, releaseFunds, logger } = deps;
   const { userId, orderId, price, error } = params;
-  log.error({ userId, orderId, error }, 'Order creation failed, releasing funds');
+  logger.error({ userId, orderId, error }, 'Order creation failed, releasing funds');
   await releaseFunds(userId, price, orderId).catch((releaseError) => {
-    log.error({ userId, orderId, releaseError }, 'Failed to release funds');
+    logger.error({ userId, orderId, releaseError }, 'Failed to release funds');
   });
 
   await ordersRepo
@@ -92,63 +104,30 @@ export async function handleOrderCreationFailure(params: {
       completedAt: new Date(),
     })
     .catch((updateError) => {
-      log.error({ userId, orderId, updateError }, 'Failed to update order status to FAILED');
+      logger.error({ userId, orderId, updateError }, 'Failed to update order status to FAILED');
     });
 }
 
-export function dispatchOrderNotifications(params: {
-  userId: string;
+export function mapOrderToResponse(order: OrderRecord): {
   orderId: string;
+  serviceId: string;
   status: string;
+  quantity: number;
+  completed: number;
   price: number;
-}): void {
-  const { userId, orderId, status, price } = params;
-  fireAndForget(enqueueWebhookDelivery(userId, 'order.created', { orderId, status, price }), {
-    operation: 'enqueue order.created webhook',
-    logger: log,
-    extra: { userId, orderId },
-  });
-
-  fireAndForget(
-    enqueueNotification({
-      userId,
-      type: 'EMAIL',
-      channel: 'user-email',
-      subject: 'Order Created',
-      body: `Your order ${orderId} has been created.`,
-      eventType: 'order.created',
-      referenceType: 'order',
-      referenceId: orderId,
-    }),
-    { operation: 'enqueue order.created notification', logger: log, extra: { userId, orderId } },
-  );
-}
-
-export function dispatchCancelNotifications(params: {
-  userId: string;
-  orderId: string;
-  status: string;
-  refundAmount: number;
-}): void {
-  const { userId, orderId, status, refundAmount } = params;
-  fireAndForget(
-    enqueueWebhookDelivery(userId, 'order.cancelled', { orderId, status, refundAmount }),
-    { operation: 'enqueue order.cancelled webhook', logger: log, extra: { userId, orderId } },
-  );
-
-  fireAndForget(
-    enqueueNotification({
-      userId,
-      type: 'EMAIL',
-      channel: 'user-email',
-      subject: 'Order Cancelled',
-      body: `Your order ${orderId} has been cancelled. Refund: $${refundAmount}.`,
-      eventType: 'order.cancelled',
-      referenceType: 'order',
-      referenceId: orderId,
-    }),
-    { operation: 'enqueue order.cancelled notification', logger: log, extra: { userId, orderId } },
-  );
+  createdAt: Date;
+  isDripFeed: boolean;
+} {
+  return {
+    orderId: order.id,
+    serviceId: order.serviceId,
+    status: order.status,
+    quantity: order.quantity,
+    completed: order.quantity - (order.remains ?? order.quantity),
+    price: Number(order.price),
+    createdAt: order.createdAt,
+    isDripFeed: order.isDripFeed,
+  };
 }
 
 export function mapOrderToDetailed(order: OrderRecord): {
