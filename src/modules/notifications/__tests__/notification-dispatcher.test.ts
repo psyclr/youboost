@@ -1,106 +1,66 @@
-import {
-  enqueueNotification,
-  processNotificationDelivery,
-  startNotificationWorker,
-  stopNotificationWorker,
-} from '../notification-dispatcher';
 import type { Job } from 'bullmq';
 
-const mockQueueAdd = jest.fn();
-const mockQueueClose = jest.fn();
-const mockWorkerClose = jest.fn();
+const mockStartNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockStopNamedWorker = jest.fn().mockResolvedValue(undefined);
+const mockQueueAdd = jest.fn().mockResolvedValue({});
+const mockGetNamedQueue = jest.fn().mockReturnValue({ add: mockQueueAdd });
 
-let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
-const capturedEventHandlers: Record<string, (...args: unknown[]) => void> = {};
-
-jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({
-    add: (...args: unknown[]): unknown => mockQueueAdd(...args),
-    close: (...args: unknown[]): unknown => mockQueueClose(...args),
-  })),
-  Worker: jest
-    .fn()
-    .mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-      capturedProcessor = processor;
-      return {
-        on: jest.fn().mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
-          capturedEventHandlers[event] = handler;
-        }),
-        close: (...args: unknown[]): unknown => mockWorkerClose(...args),
-      };
-    }),
+jest.mock('../../../shared/queue', () => ({
+  startNamedWorker: (...args: unknown[]): unknown => mockStartNamedWorker(...args),
+  stopNamedWorker: (...args: unknown[]): unknown => mockStopNamedWorker(...args),
+  getNamedQueue: (...args: unknown[]): unknown => mockGetNamedQueue(...args),
 }));
 
-jest.mock('../../../shared/redis/redis', () => ({
-  getRedis: jest.fn().mockReturnValue({
-    duplicate: jest.fn().mockReturnValue({}),
-  }),
-}));
+import { createNotificationDispatcher } from '../notification-dispatcher';
+import { createFakeNotificationRepository, createFakeEmailProvider, silentLogger } from './fakes';
+import type { NotificationRecord } from '../notifications.types';
 
-const mockFindNotificationById = jest.fn();
-const mockUpdateNotificationStatus = jest.fn();
-const mockIncrementRetryCount = jest.fn();
+function makeRecord(overrides: Partial<NotificationRecord> = {}): NotificationRecord {
+  return {
+    id: 'notif-1',
+    userId: 'user-1',
+    type: 'EMAIL',
+    channel: 'test@test.com',
+    subject: 'Test Subject',
+    body: 'Test body',
+    status: 'PENDING',
+    eventType: 'order.created',
+    referenceType: 'order',
+    referenceId: 'order-1',
+    sentAt: null,
+    failureReason: null,
+    retryCount: 0,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
 
-jest.mock('../notification.repository', () => ({
-  findNotificationById: (...args: unknown[]): unknown => mockFindNotificationById(...args),
-  updateNotificationStatus: (...args: unknown[]): unknown => mockUpdateNotificationStatus(...args),
-  incrementRetryCount: (...args: unknown[]): unknown => mockIncrementRetryCount(...args),
-}));
-
-const mockEmailSend = jest.fn();
-
-jest.mock('../utils/email-provider-factory', () => ({
-  getEmailProvider: () => ({
-    send: (...args: unknown[]): unknown => mockEmailSend(...args),
-  }),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockNotification = {
-  id: 'notif-1',
-  userId: 'user-1',
-  type: 'EMAIL',
-  channel: 'test@test.com',
-  subject: 'Test Subject',
-  body: 'Test body',
-  status: 'PENDING',
-  eventType: 'order.created',
-  referenceType: 'order',
-  referenceId: 'order-1',
-  sentAt: null,
-  failureReason: null,
-  retryCount: 0,
-  createdAt: new Date(),
-};
+const createJob = (notificationId: string): Job =>
+  ({
+    data: { notificationId },
+  }) as unknown as Job;
 
 describe('Notification Dispatcher', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    mockStartNamedWorker.mockClear();
+    mockStopNamedWorker.mockClear();
+    mockQueueAdd.mockClear();
+    mockGetNamedQueue.mockClear();
     mockQueueAdd.mockResolvedValue({});
-    mockQueueClose.mockResolvedValue(undefined);
-    mockWorkerClose.mockResolvedValue(undefined);
-    capturedProcessor = null;
-    for (const key of Object.keys(capturedEventHandlers)) {
-      delete capturedEventHandlers[key];
-    }
-  });
-
-  afterEach(async () => {
-    await stopNotificationWorker();
+    mockGetNamedQueue.mockReturnValue({ add: mockQueueAdd });
   });
 
   describe('enqueueNotification', () => {
     it('should add job to queue', async () => {
-      await enqueueNotification('notif-1');
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo: createFakeNotificationRepository(),
+        emailProvider: createFakeEmailProvider(),
+        logger: silentLogger,
+      });
 
+      await dispatcher.enqueueNotification('notif-1');
+
+      expect(mockGetNamedQueue).toHaveBeenCalledWith('notification-delivery');
       expect(mockQueueAdd).toHaveBeenCalledWith(
         'deliver-notification',
         { notificationId: 'notif-1' },
@@ -112,138 +72,164 @@ describe('Notification Dispatcher', () => {
     });
 
     it('should not throw when queue.add fails', async () => {
-      mockQueueAdd.mockRejectedValue(new Error('Redis down'));
+      mockQueueAdd.mockRejectedValueOnce(new Error('Redis down'));
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo: createFakeNotificationRepository(),
+        emailProvider: createFakeEmailProvider(),
+        logger: silentLogger,
+      });
 
-      await expect(enqueueNotification('notif-1')).resolves.toBeUndefined();
+      await expect(dispatcher.enqueueNotification('notif-1')).resolves.toBeUndefined();
     });
   });
 
-  describe('processNotificationDelivery', () => {
-    const createJob = (notificationId: string): Job =>
-      ({
-        data: { notificationId },
-      }) as unknown as Job;
-
+  describe('worker processor (via start)', () => {
     it('should send email and update status to SENT', async () => {
-      mockFindNotificationById.mockResolvedValue(mockNotification);
-      mockEmailSend.mockResolvedValue(undefined);
-      mockUpdateNotificationStatus.mockResolvedValue({
-        ...mockNotification,
-        status: 'SENT',
+      const record = makeRecord();
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        logger: silentLogger,
       });
 
-      await processNotificationDelivery(createJob('notif-1'));
+      await dispatcher.start();
+      expect(mockStartNamedWorker).toHaveBeenCalledWith(
+        'notification-delivery',
+        expect.any(Function),
+        expect.objectContaining({ retryable: true, concurrency: 3 }),
+      );
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
 
-      expect(mockEmailSend).toHaveBeenCalledWith({
-        to: 'test@test.com',
-        subject: 'Test Subject',
-        body: 'Test body',
-      });
-      expect(mockUpdateNotificationStatus).toHaveBeenCalledWith('notif-1', 'SENT');
+      await processor(createJob('notif-1'));
+
+      expect(emailProvider.sent).toEqual([
+        { to: 'test@test.com', subject: 'Test Subject', body: 'Test body' },
+      ]);
+      const lastUpdate =
+        notificationRepo.calls.updateNotificationStatus[
+          notificationRepo.calls.updateNotificationStatus.length - 1
+        ];
+      expect(lastUpdate).toMatchObject({ id: 'notif-1', status: 'SENT' });
     });
 
     it('should skip if notification not found', async () => {
-      mockFindNotificationById.mockResolvedValue(null);
+      const notificationRepo = createFakeNotificationRepository();
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        logger: silentLogger,
+      });
 
-      await processNotificationDelivery(createJob('notif-999'));
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
 
-      expect(mockEmailSend).not.toHaveBeenCalled();
+      await processor(createJob('notif-999'));
+
+      expect(emailProvider.sent).toHaveLength(0);
     });
 
     it('should skip if notification status is not PENDING', async () => {
-      mockFindNotificationById.mockResolvedValue({ ...mockNotification, status: 'SENT' });
+      const record = makeRecord({ status: 'SENT' });
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        logger: silentLogger,
+      });
 
-      await processNotificationDelivery(createJob('notif-1'));
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
 
-      expect(mockEmailSend).not.toHaveBeenCalled();
+      await processor(createJob('notif-1'));
+
+      expect(emailProvider.sent).toHaveLength(0);
     });
 
     it('should increment retry and set FAILED on send error', async () => {
-      mockFindNotificationById.mockResolvedValue(mockNotification);
-      mockEmailSend.mockRejectedValue(new Error('SMTP error'));
-      mockIncrementRetryCount.mockResolvedValue({ ...mockNotification, retryCount: 1 });
-      mockUpdateNotificationStatus.mockResolvedValue({
-        ...mockNotification,
-        status: 'FAILED',
+      const record = makeRecord();
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      emailProvider.setFailure(new Error('SMTP error'));
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        logger: silentLogger,
       });
 
-      await expect(processNotificationDelivery(createJob('notif-1'))).rejects.toThrow('SMTP error');
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
 
-      expect(mockIncrementRetryCount).toHaveBeenCalledWith('notif-1');
-      expect(mockUpdateNotificationStatus).toHaveBeenCalledWith('notif-1', 'FAILED', 'SMTP error');
+      await expect(processor(createJob('notif-1'))).rejects.toThrow('SMTP error');
+
+      expect(notificationRepo.calls.incrementRetryCount).toEqual(['notif-1']);
+      const lastUpdate =
+        notificationRepo.calls.updateNotificationStatus[
+          notificationRepo.calls.updateNotificationStatus.length - 1
+        ];
+      expect(lastUpdate).toMatchObject({
+        id: 'notif-1',
+        status: 'FAILED',
+        failureReason: 'SMTP error',
+      });
     });
 
     it('should use empty string for subject when null', async () => {
-      mockFindNotificationById.mockResolvedValue({ ...mockNotification, subject: null });
-      mockEmailSend.mockResolvedValue(undefined);
-      mockUpdateNotificationStatus.mockResolvedValue(mockNotification);
+      const record = makeRecord({ subject: null });
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        logger: silentLogger,
+      });
 
-      await processNotificationDelivery(createJob('notif-1'));
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
 
-      expect(mockEmailSend).toHaveBeenCalledWith(expect.objectContaining({ subject: '' }));
+      await processor(createJob('notif-1'));
+
+      expect(emailProvider.sent[0]).toMatchObject({ subject: '' });
     });
   });
 
-  describe('startNotificationWorker', () => {
+  describe('start', () => {
     it('should start worker without error', async () => {
-      await expect(startNotificationWorker()).resolves.toBeUndefined();
-    });
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo: createFakeNotificationRepository(),
+        emailProvider: createFakeEmailProvider(),
+        logger: silentLogger,
+      });
 
-    it('should not start worker twice', async () => {
-      await startNotificationWorker();
-      // second call should warn and return
-      await expect(startNotificationWorker()).resolves.toBeUndefined();
+      await expect(dispatcher.start()).resolves.toBeUndefined();
+      expect(mockStartNamedWorker).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('stopNotificationWorker', () => {
-    it('should stop worker and queue', async () => {
-      await startNotificationWorker();
-      await expect(stopNotificationWorker()).resolves.toBeUndefined();
+  describe('stop', () => {
+    it('should stop worker', async () => {
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo: createFakeNotificationRepository(),
+        emailProvider: createFakeEmailProvider(),
+        logger: silentLogger,
+      });
+
+      await dispatcher.start();
+      await expect(dispatcher.stop()).resolves.toBeUndefined();
+      expect(mockStopNamedWorker).toHaveBeenCalledWith('notification-delivery');
     });
 
     it('should handle stop when not started', async () => {
-      await expect(stopNotificationWorker()).resolves.toBeUndefined();
-    });
-  });
-
-  describe('worker processor and event handlers', () => {
-    it('should invoke processNotificationDelivery via worker processor', async () => {
-      await startNotificationWorker();
-      expect(capturedProcessor).toBeDefined();
-
-      mockFindNotificationById.mockResolvedValue(mockNotification);
-      mockEmailSend.mockResolvedValue(undefined);
-      mockUpdateNotificationStatus.mockResolvedValue({ ...mockNotification, status: 'SENT' });
-
-      const fakeJob = {
-        name: 'deliver-notification',
-        data: { notificationId: 'notif-1' },
-      };
-      await capturedProcessor!(fakeJob);
-      expect(mockEmailSend).toHaveBeenCalledWith({
-        to: 'test@test.com',
-        subject: 'Test Subject',
-        body: 'Test body',
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo: createFakeNotificationRepository(),
+        emailProvider: createFakeEmailProvider(),
+        logger: silentLogger,
       });
-    });
 
-    it('should not throw from failed event handler', async () => {
-      await startNotificationWorker();
-      const handler = capturedEventHandlers['failed'];
-      if (!handler) throw new Error('failed handler not registered');
-      expect(() => {
-        handler({ name: 'test-job' }, new Error('fail'));
-      }).not.toThrow();
-    });
-
-    it('should not throw from completed event handler', async () => {
-      await startNotificationWorker();
-      const handler = capturedEventHandlers['completed'];
-      if (!handler) throw new Error('completed handler not registered');
-      expect(() => {
-        handler({ name: 'test-job' });
-      }).not.toThrow();
+      await expect(dispatcher.stop()).resolves.toBeUndefined();
     });
   });
 });

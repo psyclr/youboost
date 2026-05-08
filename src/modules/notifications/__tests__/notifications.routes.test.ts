@@ -1,73 +1,93 @@
-import Fastify, { type FastifyInstance } from 'fastify';
-import { notificationRoutes } from '../notifications.routes';
-import { AppError } from '../../../shared/errors/app-error';
-import { NotFoundError } from '../../../shared/errors';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import { AppError, UnauthorizedError, NotFoundError } from '../../../shared/errors';
+import { createNotificationRoutes } from '../notifications.routes';
+import type { NotificationsService } from '../notifications.service';
+import type { AuthenticatedUser } from '../../auth';
 
-const mockListNotifications = jest.fn();
-const mockGetNotification = jest.fn();
+function createFakeService(): NotificationsService & {
+  calls: {
+    sendNotification: unknown[];
+    listNotifications: unknown[];
+    getNotification: unknown[];
+  };
+  responses: {
+    sendNotification: unknown;
+    listNotifications: unknown;
+    getNotification: unknown | (() => unknown);
+  };
+} {
+  const calls = {
+    sendNotification: [] as unknown[],
+    listNotifications: [] as unknown[],
+    getNotification: [] as unknown[],
+  };
+  const responses: {
+    sendNotification: unknown;
+    listNotifications: unknown;
+    getNotification: unknown | (() => unknown);
+  } = {
+    sendNotification: {},
+    listNotifications: {
+      notifications: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    },
+    getNotification: {},
+  };
+  return {
+    async sendNotification(input) {
+      calls.sendNotification.push(input);
+      return responses.sendNotification as never;
+    },
+    async listNotifications(userId, query) {
+      calls.listNotifications.push({ userId, query });
+      return responses.listNotifications as never;
+    },
+    async getNotification(id, userId) {
+      calls.getNotification.push({ id, userId });
+      const r = responses.getNotification;
+      if (typeof r === 'function') return (r as () => never)();
+      return r as never;
+    },
+    calls,
+    responses,
+  };
+}
 
-jest.mock('../notifications.service', () => ({
-  listNotifications: (...args: unknown[]): unknown => mockListNotifications(...args),
-  getNotification: (...args: unknown[]): unknown => mockGetNotification(...args),
-}));
+const testUser: AuthenticatedUser = {
+  userId: 'u1',
+  email: 'a@b.com',
+  role: 'USER',
+  jti: 'jti-1',
+};
 
-const mockVerifyAccessToken = jest.fn();
-const mockIsBlacklisted = jest.fn();
+interface AuthState {
+  userHeader: string | null;
+}
 
-jest.mock('../../auth/utils/tokens', () => ({
-  verifyAccessToken: (...args: unknown[]): unknown => mockVerifyAccessToken(...args),
-}));
-
-jest.mock('../../auth/token.repository', () => ({
-  isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const validUser = { userId: 'u1', email: 'a@b.com', role: 'USER', jti: 'jti-1' };
-
-function withAuth(): Record<string, string> {
-  mockVerifyAccessToken.mockReturnValue(validUser);
-  mockIsBlacklisted.mockResolvedValue(false);
-  return { authorization: 'Bearer valid-token' };
+function buildApp(state: AuthState, service: NotificationsService): FastifyInstance {
+  const app = Fastify({ logger: false });
+  app.setErrorHandler((error: Error, _request, reply) => {
+    if (error instanceof AppError) {
+      return reply.status(error.statusCode).send(error.toJSON());
+    }
+    return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: error.message } });
+  });
+  const authenticate = async (req: FastifyRequest): Promise<void> => {
+    if (!state.userHeader) {
+      throw new UnauthorizedError('Missing token', 'MISSING_TOKEN');
+    }
+    req.user = testUser;
+  };
+  return app.register(createNotificationRoutes({ service, authenticate }), {
+    prefix: '/notifications',
+  }) as unknown as FastifyInstance;
 }
 
 describe('Notification Routes', () => {
-  let app: FastifyInstance;
-
-  beforeAll(async () => {
-    app = Fastify({ logger: false });
-
-    app.setErrorHandler((error: Error, _request, reply) => {
-      if (error instanceof AppError) {
-        return reply.status(error.statusCode).send(error.toJSON());
-      }
-      return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: error.message } });
-    });
-
-    await app.register(notificationRoutes, { prefix: '/notifications' });
-    await app.ready();
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('GET /notifications', () => {
     it('should return 200 with paginated notifications', async () => {
-      const headers = withAuth();
-      mockListNotifications.mockResolvedValue({
+      const service = createFakeService();
+      service.responses.listNotifications = {
         notifications: [
           {
             id: 'n1',
@@ -80,66 +100,83 @@ describe('Notification Routes', () => {
           },
         ],
         pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
-      });
+      };
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
 
       const res = await app.inject({
         method: 'GET',
         url: '/notifications',
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
 
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
       expect(body.notifications).toHaveLength(1);
       expect(body.pagination.total).toBe(1);
+      await app.close();
     });
 
     it('should pass query params to service', async () => {
-      const headers = withAuth();
-      mockListNotifications.mockResolvedValue({
+      const service = createFakeService();
+      service.responses.listNotifications = {
         notifications: [],
         pagination: { page: 2, limit: 10, total: 0, totalPages: 0 },
-      });
+      };
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
 
       await app.inject({
         method: 'GET',
         url: '/notifications?page=2&limit=10&status=SENT',
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
 
-      expect(mockListNotifications).toHaveBeenCalledWith('u1', {
-        page: 2,
-        limit: 10,
-        status: 'SENT',
-      });
+      expect(service.calls.listNotifications).toEqual([
+        { userId: 'u1', query: { page: 2, limit: 10, status: 'SENT' } },
+      ]);
+      await app.close();
     });
 
     it('should return 422 on invalid query params', async () => {
-      const headers = withAuth();
+      const service = createFakeService();
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
+
       const res = await app.inject({
         method: 'GET',
         url: '/notifications?page=0',
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
       expect(res.statusCode).toBe(422);
+      await app.close();
     });
 
     it('should return 422 on invalid status', async () => {
-      const headers = withAuth();
+      const service = createFakeService();
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
+
       const res = await app.inject({
         method: 'GET',
         url: '/notifications?status=INVALID',
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
       expect(res.statusCode).toBe(422);
+      await app.close();
     });
 
     it('should return 401 without token', async () => {
+      const service = createFakeService();
+      const app = buildApp({ userHeader: null }, service);
+      await app.ready();
+
       const res = await app.inject({
         method: 'GET',
         url: '/notifications',
       });
       expect(res.statusCode).toBe(401);
+      await app.close();
     });
   });
 
@@ -147,8 +184,8 @@ describe('Notification Routes', () => {
     const notifId = '550e8400-e29b-41d4-a716-446655440000';
 
     it('should return 200 with notification detail', async () => {
-      const headers = withAuth();
-      mockGetNotification.mockResolvedValue({
+      const service = createFakeService();
+      service.responses.getNotification = {
         id: notifId,
         userId: 'u1',
         type: 'EMAIL',
@@ -163,49 +200,64 @@ describe('Notification Routes', () => {
         failureReason: null,
         retryCount: 0,
         createdAt: new Date(),
-      });
+      };
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
 
       const res = await app.inject({
         method: 'GET',
         url: `/notifications/${notifId}`,
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
 
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).id).toBe(notifId);
+      await app.close();
     });
 
     it('should return 422 on invalid UUID', async () => {
-      const headers = withAuth();
+      const service = createFakeService();
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
+
       const res = await app.inject({
         method: 'GET',
         url: '/notifications/not-a-uuid',
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
       expect(res.statusCode).toBe(422);
+      await app.close();
     });
 
     it('should return 401 without token', async () => {
+      const service = createFakeService();
+      const app = buildApp({ userHeader: null }, service);
+      await app.ready();
+
       const res = await app.inject({
         method: 'GET',
         url: `/notifications/${notifId}`,
       });
       expect(res.statusCode).toBe(401);
+      await app.close();
     });
 
     it('should return 404 when not found', async () => {
-      const headers = withAuth();
-      mockGetNotification.mockRejectedValue(
-        new NotFoundError('Notification not found', 'NOTIFICATION_NOT_FOUND'),
-      );
+      const service = createFakeService();
+      service.responses.getNotification = () => {
+        throw new NotFoundError('Notification not found', 'NOTIFICATION_NOT_FOUND');
+      };
+      const app = buildApp({ userHeader: 'bearer x' }, service);
+      await app.ready();
 
       const res = await app.inject({
         method: 'GET',
         url: `/notifications/${notifId}`,
-        headers,
+        headers: { authorization: 'Bearer valid' },
       });
 
       expect(res.statusCode).toBe(404);
+      await app.close();
     });
   });
 });

@@ -1,28 +1,27 @@
-import {
-  createNotification,
-  findNotificationsByUserId,
-  findNotificationById,
-  updateNotificationStatus,
-  incrementRetryCount,
-} from '../notification.repository';
+import { createNotificationRepository } from '../notification.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
-const mockCreate = jest.fn();
-const mockFindMany = jest.fn();
-const mockCount = jest.fn();
-const mockFindFirst = jest.fn();
-const mockUpdate = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: (): unknown => ({
-    notification: {
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      count: (...args: unknown[]): unknown => mockCount(...args),
-      findFirst: (...args: unknown[]): unknown => mockFindFirst(...args),
-      update: (...args: unknown[]): unknown => mockUpdate(...args),
-    },
-  }),
-}));
+function createFakePrisma(): {
+  prisma: PrismaClient;
+  mocks: {
+    create: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+    findFirst: jest.Mock;
+    update: jest.Mock;
+  };
+} {
+  const create = jest.fn();
+  const findMany = jest.fn();
+  const count = jest.fn();
+  const findFirst = jest.fn();
+  const update = jest.fn();
+  const prisma = {
+    notification: { create, findMany, count, findFirst, update },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any as PrismaClient;
+  return { prisma, mocks: { create, findMany, count, findFirst, update } };
+}
 
 const mockNotification = {
   id: 'notif-1',
@@ -42,15 +41,13 @@ const mockNotification = {
 };
 
 describe('Notification Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('createNotification', () => {
     it('should create notification with PENDING status', async () => {
-      mockCreate.mockResolvedValue(mockNotification);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.create.mockResolvedValue(mockNotification);
+      const repo = createNotificationRepository(prisma);
 
-      const result = await createNotification({
+      const result = await repo.createNotification({
         userId: 'user-1',
         type: 'EMAIL',
         channel: 'test@test.com',
@@ -62,7 +59,7 @@ describe('Notification Repository', () => {
       });
 
       expect(result.id).toBe('notif-1');
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(mocks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           userId: 'user-1',
           type: 'EMAIL',
@@ -72,9 +69,11 @@ describe('Notification Repository', () => {
     });
 
     it('should set null for optional fields when not provided', async () => {
-      mockCreate.mockResolvedValue(mockNotification);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.create.mockResolvedValue(mockNotification);
+      const repo = createNotificationRepository(prisma);
 
-      await createNotification({
+      await repo.createNotification({
         userId: 'user-1',
         type: 'EMAIL',
         channel: 'test@test.com',
@@ -82,7 +81,7 @@ describe('Notification Repository', () => {
         body: 'Test body',
       });
 
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(mocks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           eventType: null,
           referenceType: null,
@@ -94,10 +93,12 @@ describe('Notification Repository', () => {
 
   describe('findNotificationsByUserId', () => {
     it('should return paginated notifications', async () => {
-      mockFindMany.mockResolvedValue([mockNotification]);
-      mockCount.mockResolvedValue(1);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockNotification]);
+      mocks.count.mockResolvedValue(1);
+      const repo = createNotificationRepository(prisma);
 
-      const result = await findNotificationsByUserId('user-1', {
+      const result = await repo.findNotificationsByUserId('user-1', {
         page: 1,
         limit: 20,
       });
@@ -107,16 +108,18 @@ describe('Notification Repository', () => {
     });
 
     it('should filter by status when provided', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createNotificationRepository(prisma);
 
-      await findNotificationsByUserId('user-1', {
+      await repo.findNotificationsByUserId('user-1', {
         status: 'SENT',
         page: 1,
         limit: 20,
       });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: 'user-1', status: 'SENT' },
         }),
@@ -124,12 +127,14 @@ describe('Notification Repository', () => {
     });
 
     it('should apply pagination correctly', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createNotificationRepository(prisma);
 
-      await findNotificationsByUserId('user-1', { page: 3, limit: 10 });
+      await repo.findNotificationsByUserId('user-1', { page: 3, limit: 10 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           skip: 20,
           take: 10,
@@ -138,12 +143,14 @@ describe('Notification Repository', () => {
     });
 
     it('should order by createdAt descending', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createNotificationRepository(prisma);
 
-      await findNotificationsByUserId('user-1', { page: 1, limit: 20 });
+      await repo.findNotificationsByUserId('user-1', { page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           orderBy: { createdAt: 'desc' },
         }),
@@ -153,28 +160,34 @@ describe('Notification Repository', () => {
 
   describe('findNotificationById', () => {
     it('should return notification by id', async () => {
-      mockFindFirst.mockResolvedValue(mockNotification);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(mockNotification);
+      const repo = createNotificationRepository(prisma);
 
-      const result = await findNotificationById('notif-1');
+      const result = await repo.findNotificationById('notif-1');
 
       expect(result).toBeDefined();
       expect(result?.id).toBe('notif-1');
     });
 
     it('should filter by userId when provided', async () => {
-      mockFindFirst.mockResolvedValue(mockNotification);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(mockNotification);
+      const repo = createNotificationRepository(prisma);
 
-      await findNotificationById('notif-1', 'user-1');
+      await repo.findNotificationById('notif-1', 'user-1');
 
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      expect(mocks.findFirst).toHaveBeenCalledWith({
         where: { id: 'notif-1', userId: 'user-1' },
       });
     });
 
     it('should return null when not found', async () => {
-      mockFindFirst.mockResolvedValue(null);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(null);
+      const repo = createNotificationRepository(prisma);
 
-      const result = await findNotificationById('notif-999');
+      const result = await repo.findNotificationById('notif-999');
 
       expect(result).toBeNull();
     });
@@ -182,11 +195,13 @@ describe('Notification Repository', () => {
 
   describe('updateNotificationStatus', () => {
     it('should update status to SENT and set sentAt', async () => {
-      mockUpdate.mockResolvedValue({ ...mockNotification, status: 'SENT', sentAt: new Date() });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockNotification, status: 'SENT', sentAt: new Date() });
+      const repo = createNotificationRepository(prisma);
 
-      await updateNotificationStatus('notif-1', 'SENT');
+      await repo.updateNotificationStatus('notif-1', 'SENT');
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'notif-1' },
         data: expect.objectContaining({
           status: 'SENT',
@@ -196,11 +211,13 @@ describe('Notification Repository', () => {
     });
 
     it('should update status to FAILED with reason', async () => {
-      mockUpdate.mockResolvedValue({ ...mockNotification, status: 'FAILED' });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockNotification, status: 'FAILED' });
+      const repo = createNotificationRepository(prisma);
 
-      await updateNotificationStatus('notif-1', 'FAILED', 'Connection refused');
+      await repo.updateNotificationStatus('notif-1', 'FAILED', 'Connection refused');
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'notif-1' },
         data: expect.objectContaining({
           status: 'FAILED',
@@ -210,23 +227,27 @@ describe('Notification Repository', () => {
     });
 
     it('should not set sentAt for FAILED status', async () => {
-      mockUpdate.mockResolvedValue({ ...mockNotification, status: 'FAILED' });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockNotification, status: 'FAILED' });
+      const repo = createNotificationRepository(prisma);
 
-      await updateNotificationStatus('notif-1', 'FAILED');
+      await repo.updateNotificationStatus('notif-1', 'FAILED');
 
-      const callData = mockUpdate.mock.calls[0][0].data;
+      const callData = mocks.update.mock.calls[0][0].data;
       expect(callData.sentAt).toBeUndefined();
     });
   });
 
   describe('incrementRetryCount', () => {
     it('should increment retry count', async () => {
-      mockUpdate.mockResolvedValue({ ...mockNotification, retryCount: 1 });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockNotification, retryCount: 1 });
+      const repo = createNotificationRepository(prisma);
 
-      const result = await incrementRetryCount('notif-1');
+      const result = await repo.incrementRetryCount('notif-1');
 
       expect(result.retryCount).toBe(1);
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'notif-1' },
         data: { retryCount: { increment: 1 } },
       });

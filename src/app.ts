@@ -25,7 +25,11 @@ import { createCatalogRepository } from './modules/catalog/catalog.repository';
 import { createCatalogService } from './modules/catalog/catalog.service';
 import { createCatalogRoutes } from './modules/catalog/catalog.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
-import { notificationRoutes } from './modules/notifications/notifications.routes';
+import { createNotificationRepository } from './modules/notifications/notification.repository';
+import { createNotificationsService } from './modules/notifications/notifications.service';
+import { createNotificationDispatcher } from './modules/notifications/notification-dispatcher';
+import { createNotificationRoutes } from './modules/notifications/notifications.routes';
+import { getEmailProvider } from './modules/notifications/utils/email-provider-factory';
 import { createSupportRepository } from './modules/support/support.repository';
 import { createSupportService } from './modules/support/support.service';
 import { createSupportRoutes, createAdminSupportRoutes } from './modules/support/support.routes';
@@ -166,6 +170,18 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('coupons'),
   });
 
+  const notificationRepo = createNotificationRepository(prisma);
+  const notificationDispatcher = createNotificationDispatcher({
+    notificationRepo,
+    emailProvider: getEmailProvider(),
+    logger: createServiceLogger('notification-dispatcher'),
+  });
+  const notificationsService = createNotificationsService({
+    notificationRepo,
+    enqueueNotificationJob: notificationDispatcher.enqueueNotification,
+    logger: createServiceLogger('notifications'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -176,7 +192,9 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(webhookRoutes, { prefix: '/webhooks' });
   await app.register(createCatalogRoutes(catalogService), { prefix: '/catalog' });
   await app.register(adminRoutes, { prefix: '/admin' });
-  await app.register(notificationRoutes, { prefix: '/notifications' });
+  await app.register(createNotificationRoutes({ service: notificationsService, authenticate }), {
+    prefix: '/notifications',
+  });
   await app.register(createSupportRoutes({ service: supportService, authenticate }), {
     prefix: '/support',
   });
