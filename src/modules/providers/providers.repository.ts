@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { Prisma, PrismaClient } from '../../generated/prisma';
 import type { ProviderRecord } from './providers.types';
 
@@ -101,30 +100,4 @@ export function createProvidersRepository(prisma: PrismaClient): ProvidersReposi
     findActiveProvidersByPriority,
     updateProvider,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createProvider(data: CreateProviderData): Promise<ProviderRecord> {
-  return createProvidersRepository(getPrisma()).createProvider(data);
-}
-
-export async function findProviderById(id: string): Promise<ProviderRecord | null> {
-  return createProvidersRepository(getPrisma()).findProviderById(id);
-}
-
-export async function findProviders(
-  filters: ProviderFilters,
-): Promise<{ providers: ProviderRecord[]; total: number }> {
-  return createProvidersRepository(getPrisma()).findProviders(filters);
-}
-
-export async function findActiveProvidersByPriority(): Promise<ProviderRecord[]> {
-  return createProvidersRepository(getPrisma()).findActiveProvidersByPriority();
-}
-
-export async function updateProvider(
-  id: string,
-  data: UpdateProviderData,
-): Promise<ProviderRecord> {
-  return createProvidersRepository(getPrisma()).updateProvider(id, data);
 }

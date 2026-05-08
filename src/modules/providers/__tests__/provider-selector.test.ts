@@ -1,176 +1,234 @@
-import { selectProvider, selectProviderById } from '../provider-selector';
+import { createProviderSelector } from '../provider-selector';
+import {
+  createFakeProvidersRepository,
+  createFakeEncryption,
+  createFakeSmmClient,
+  silentLogger,
+} from './fakes';
+import type { ProviderRecord } from '../providers.types';
+import type { ProviderClient } from '../../orders';
 
-const mockGetConfig = jest.fn();
+function makeRecord(overrides: Partial<ProviderRecord> = {}): ProviderRecord {
+  return {
+    id: 'prov-seed',
+    name: 'Seed Provider',
+    apiEndpoint: 'https://api.provider.com',
+    apiKeyEncrypted: 'enc:raw-key',
+    isActive: true,
+    priority: 10,
+    balance: null,
+    metadata: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
 
-jest.mock('../../../shared/config', () => ({
-  getConfig: (...args: unknown[]): unknown => mockGetConfig(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockFindActiveProvidersByPriority = jest.fn();
-const mockFindProviderById = jest.fn();
-
-jest.mock('../providers.repository', () => ({
-  findActiveProvidersByPriority: (...args: unknown[]): unknown =>
-    mockFindActiveProvidersByPriority(...args),
-  findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
-}));
-
-const mockDecryptApiKey = jest.fn();
-
-jest.mock('../utils/encryption', () => ({
-  decryptApiKey: (...args: unknown[]): unknown => mockDecryptApiKey(...args),
-}));
-
-const mockCreateSmmApiClient = jest.fn();
-
-jest.mock('../utils/smm-api-client', () => ({
-  createSmmApiClient: (...args: unknown[]): unknown => mockCreateSmmApiClient(...args),
-}));
+function makeDeps(opts: {
+  providerMode: 'stub' | 'real';
+  providers?: ProviderRecord[];
+  stubClient?: ProviderClient;
+}): {
+  providersRepo: ReturnType<typeof createFakeProvidersRepository>;
+  encryption: ReturnType<typeof createFakeEncryption>;
+  stubClient: ProviderClient;
+} {
+  const providersRepo = createFakeProvidersRepository({ providers: opts.providers ?? [] });
+  const encryption = createFakeEncryption();
+  const stubClient = opts.stubClient ?? createFakeSmmClient();
+  return { providersRepo, encryption, stubClient };
+}
 
 describe('Provider Selector', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+  describe('selectProvider', () => {
+    it('should return stub client when mode is stub', async () => {
+      const stubClient = createFakeSmmClient();
+      const { providersRepo, encryption } = makeDeps({ providerMode: 'stub', stubClient });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'stub',
+        logger: silentLogger,
+      });
 
-  it('should return stub client when mode is stub', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'stub', encryptionKey: 'x' } });
+      const result = await selector.selectProvider();
 
-    const result = await selectProvider();
+      expect(result.providerId).toBeNull();
+      expect(result.client).toBe(stubClient);
+      expect(providersRepo.calls.findActiveProvidersByPriority).toBe(0);
+    });
 
-    expect(result.providerId).toBeNull();
-    expect(result.client).toBeDefined();
-    expect(mockFindActiveProvidersByPriority).not.toHaveBeenCalled();
-  });
-
-  it('should return real provider when mode is real and providers exist', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindActiveProvidersByPriority.mockResolvedValue([
-      {
+    it('should return real provider when mode is real and providers exist', async () => {
+      const provider = makeRecord({
         id: 'prov-1',
-        name: 'Provider 1',
         apiEndpoint: 'https://api.provider.com',
-        apiKeyEncrypted: 'iv:tag:encrypted',
-        isActive: true,
+        apiKeyEncrypted: 'enc:decrypted-key',
         priority: 10,
-      },
-    ]);
-    mockDecryptApiKey.mockReturnValue('decrypted-key');
-    const mockClient = { submitOrder: jest.fn(), checkStatus: jest.fn() };
-    mockCreateSmmApiClient.mockReturnValue(mockClient);
+      });
+      const { providersRepo, encryption, stubClient } = makeDeps({
+        providerMode: 'real',
+        providers: [provider],
+      });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
 
-    const result = await selectProvider();
+      const result = await selector.selectProvider();
 
-    expect(result.providerId).toBe('prov-1');
-    expect(result.client).toBe(mockClient);
-    expect(mockDecryptApiKey).toHaveBeenCalledWith('iv:tag:encrypted');
-    expect(mockCreateSmmApiClient).toHaveBeenCalledWith({
-      apiEndpoint: 'https://api.provider.com',
-      apiKey: 'decrypted-key',
+      expect(result.providerId).toBe('prov-1');
+      expect(result.client).not.toBe(stubClient);
+      expect(encryption.calls.decryptApiKey).toEqual(['enc:decrypted-key']);
+    });
+
+    it('should pick highest priority provider', async () => {
+      const high = makeRecord({ id: 'prov-high', priority: 20 });
+      const low = makeRecord({ id: 'prov-low', priority: 5 });
+      const { providersRepo, encryption, stubClient } = makeDeps({
+        providerMode: 'real',
+        providers: [low, high],
+      });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      const result = await selector.selectProvider();
+
+      expect(result.providerId).toBe('prov-high');
+    });
+
+    it('should fallback to stub when mode is real but no active providers', async () => {
+      const stubClient = createFakeSmmClient();
+      const { providersRepo, encryption } = makeDeps({ providerMode: 'real', stubClient });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      const result = await selector.selectProvider();
+
+      expect(result.providerId).toBeNull();
+      expect(result.client).toBe(stubClient);
+    });
+
+    it('should call findActiveProvidersByPriority when mode is real', async () => {
+      const { providersRepo, encryption, stubClient } = makeDeps({ providerMode: 'real' });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      await selector.selectProvider();
+
+      expect(providersRepo.calls.findActiveProvidersByPriority).toBe(1);
+    });
+
+    it('should return a client with submitOrder and checkStatus', async () => {
+      const { providersRepo, encryption, stubClient } = makeDeps({ providerMode: 'stub' });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'stub',
+        logger: silentLogger,
+      });
+
+      const result = await selector.selectProvider();
+
+      expect(typeof result.client.submitOrder).toBe('function');
+      expect(typeof result.client.checkStatus).toBe('function');
     });
   });
 
-  it('should pick highest priority provider', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindActiveProvidersByPriority.mockResolvedValue([
-      { id: 'prov-high', apiEndpoint: 'https://high.com', apiKeyEncrypted: 'enc', priority: 20 },
-      { id: 'prov-low', apiEndpoint: 'https://low.com', apiKeyEncrypted: 'enc', priority: 5 },
-    ]);
-    mockDecryptApiKey.mockReturnValue('key');
-    mockCreateSmmApiClient.mockReturnValue({ submitOrder: jest.fn(), checkStatus: jest.fn() });
+  describe('selectProviderById', () => {
+    it('should return stub client when mode is stub', async () => {
+      const stubClient = createFakeSmmClient();
+      const { providersRepo, encryption } = makeDeps({ providerMode: 'stub', stubClient });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'stub',
+        logger: silentLogger,
+      });
 
-    const result = await selectProvider();
+      const result = await selector.selectProviderById('prov-1');
 
-    expect(result.providerId).toBe('prov-high');
-  });
-
-  it('should fallback to stub when mode is real but no active providers', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindActiveProvidersByPriority.mockResolvedValue([]);
-
-    const result = await selectProvider();
-
-    expect(result.providerId).toBeNull();
-    expect(mockCreateSmmApiClient).not.toHaveBeenCalled();
-  });
-
-  it('should call findActiveProvidersByPriority when mode is real', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindActiveProvidersByPriority.mockResolvedValue([]);
-
-    await selectProvider();
-
-    expect(mockFindActiveProvidersByPriority).toHaveBeenCalled();
-  });
-
-  it('should return a client with submitOrder and checkStatus', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'stub', encryptionKey: 'x' } });
-
-    const result = await selectProvider();
-
-    expect(typeof result.client.submitOrder).toBe('function');
-    expect(typeof result.client.checkStatus).toBe('function');
-  });
-});
-
-describe('selectProviderById', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('should return stub client when mode is stub', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'stub', encryptionKey: 'x' } });
-
-    const result = await selectProviderById('prov-1');
-
-    expect(result.providerId).toBeNull();
-    expect(result.client).toBeDefined();
-    expect(mockFindProviderById).not.toHaveBeenCalled();
-  });
-
-  it('should return provider by ID when mode is real', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindProviderById.mockResolvedValue({
-      id: 'prov-1',
-      apiEndpoint: 'https://api.provider.com',
-      apiKeyEncrypted: 'iv:tag:encrypted',
-      isActive: true,
-    });
-    mockDecryptApiKey.mockReturnValue('decrypted-key');
-    const mockClient = { submitOrder: jest.fn(), checkStatus: jest.fn() };
-    mockCreateSmmApiClient.mockReturnValue(mockClient);
-
-    const result = await selectProviderById('prov-1');
-
-    expect(result.providerId).toBe('prov-1');
-    expect(result.client).toBe(mockClient);
-    expect(mockFindProviderById).toHaveBeenCalledWith('prov-1');
-  });
-
-  it('should throw when provider not found', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindProviderById.mockResolvedValue(null);
-
-    await expect(selectProviderById('bad-id')).rejects.toThrow('Linked provider is not available');
-  });
-
-  it('should throw when provider is inactive', async () => {
-    mockGetConfig.mockReturnValue({ provider: { mode: 'real', encryptionKey: 'x' } });
-    mockFindProviderById.mockResolvedValue({
-      id: 'prov-1',
-      apiEndpoint: 'https://api.provider.com',
-      apiKeyEncrypted: 'enc',
-      isActive: false,
+      expect(result.providerId).toBeNull();
+      expect(result.client).toBe(stubClient);
+      expect(providersRepo.calls.findProviderById).toHaveLength(0);
     });
 
-    await expect(selectProviderById('prov-1')).rejects.toThrow('Linked provider is not available');
+    it('should return provider by ID when mode is real', async () => {
+      const provider = makeRecord({
+        id: 'prov-1',
+        apiKeyEncrypted: 'enc:decrypted-key',
+      });
+      const { providersRepo, encryption, stubClient } = makeDeps({
+        providerMode: 'real',
+        providers: [provider],
+      });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      const result = await selector.selectProviderById('prov-1');
+
+      expect(result.providerId).toBe('prov-1');
+      expect(result.client).not.toBe(stubClient);
+      expect(providersRepo.calls.findProviderById).toEqual(['prov-1']);
+    });
+
+    it('should throw when provider not found', async () => {
+      const { providersRepo, encryption, stubClient } = makeDeps({ providerMode: 'real' });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      await expect(selector.selectProviderById('bad-id')).rejects.toThrow(
+        'Linked provider is not available',
+      );
+    });
+
+    it('should throw when provider is inactive', async () => {
+      const provider = makeRecord({ id: 'prov-1', isActive: false });
+      const { providersRepo, encryption, stubClient } = makeDeps({
+        providerMode: 'real',
+        providers: [provider],
+      });
+      const selector = createProviderSelector({
+        providersRepo,
+        encryption,
+        stubClient,
+        providerMode: 'real',
+        logger: silentLogger,
+      });
+
+      await expect(selector.selectProviderById('prov-1')).rejects.toThrow(
+        'Linked provider is not available',
+      );
+    });
   });
 });

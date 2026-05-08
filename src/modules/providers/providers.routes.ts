@@ -1,9 +1,12 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type {
+  FastifyPluginAsync,
+  FastifyRequest,
+  FastifyReply,
+  preHandlerAsyncHookHandler,
+} from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { ValidationError } from '../../shared/errors';
-import { authenticate } from '../auth';
-import { requireAdmin } from './providers.middleware';
-import * as providerService from './providers.service';
+import { validateBody, validateQuery, validateParams } from '../../shared/middleware/validation';
+import type { ProvidersService } from './providers.service';
 import {
   createProviderSchema,
   updateProviderSchema,
@@ -11,95 +14,65 @@ import {
   providersQuerySchema,
 } from './providers.types';
 
-function validateBody<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  body: unknown,
-): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
+export interface ProviderRoutesDeps {
+  service: ProvidersService;
+  authenticate: preHandlerAsyncHookHandler;
+  requireAdmin: (req: FastifyRequest) => void | Promise<void>;
 }
 
-function validateQuery<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  query: unknown,
-): T {
-  const result = schema.safeParse(query);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
+export function createProviderRoutes(deps: ProviderRoutesDeps): FastifyPluginAsync {
+  const { service, authenticate, requireAdmin } = deps;
+  return async (app) => {
+    app.addHook('preHandler', authenticate);
 
-function validateParams<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  params: unknown,
-): T {
-  const result = schema.safeParse(params);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
+    app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const input = validateBody(createProviderSchema, request.body);
+      const result = await service.createProvider(input);
+      return reply.status(StatusCodes.CREATED).send(result);
+    });
 
-export async function providerRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook('preHandler', authenticate);
+    app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const query = validateQuery(providersQuerySchema, request.query);
+      const result = await service.listProviders(query);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
-  app.post('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const input = validateBody(createProviderSchema, request.body);
-    const result = await providerService.createProvider(input);
-    return reply.status(StatusCodes.CREATED).send(result);
-  });
+    app.get('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(providerIdSchema, request.params);
+      const result = await service.getProvider(params.providerId);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
-  app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const query = validateQuery(providersQuerySchema, request.query);
-    const result = await providerService.listProviders(query);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.put('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(providerIdSchema, request.params);
+      const input = validateBody(updateProviderSchema, request.body);
+      const result = await service.updateProvider(params.providerId, input);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
-  app.get('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const params = validateParams(providerIdSchema, request.params);
-    const result = await providerService.getProvider(params.providerId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.delete('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(providerIdSchema, request.params);
+      await service.deactivateProvider(params.providerId);
+      return reply.status(StatusCodes.NO_CONTENT).send();
+    });
 
-  app.put('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const params = validateParams(providerIdSchema, request.params);
-    const input = validateBody(updateProviderSchema, request.body);
-    const result = await providerService.updateProvider(params.providerId, input);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.get('/:providerId/services', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(providerIdSchema, request.params);
+      const result = await service.fetchProviderServices(params.providerId);
+      return reply.status(StatusCodes.OK).send({ services: result });
+    });
 
-  app.delete('/:providerId', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const params = validateParams(providerIdSchema, request.params);
-    await providerService.deactivateProvider(params.providerId);
-    return reply.status(StatusCodes.NO_CONTENT).send();
-  });
-
-  app.get('/:providerId/services', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const params = validateParams(providerIdSchema, request.params);
-    const result = await providerService.fetchProviderServices(params.providerId);
-    return reply.status(StatusCodes.OK).send({ services: result });
-  });
-
-  app.get('/:providerId/balance', async (request: FastifyRequest, reply: FastifyReply) => {
-    requireAdmin(request);
-    const params = validateParams(providerIdSchema, request.params);
-    const result = await providerService.checkProviderBalance(params.providerId);
-    return reply.status(StatusCodes.OK).send(result);
-  });
+    app.get('/:providerId/balance', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(providerIdSchema, request.params);
+      const result = await service.checkProviderBalance(params.providerId);
+      return reply.status(StatusCodes.OK).send(result);
+    });
+  };
 }

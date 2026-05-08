@@ -1,28 +1,27 @@
-import {
-  createProvider,
-  findProviderById,
-  findProviders,
-  findActiveProvidersByPriority,
-  updateProvider,
-} from '../providers.repository';
+import { createProvidersRepository } from '../providers.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
-const mockCreate = jest.fn();
-const mockFindUnique = jest.fn();
-const mockFindMany = jest.fn();
-const mockCount = jest.fn();
-const mockUpdate = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    provider: {
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      count: (...args: unknown[]): unknown => mockCount(...args),
-      update: (...args: unknown[]): unknown => mockUpdate(...args),
-    },
-  }),
-}));
+function createFakePrisma(): {
+  prisma: PrismaClient;
+  mocks: {
+    create: jest.Mock;
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+    update: jest.Mock;
+  };
+} {
+  const create = jest.fn();
+  const findUnique = jest.fn();
+  const findMany = jest.fn();
+  const count = jest.fn();
+  const update = jest.fn();
+  const prisma = {
+    provider: { create, findUnique, findMany, count, update },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any as PrismaClient;
+  return { prisma, mocks: { create, findUnique, findMany, count, update } };
+}
 
 const mockProvider = {
   id: 'prov-1',
@@ -38,15 +37,13 @@ const mockProvider = {
 };
 
 describe('Providers Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('createProvider', () => {
     it('should create a provider', async () => {
-      mockCreate.mockResolvedValue(mockProvider);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.create.mockResolvedValue(mockProvider);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await createProvider({
+      const result = await repo.createProvider({
         name: 'Test Provider',
         apiEndpoint: 'https://api.test.com/v2',
         apiKeyEncrypted: 'iv:tag:encrypted',
@@ -54,7 +51,7 @@ describe('Providers Repository', () => {
       });
 
       expect(result).toEqual(mockProvider);
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(mocks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           name: 'Test Provider',
           apiEndpoint: 'https://api.test.com/v2',
@@ -65,9 +62,11 @@ describe('Providers Repository', () => {
     });
 
     it('should create with metadata', async () => {
-      mockCreate.mockResolvedValue({ ...mockProvider, metadata: { region: 'us' } });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.create.mockResolvedValue({ ...mockProvider, metadata: { region: 'us' } });
+      const repo = createProvidersRepository(prisma);
 
-      await createProvider({
+      await repo.createProvider({
         name: 'Provider',
         apiEndpoint: 'https://api.test.com',
         apiKeyEncrypted: 'encrypted',
@@ -75,7 +74,7 @@ describe('Providers Repository', () => {
         metadata: { region: 'us' },
       });
 
-      expect(mockCreate).toHaveBeenCalledWith({
+      expect(mocks.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           metadata: { region: 'us' },
         }),
@@ -85,18 +84,22 @@ describe('Providers Repository', () => {
 
   describe('findProviderById', () => {
     it('should find provider by id', async () => {
-      mockFindUnique.mockResolvedValue(mockProvider);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(mockProvider);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await findProviderById('prov-1');
+      const result = await repo.findProviderById('prov-1');
 
       expect(result).toEqual(mockProvider);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: 'prov-1' } });
+      expect(mocks.findUnique).toHaveBeenCalledWith({ where: { id: 'prov-1' } });
     });
 
     it('should return null if not found', async () => {
-      mockFindUnique.mockResolvedValue(null);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findUnique.mockResolvedValue(null);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await findProviderById('nonexistent');
+      const result = await repo.findProviderById('nonexistent');
 
       expect(result).toBeNull();
     });
@@ -104,22 +107,26 @@ describe('Providers Repository', () => {
 
   describe('findProviders', () => {
     it('should return providers with pagination', async () => {
-      mockFindMany.mockResolvedValue([mockProvider]);
-      mockCount.mockResolvedValue(1);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockProvider]);
+      mocks.count.mockResolvedValue(1);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await findProviders({ page: 1, limit: 20 });
+      const result = await repo.findProviders({ page: 1, limit: 20 });
 
       expect(result.providers).toHaveLength(1);
       expect(result.total).toBe(1);
     });
 
     it('should filter by isActive', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createProvidersRepository(prisma);
 
-      await findProviders({ page: 1, limit: 20, isActive: true });
+      await repo.findProviders({ page: 1, limit: 20, isActive: true });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true },
         }),
@@ -127,45 +134,53 @@ describe('Providers Repository', () => {
     });
 
     it('should skip based on page', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createProvidersRepository(prisma);
 
-      await findProviders({ page: 3, limit: 10 });
+      await repo.findProviders({ page: 3, limit: 10 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
+      expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
     });
 
     it('should not include isActive in where if undefined', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createProvidersRepository(prisma);
 
-      await findProviders({ page: 1, limit: 20 });
+      await repo.findProviders({ page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+      expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
     });
   });
 
   describe('findActiveProvidersByPriority', () => {
     it('should return active providers sorted by priority desc', async () => {
+      const { prisma, mocks } = createFakePrisma();
       const providers = [
         { ...mockProvider, priority: 20 },
         { ...mockProvider, id: 'prov-2', priority: 10 },
       ];
-      mockFindMany.mockResolvedValue(providers);
+      mocks.findMany.mockResolvedValue(providers);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await findActiveProvidersByPriority();
+      const result = await repo.findActiveProvidersByPriority();
 
       expect(result).toHaveLength(2);
-      expect(mockFindMany).toHaveBeenCalledWith({
+      expect(mocks.findMany).toHaveBeenCalledWith({
         where: { isActive: true },
         orderBy: { priority: 'desc' },
       });
     });
 
     it('should return empty array when no active providers', async () => {
-      mockFindMany.mockResolvedValue([]);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      const repo = createProvidersRepository(prisma);
 
-      const result = await findActiveProvidersByPriority();
+      const result = await repo.findActiveProvidersByPriority();
 
       expect(result).toHaveLength(0);
     });
@@ -173,45 +188,53 @@ describe('Providers Repository', () => {
 
   describe('updateProvider', () => {
     it('should update provider name', async () => {
-      mockUpdate.mockResolvedValue({ ...mockProvider, name: 'Updated' });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockProvider, name: 'Updated' });
+      const repo = createProvidersRepository(prisma);
 
-      const result = await updateProvider('prov-1', { name: 'Updated' });
+      const result = await repo.updateProvider('prov-1', { name: 'Updated' });
 
       expect(result.name).toBe('Updated');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'prov-1' },
         data: { name: 'Updated' },
       });
     });
 
     it('should update multiple fields', async () => {
-      mockUpdate.mockResolvedValue({ ...mockProvider, priority: 99, isActive: false });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockProvider, priority: 99, isActive: false });
+      const repo = createProvidersRepository(prisma);
 
-      await updateProvider('prov-1', { priority: 99, isActive: false });
+      await repo.updateProvider('prov-1', { priority: 99, isActive: false });
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'prov-1' },
         data: { priority: 99, isActive: false },
       });
     });
 
     it('should update apiKeyEncrypted', async () => {
-      mockUpdate.mockResolvedValue({ ...mockProvider, apiKeyEncrypted: 'new-encrypted' });
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue({ ...mockProvider, apiKeyEncrypted: 'new-encrypted' });
+      const repo = createProvidersRepository(prisma);
 
-      await updateProvider('prov-1', { apiKeyEncrypted: 'new-encrypted' });
+      await repo.updateProvider('prov-1', { apiKeyEncrypted: 'new-encrypted' });
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'prov-1' },
         data: { apiKeyEncrypted: 'new-encrypted' },
       });
     });
 
     it('should not include undefined fields in update', async () => {
-      mockUpdate.mockResolvedValue(mockProvider);
+      const { prisma, mocks } = createFakePrisma();
+      mocks.update.mockResolvedValue(mockProvider);
+      const repo = createProvidersRepository(prisma);
 
-      await updateProvider('prov-1', { name: 'Only Name' });
+      await repo.updateProvider('prov-1', { name: 'Only Name' });
 
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(mocks.update).toHaveBeenCalledWith({
         where: { id: 'prov-1' },
         data: { name: 'Only Name' },
       });

@@ -28,13 +28,11 @@ jest.mock('../../orders.repository', () => ({
   findTimedOutOrders: (...args: unknown[]): unknown => mockFindTimedOutOrders(...args),
   updateOrderStatus: (...args: unknown[]): unknown => mockUpdateOrderStatus(...args),
 }));
-jest.mock('../../../providers/providers.repository', () => ({
-  findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
-}));
-jest.mock('../../../providers/utils/encryption', () => ({
+jest.mock('../../../providers', () => ({
+  providersRepo: {
+    findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
+  },
   decryptApiKey: (...args: unknown[]): unknown => mockDecryptApiKey(...args),
-}));
-jest.mock('../../../providers/utils/smm-api-client', () => ({
   createSmmApiClient: (...args: unknown[]): unknown => mockCreateSmmApiClient(...args),
 }));
 jest.mock('../../utils/stub-provider-client', () => ({

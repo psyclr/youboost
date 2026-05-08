@@ -1,78 +1,49 @@
-import {
-  createProvider,
-  getProvider,
-  listProviders,
-  updateProvider,
-  deactivateProvider,
-} from '../providers.service';
+import { createProvidersService } from '../providers.service';
+import { createFakeProvidersRepository, createFakeEncryption, silentLogger } from './fakes';
+import type { ProviderRecord } from '../providers.types';
 
-const mockEncryptApiKey = jest.fn();
-
-jest.mock('../utils/encryption', () => ({
-  encryptApiKey: (...args: unknown[]): unknown => mockEncryptApiKey(...args),
-}));
-
-const mockCreateProvider = jest.fn();
-const mockFindProviderById = jest.fn();
-const mockFindProviders = jest.fn();
-const mockUpdateProvider = jest.fn();
-
-jest.mock('../providers.repository', () => ({
-  createProvider: (...args: unknown[]): unknown => mockCreateProvider(...args),
-  findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
-  findProviders: (...args: unknown[]): unknown => mockFindProviders(...args),
-  updateProvider: (...args: unknown[]): unknown => mockUpdateProvider(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockRecord = {
-  id: 'prov-1',
-  name: 'Test Provider',
-  apiEndpoint: 'https://api.test.com/v2',
-  apiKeyEncrypted: 'iv:tag:encrypted',
-  isActive: true,
-  priority: 10,
-  balance: null,
-  metadata: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-};
+function makeRecord(overrides: Partial<ProviderRecord> = {}): ProviderRecord {
+  return {
+    id: 'prov-seed',
+    name: 'Seed Provider',
+    apiEndpoint: 'https://api.test.com/v2',
+    apiKeyEncrypted: 'enc:raw-key',
+    isActive: true,
+    priority: 10,
+    balance: null,
+    metadata: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
 
 describe('Providers Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockEncryptApiKey.mockReturnValue('iv:tag:encrypted');
-  });
-
   describe('createProvider', () => {
     it('should encrypt API key and create provider', async () => {
-      mockCreateProvider.mockResolvedValue(mockRecord);
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await createProvider({
+      const result = await service.createProvider({
         name: 'Test Provider',
         apiEndpoint: 'https://api.test.com/v2',
         apiKey: 'raw-key',
         priority: 10,
       });
 
-      expect(mockEncryptApiKey).toHaveBeenCalledWith('raw-key');
+      expect(encryption.calls.encryptApiKey).toEqual(['raw-key']);
       expect(result.providerId).toBe('prov-1');
       expect(result.name).toBe('Test Provider');
       expect(result).not.toHaveProperty('apiKeyEncrypted');
     });
 
     it('should pass metadata to repository', async () => {
-      mockCreateProvider.mockResolvedValue({ ...mockRecord, metadata: { x: 1 } });
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await createProvider({
+      await service.createProvider({
         name: 'Provider',
         apiEndpoint: 'https://api.test.com',
         apiKey: 'key',
@@ -80,17 +51,18 @@ describe('Providers Service', () => {
         metadata: { x: 1 },
       });
 
-      expect(mockCreateProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ metadata: { x: 1 } }),
-      );
+      expect(providersRepo.calls.createProvider[0]).toMatchObject({ metadata: { x: 1 } });
     });
   });
 
   describe('getProvider', () => {
     it('should return provider details', async () => {
-      mockFindProviderById.mockResolvedValue(mockRecord);
+      const record = makeRecord({ id: 'prov-1' });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await getProvider('prov-1');
+      const result = await service.getProvider('prov-1');
 
       expect(result.providerId).toBe('prov-1');
       expect(result.balance).toBeNull();
@@ -98,28 +70,36 @@ describe('Providers Service', () => {
     });
 
     it('should return balance as number when present', async () => {
-      mockFindProviderById.mockResolvedValue({
-        ...mockRecord,
+      const record = makeRecord({
+        id: 'prov-1',
         balance: { toNumber: () => 42.5 },
       });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await getProvider('prov-1');
+      const result = await service.getProvider('prov-1');
 
       expect(result.balance).toBe(42.5);
     });
 
     it('should throw NotFoundError if provider not found', async () => {
-      mockFindProviderById.mockResolvedValue(null);
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await expect(getProvider('nonexistent')).rejects.toThrow('Provider not found');
+      await expect(service.getProvider('nonexistent')).rejects.toThrow('Provider not found');
     });
   });
 
   describe('listProviders', () => {
     it('should return paginated providers', async () => {
-      mockFindProviders.mockResolvedValue({ providers: [mockRecord], total: 1 });
+      const record = makeRecord({ id: 'prov-1' });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await listProviders({ page: 1, limit: 20 });
+      const result = await service.listProviders({ page: 1, limit: 20 });
 
       expect(result.providers).toHaveLength(1);
       expect(result.pagination.total).toBe(1);
@@ -127,50 +107,59 @@ describe('Providers Service', () => {
     });
 
     it('should pass isActive filter', async () => {
-      mockFindProviders.mockResolvedValue({ providers: [], total: 0 });
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await listProviders({ page: 1, limit: 20, isActive: true });
+      await service.listProviders({ page: 1, limit: 20, isActive: true });
 
-      expect(mockFindProviders).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }));
+      expect(providersRepo.calls.findProviders[0]).toMatchObject({ isActive: true });
     });
 
     it('should calculate totalPages correctly', async () => {
-      mockFindProviders.mockResolvedValue({ providers: [], total: 45 });
+      const records = Array.from({ length: 45 }, (_, i) => makeRecord({ id: `prov-${i}` }));
+      const providersRepo = createFakeProvidersRepository({ providers: records });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await listProviders({ page: 1, limit: 20 });
+      const result = await service.listProviders({ page: 1, limit: 20 });
 
+      expect(result.pagination.total).toBe(45);
       expect(result.pagination.totalPages).toBe(3);
     });
   });
 
   describe('updateProvider', () => {
     it('should update provider fields', async () => {
-      mockFindProviderById.mockResolvedValue(mockRecord);
-      mockUpdateProvider.mockResolvedValue({ ...mockRecord, name: 'Updated' });
+      const record = makeRecord({ id: 'prov-1', name: 'Original' });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      const result = await updateProvider('prov-1', { name: 'Updated' });
+      const result = await service.updateProvider('prov-1', { name: 'Updated' });
 
       expect(result.name).toBe('Updated');
     });
 
     it('should re-encrypt API key when changed', async () => {
-      mockFindProviderById.mockResolvedValue(mockRecord);
-      mockEncryptApiKey.mockReturnValue('new-encrypted');
-      mockUpdateProvider.mockResolvedValue(mockRecord);
+      const record = makeRecord({ id: 'prov-1' });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await updateProvider('prov-1', { apiKey: 'new-raw-key' });
+      await service.updateProvider('prov-1', { apiKey: 'new-raw-key' });
 
-      expect(mockEncryptApiKey).toHaveBeenCalledWith('new-raw-key');
-      expect(mockUpdateProvider).toHaveBeenCalledWith(
-        'prov-1',
-        expect.objectContaining({ apiKeyEncrypted: 'new-encrypted' }),
-      );
+      expect(encryption.calls.encryptApiKey).toEqual(['new-raw-key']);
+      const updateCall = providersRepo.calls.updateProvider[0];
+      expect(updateCall?.data).toMatchObject({ apiKeyEncrypted: 'enc:new-raw-key' });
     });
 
     it('should throw NotFoundError if provider not found', async () => {
-      mockFindProviderById.mockResolvedValue(null);
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await expect(updateProvider('nonexistent', { name: 'x' })).rejects.toThrow(
+      await expect(service.updateProvider('nonexistent', { name: 'x' })).rejects.toThrow(
         'Provider not found',
       );
     });
@@ -178,18 +167,24 @@ describe('Providers Service', () => {
 
   describe('deactivateProvider', () => {
     it('should set isActive to false', async () => {
-      mockFindProviderById.mockResolvedValue(mockRecord);
-      mockUpdateProvider.mockResolvedValue({ ...mockRecord, isActive: false });
+      const record = makeRecord({ id: 'prov-1' });
+      const providersRepo = createFakeProvidersRepository({ providers: [record] });
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await deactivateProvider('prov-1');
+      await service.deactivateProvider('prov-1');
 
-      expect(mockUpdateProvider).toHaveBeenCalledWith('prov-1', { isActive: false });
+      expect(providersRepo.calls.updateProvider).toEqual([
+        { id: 'prov-1', data: { isActive: false } },
+      ]);
     });
 
     it('should throw NotFoundError if provider not found', async () => {
-      mockFindProviderById.mockResolvedValue(null);
+      const providersRepo = createFakeProvidersRepository();
+      const encryption = createFakeEncryption();
+      const service = createProvidersService({ providersRepo, encryption, logger: silentLogger });
 
-      await expect(deactivateProvider('nonexistent')).rejects.toThrow('Provider not found');
+      await expect(service.deactivateProvider('nonexistent')).rejects.toThrow('Provider not found');
     });
   });
 });

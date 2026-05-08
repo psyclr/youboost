@@ -20,7 +20,8 @@ import { billingRoutes } from './modules/billing/billing.routes';
 import { stripeRoutes } from './modules/billing/stripe/stripe.routes';
 import { cryptomusRoutes } from './modules/billing/cryptomus/cryptomus.routes';
 import { orderRoutes } from './modules/orders/orders.routes';
-import { providerRoutes } from './modules/providers/providers.routes';
+// prettier-ignore
+import { createProvidersRepository, createProvidersService, createProviderRoutes, createEncryptionService, requireAdmin } from './modules/providers';
 import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
 import { createApiKeysService } from './modules/api-keys/api-keys.service';
 import { createApiKeyRoutes } from './modules/api-keys/api-keys.routes';
@@ -51,7 +52,6 @@ import { createCouponRoutes, createAdminCouponRoutes } from './modules/coupons/c
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
 import { createAdminTrackingRoutes } from './modules/tracking/tracking.routes';
-import { requireAdmin } from './modules/providers/providers.middleware';
 
 const log = createServiceLogger('http');
 
@@ -160,23 +160,21 @@ export async function createApp(): Promise<FastifyInstance> {
   const authenticate = createAuthenticate({ tokenStore: tokenRepo });
 
   const catalogRepo = createCatalogRepository(prisma);
-  const catalogService = createCatalogService({
-    catalogRepo,
-    cache,
-    logger: createServiceLogger('catalog'),
-  });
+  // prettier-ignore
+  const catalogService = createCatalogService({ catalogRepo, cache, logger: createServiceLogger('catalog') });
 
   const trackingRepo = createTrackingRepository(prisma);
-  const trackingService = createTrackingService({
-    trackingRepo,
-    logger: createServiceLogger('tracking'),
-  });
+  // prettier-ignore
+  const trackingService = createTrackingService({ trackingRepo, logger: createServiceLogger('tracking') });
 
   const supportRepo = createSupportRepository(prisma);
-  const supportService = createSupportService({
-    supportRepo,
-    logger: createServiceLogger('support'),
-  });
+  // prettier-ignore
+  const supportService = createSupportService({ supportRepo, logger: createServiceLogger('support') });
+
+  const providersRepo = createProvidersRepository(prisma);
+  const encryption = createEncryptionService({ encryptionKey: config.provider.encryptionKey });
+  // prettier-ignore
+  const providersService = createProvidersService({ providersRepo, encryption, logger: createServiceLogger('providers') });
 
   const couponsRepo = createCouponsRepository(prisma);
   const couponsService = createCouponsService({
@@ -259,7 +257,8 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
   await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
   await app.register(orderRoutes, { prefix: '/orders' });
-  await app.register(providerRoutes, { prefix: '/providers' });
+  // prettier-ignore
+  await app.register(createProviderRoutes({ service: providersService, authenticate, requireAdmin }), { prefix: '/providers' });
   await app.register(createApiKeyRoutes({ service: apiKeysService, authenticate }), {
     prefix: '/api-keys',
   });

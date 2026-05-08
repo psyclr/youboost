@@ -32,8 +32,10 @@ jest.mock('../../../shared/utils/logger', () => ({
 }));
 
 const mockFindProviderById = jest.fn();
-jest.mock('../../providers/providers.repository', () => ({
-  findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
+jest.mock('../../providers', () => ({
+  providersRepo: {
+    findProviderById: (...args: unknown[]): unknown => mockFindProviderById(...args),
+  },
 }));
 
 const mockServiceRecord = {
