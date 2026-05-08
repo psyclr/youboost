@@ -37,7 +37,12 @@ import { getEmailProvider } from './modules/notifications/utils/email-provider-f
 import { createSupportRepository } from './modules/support/support.repository';
 import { createSupportService } from './modules/support/support.service';
 import { createSupportRoutes, createAdminSupportRoutes } from './modules/support/support.routes';
-import { referralRoutes } from './modules/referrals/referrals.routes';
+import { createReferralsRepository } from './modules/referrals/referrals.repository';
+import { createReferralsService } from './modules/referrals/referrals.service';
+import { createReferralRoutes } from './modules/referrals/referrals.routes';
+import type { ReferralsWalletPort } from './modules/referrals';
+import { walletRepo, ledgerRepo } from './modules/billing';
+import type { LedgerType } from './generated/prisma';
 import { createCouponsRepository } from './modules/coupons/coupons.repository';
 import { createCouponsService } from './modules/coupons/coupons.service';
 import { createCouponRoutes, createAdminCouponRoutes } from './modules/coupons/coupons.routes';
@@ -202,6 +207,43 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('api-keys'),
   });
 
+  const referralsRepo = createReferralsRepository(prisma);
+  const referralsWalletOps: ReferralsWalletPort = {
+    getOrCreateWallet: (userId) => walletRepo.getOrCreateWallet(userId),
+    updateBalance: async (args) => {
+      await walletRepo.updateBalance({
+        walletId: args.walletId,
+        newBalance: args.newBalance,
+        newHold: args.newHold,
+        tx: args.tx,
+      });
+    },
+    createLedgerEntry: async (data, tx) => {
+      await ledgerRepo.createLedgerEntry(
+        {
+          userId: data.userId,
+          walletId: data.walletId,
+          // Port uses `string` for type; billing expects LedgerType enum.
+          // Service only ever passes 'DEPOSIT' which is a valid member.
+          type: data.type as LedgerType,
+          amount: data.amount,
+          balanceBefore: data.balanceBefore,
+          balanceAfter: data.balanceAfter,
+          referenceType: data.referenceType,
+          referenceId: data.referenceId,
+          description: data.description,
+        },
+        tx,
+      );
+    },
+  };
+  const referralsService = createReferralsService({
+    referralsRepo,
+    walletOps: referralsWalletOps,
+    prisma,
+    logger: createServiceLogger('referrals'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -226,7 +268,9 @@ export async function createApp(): Promise<FastifyInstance> {
     createAdminSupportRoutes({ service: supportService, authenticate, requireAdmin }),
     { prefix: '/admin/support' },
   );
-  await app.register(referralRoutes, { prefix: '/referrals' });
+  await app.register(createReferralRoutes({ service: referralsService, authenticate }), {
+    prefix: '/referrals',
+  });
   await app.register(createCouponRoutes({ service: couponsService, authenticate }), {
     prefix: '/coupons',
   });

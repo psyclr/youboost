@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import crypto from 'node:crypto';
 import type { PrismaClient, ReferralBonus } from '../../generated/prisma';
 
@@ -156,55 +155,4 @@ export function createReferralsRepository(prisma: PrismaClient): ReferralsReposi
     findPendingBonusByReferredId,
     creditBonus,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function generateReferralCode(userId: string): Promise<string> {
-  return createReferralsRepository(getPrisma()).generateReferralCode(userId);
-}
-
-export async function findUserByReferralCode(
-  code: string,
-): Promise<{ id: string; username: string; referralCode: string | null } | null> {
-  return createReferralsRepository(getPrisma()).findUserByReferralCode(code);
-}
-
-export async function getUserReferralCode(userId: string): Promise<string | null> {
-  return createReferralsRepository(getPrisma()).getUserReferralCode(userId);
-}
-
-export async function setReferredBy(userId: string, referrerId: string): Promise<void> {
-  return createReferralsRepository(getPrisma()).setReferredBy(userId, referrerId);
-}
-
-export async function createReferralBonus(
-  referrerId: string,
-  referredId: string,
-  amount: number,
-): Promise<ReferralBonus> {
-  return createReferralsRepository(getPrisma()).createReferralBonus(referrerId, referredId, amount);
-}
-
-export async function getReferralStats(userId: string): Promise<{
-  totalReferred: number;
-  totalEarned: number;
-  bonuses: Array<{
-    id: string;
-    referredUsername: string;
-    amount: number;
-    status: string;
-    createdAt: Date;
-  }>;
-}> {
-  return createReferralsRepository(getPrisma()).getReferralStats(userId);
-}
-
-export async function findPendingBonusByReferredId(
-  referredId: string,
-): Promise<ReferralBonus | null> {
-  return createReferralsRepository(getPrisma()).findPendingBonusByReferredId(referredId);
-}
-
-export async function creditBonus(bonusId: string): Promise<void> {
-  return createReferralsRepository(getPrisma()).creditBonus(bonusId);
 }

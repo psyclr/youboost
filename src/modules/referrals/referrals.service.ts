@@ -1,91 +1,121 @@
+import type { Logger } from 'pino';
 import { NotFoundError, ValidationError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import * as referralRepo from './referrals.repository';
-import { walletRepo, ledgerRepo } from '../billing';
-import { getPrisma } from '../../shared/database';
+import type { PrismaClient } from '../../generated/prisma';
+import type { ReferralsRepository } from './referrals.repository';
+import type { ReferralsWalletPort } from './ports/wallet.port';
 import type { ReferralStats } from './referrals.types';
-
-const log = createServiceLogger('referrals');
 
 const REFERRAL_BONUS_AMOUNT = 1; // $1.00 default
 
-export async function getReferralCode(userId: string): Promise<string> {
-  const existing = await referralRepo.getUserReferralCode(userId);
-  if (existing) return existing;
-
-  const code = await referralRepo.generateReferralCode(userId);
-  log.info({ userId, code }, 'Referral code generated');
-  return code;
+export interface ReferralsService {
+  getReferralCode(userId: string): Promise<string>;
+  getReferralStats(userId: string): Promise<ReferralStats>;
+  applyReferral(referredUserId: string, referralCode: string): Promise<void>;
+  creditPendingBonuses(referredUserId: string): Promise<void>;
 }
 
-export async function getReferralStats(userId: string): Promise<ReferralStats> {
-  const code = await getReferralCode(userId);
-  const stats = await referralRepo.getReferralStats(userId);
-
-  return {
-    referralCode: code,
-    totalReferred: stats.totalReferred,
-    totalEarned: stats.totalEarned,
-    bonuses: stats.bonuses,
-  };
+export interface ReferralsServiceDeps {
+  referralsRepo: ReferralsRepository;
+  walletOps: ReferralsWalletPort;
+  logger: Logger;
+  /**
+   * Needed for $transaction — transitional until billing exposes a transaction
+   * port. Keeping prisma here scopes the coupling so a future refactor can
+   * replace it with a narrow `runInTransaction` port.
+   */
+  prisma: PrismaClient;
 }
 
-export async function applyReferral(referredUserId: string, referralCode: string): Promise<void> {
-  const referrer = await referralRepo.findUserByReferralCode(referralCode);
-  if (!referrer) {
-    throw new NotFoundError('Invalid referral code', 'REFERRAL_CODE_NOT_FOUND');
+export function createReferralsService(deps: ReferralsServiceDeps): ReferralsService {
+  const { referralsRepo, walletOps, logger, prisma } = deps;
+
+  async function getReferralCode(userId: string): Promise<string> {
+    const existing = await referralsRepo.getUserReferralCode(userId);
+    if (existing) return existing;
+
+    const code = await referralsRepo.generateReferralCode(userId);
+    logger.info({ userId, code }, 'Referral code generated');
+    return code;
   }
 
-  if (referrer.id === referredUserId) {
-    throw new ValidationError('Cannot refer yourself', 'SELF_REFERRAL');
+  async function getReferralStats(userId: string): Promise<ReferralStats> {
+    const code = await getReferralCode(userId);
+    const stats = await referralsRepo.getReferralStats(userId);
+
+    return {
+      referralCode: code,
+      totalReferred: stats.totalReferred,
+      totalEarned: stats.totalEarned,
+      bonuses: stats.bonuses,
+    };
   }
 
-  await referralRepo.setReferredBy(referredUserId, referrer.id);
-  await referralRepo.createReferralBonus(referrer.id, referredUserId, REFERRAL_BONUS_AMOUNT);
+  async function applyReferral(referredUserId: string, referralCode: string): Promise<void> {
+    const referrer = await referralsRepo.findUserByReferralCode(referralCode);
+    if (!referrer) {
+      throw new NotFoundError('Invalid referral code', 'REFERRAL_CODE_NOT_FOUND');
+    }
 
-  log.info({ referrerId: referrer.id, referredUserId, code: referralCode }, 'Referral applied');
-}
+    if (referrer.id === referredUserId) {
+      throw new ValidationError('Cannot refer yourself', 'SELF_REFERRAL');
+    }
 
-export async function creditPendingBonuses(referredUserId: string): Promise<void> {
-  const bonus = await referralRepo.findPendingBonusByReferredId(referredUserId);
-  if (!bonus) return;
+    await referralsRepo.setReferredBy(referredUserId, referrer.id);
+    await referralsRepo.createReferralBonus(referrer.id, referredUserId, REFERRAL_BONUS_AMOUNT);
 
-  const prisma = getPrisma();
-  const amount = Number(bonus.amount);
+    logger.info(
+      { referrerId: referrer.id, referredUserId, code: referralCode },
+      'Referral applied',
+    );
+  }
 
-  await prisma.$transaction(async (tx) => {
-    const wallet = await walletRepo.getOrCreateWallet(bonus.referrerId);
-    const balance = Number(wallet.balance);
-    const hold = Number(wallet.holdAmount);
-    const newBalance = balance + amount;
+  async function creditPendingBonuses(referredUserId: string): Promise<void> {
+    const bonus = await referralsRepo.findPendingBonusByReferredId(referredUserId);
+    if (!bonus) return;
 
-    await walletRepo.updateBalance({
-      walletId: wallet.id,
-      newBalance,
-      newHold: hold,
-      tx,
+    const amount = Number(bonus.amount);
+
+    await prisma.$transaction(async (tx) => {
+      const wallet = await walletOps.getOrCreateWallet(bonus.referrerId);
+      const balance = Number(wallet.balance);
+      const hold = Number(wallet.holdAmount);
+      const newBalance = balance + amount;
+
+      await walletOps.updateBalance({
+        walletId: wallet.id,
+        newBalance,
+        newHold: hold,
+        tx,
+      });
+
+      await walletOps.createLedgerEntry(
+        {
+          userId: bonus.referrerId,
+          walletId: wallet.id,
+          type: 'DEPOSIT',
+          amount,
+          balanceBefore: balance,
+          balanceAfter: newBalance,
+          referenceType: 'referral',
+          referenceId: bonus.id,
+          description: `Referral bonus: $${amount.toFixed(2)}`,
+        },
+        tx,
+      );
     });
 
-    await ledgerRepo.createLedgerEntry(
-      {
-        userId: bonus.referrerId,
-        walletId: wallet.id,
-        type: 'DEPOSIT',
-        amount,
-        balanceBefore: balance,
-        balanceAfter: newBalance,
-        referenceType: 'referral',
-        referenceId: bonus.id,
-        description: `Referral bonus: $${amount.toFixed(2)}`,
-      },
-      tx,
+    await referralsRepo.creditBonus(bonus.id);
+
+    logger.info(
+      { referrerId: bonus.referrerId, referredUserId, bonusId: bonus.id, amount },
+      'Referral bonus credited',
     );
-  });
+  }
 
-  await referralRepo.creditBonus(bonus.id);
-
-  log.info(
-    { referrerId: bonus.referrerId, referredUserId, bonusId: bonus.id, amount },
-    'Referral bonus credited',
-  );
+  return {
+    getReferralCode,
+    getReferralStats,
+    applyReferral,
+    creditPendingBonuses,
+  };
 }

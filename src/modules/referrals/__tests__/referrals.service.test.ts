@@ -1,107 +1,82 @@
+import { createReferralsService } from '../referrals.service';
 import {
-  getReferralCode,
-  getReferralStats,
-  applyReferral,
-  creditPendingBonuses,
-} from '../referrals.service';
+  createFakeReferralsRepository,
+  createFakeWalletOps,
+  createFakePrisma,
+  silentLogger,
+} from './fakes';
+import type { ReferralBonus } from '../../../generated/prisma';
 
-const mockGetUserReferralCode = jest.fn();
-const mockGenerateReferralCode = jest.fn();
-const mockFindUserByReferralCode = jest.fn();
-const mockSetReferredBy = jest.fn();
-const mockCreateReferralBonus = jest.fn();
-const mockGetReferralStatsRepo = jest.fn();
-const mockFindPendingBonusByReferredId = jest.fn();
-const mockCreditBonus = jest.fn();
-
-jest.mock('../referrals.repository', () => ({
-  getUserReferralCode: (...args: unknown[]): unknown => mockGetUserReferralCode(...args),
-  generateReferralCode: (...args: unknown[]): unknown => mockGenerateReferralCode(...args),
-  findUserByReferralCode: (...args: unknown[]): unknown => mockFindUserByReferralCode(...args),
-  setReferredBy: (...args: unknown[]): unknown => mockSetReferredBy(...args),
-  createReferralBonus: (...args: unknown[]): unknown => mockCreateReferralBonus(...args),
-  getReferralStats: (...args: unknown[]): unknown => mockGetReferralStatsRepo(...args),
-  findPendingBonusByReferredId: (...args: unknown[]): unknown =>
-    mockFindPendingBonusByReferredId(...args),
-  creditBonus: (...args: unknown[]): unknown => mockCreditBonus(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
-
-const mockGetOrCreateWallet = jest.fn();
-const mockUpdateBalance = jest.fn();
-
-jest.mock('../../billing/wallet.repository', () => ({
-  getOrCreateWallet: (...args: unknown[]): unknown => mockGetOrCreateWallet(...args),
-  updateBalance: (...args: unknown[]): unknown => mockUpdateBalance(...args),
-}));
-
-const mockCreateLedgerEntry = jest.fn();
-
-jest.mock('../../billing/ledger.repository', () => ({
-  createLedgerEntry: (...args: unknown[]): unknown => mockCreateLedgerEntry(...args),
-}));
-
-const mockTransaction = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: () => ({
-    $transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
-  }),
-}));
+function buildService(opts?: {
+  repo?: ReturnType<typeof createFakeReferralsRepository>;
+  walletOps?: ReturnType<typeof createFakeWalletOps>;
+  prismaHelper?: ReturnType<typeof createFakePrisma>;
+}): {
+  service: ReturnType<typeof createReferralsService>;
+  repo: ReturnType<typeof createFakeReferralsRepository>;
+  walletOps: ReturnType<typeof createFakeWalletOps>;
+  prismaHelper: ReturnType<typeof createFakePrisma>;
+} {
+  const repo = opts?.repo ?? createFakeReferralsRepository();
+  const walletOps = opts?.walletOps ?? createFakeWalletOps();
+  const prismaHelper = opts?.prismaHelper ?? createFakePrisma();
+  const service = createReferralsService({
+    referralsRepo: repo,
+    walletOps,
+    prisma: prismaHelper.prisma,
+    logger: silentLogger,
+  });
+  return { service, repo, walletOps, prismaHelper };
+}
 
 describe('Referrals Service', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockTransaction.mockImplementation(async (fn) => fn({}));
-  });
-
   describe('getReferralCode', () => {
-    it('should return existing code if user already has one', async () => {
-      mockGetUserReferralCode.mockResolvedValue('ABC12345');
+    it('returns existing code if user already has one', async () => {
+      const repo = createFakeReferralsRepository({
+        codesByUser: { 'user-1': 'ABC12345' },
+      });
+      const { service } = buildService({ repo });
 
-      const result = await getReferralCode('user-1');
+      const result = await service.getReferralCode('user-1');
 
       expect(result).toBe('ABC12345');
-      expect(mockGenerateReferralCode).not.toHaveBeenCalled();
+      expect(repo.calls.generateReferralCode).toHaveLength(0);
     });
 
-    it('should generate new code if user has none', async () => {
-      mockGetUserReferralCode.mockResolvedValue(null);
-      mockGenerateReferralCode.mockResolvedValue('NEW12345');
+    it('generates new code if user has none', async () => {
+      const repo = createFakeReferralsRepository({ nextGeneratedCode: 'NEW12345' });
+      const { service } = buildService({ repo });
 
-      const result = await getReferralCode('user-1');
+      const result = await service.getReferralCode('user-1');
 
       expect(result).toBe('NEW12345');
-      expect(mockGenerateReferralCode).toHaveBeenCalledWith('user-1');
+      expect(repo.calls.generateReferralCode).toEqual(['user-1']);
     });
   });
 
   describe('getReferralStats', () => {
-    it('should return stats with referral code', async () => {
-      mockGetUserReferralCode.mockResolvedValue('MYCODE');
-      mockGetReferralStatsRepo.mockResolvedValue({
-        totalReferred: 5,
-        totalEarned: 5.0,
-        bonuses: [
-          {
-            id: 'bonus-1',
-            referredUsername: 'jane',
-            amount: 1.0,
-            status: 'CREDITED',
-            createdAt: new Date('2024-01-15'),
+    it('returns stats with referral code', async () => {
+      const repo = createFakeReferralsRepository({
+        codesByUser: { 'user-1': 'MYCODE' },
+        statsByUser: {
+          'user-1': {
+            totalReferred: 5,
+            totalEarned: 5.0,
+            bonuses: [
+              {
+                id: 'bonus-1',
+                referredUsername: 'jane',
+                amount: 1.0,
+                status: 'CREDITED',
+                createdAt: new Date('2024-01-15'),
+              },
+            ],
           },
-        ],
+        },
       });
+      const { service } = buildService({ repo });
 
-      const result = await getReferralStats('user-1');
+      const result = await service.getReferralStats('user-1');
 
       expect(result.referralCode).toBe('MYCODE');
       expect(result.totalReferred).toBe(5);
@@ -112,84 +87,94 @@ describe('Referrals Service', () => {
   });
 
   describe('applyReferral', () => {
-    it('should apply referral for valid code', async () => {
-      mockFindUserByReferralCode.mockResolvedValue({
-        id: 'referrer-1',
-        username: 'john',
-        referralCode: 'CODE123',
+    it('applies referral for valid code', async () => {
+      const repo = createFakeReferralsRepository({
+        userByCode: {
+          CODE123: { id: 'referrer-1', username: 'john', referralCode: 'CODE123' },
+        },
       });
+      const { service } = buildService({ repo });
 
-      await applyReferral('user-new', 'CODE123');
+      await service.applyReferral('user-new', 'CODE123');
 
-      expect(mockSetReferredBy).toHaveBeenCalledWith('user-new', 'referrer-1');
-      expect(mockCreateReferralBonus).toHaveBeenCalledWith('referrer-1', 'user-new', 1.0);
+      expect(repo.calls.setReferredBy).toEqual([{ userId: 'user-new', referrerId: 'referrer-1' }]);
+      expect(repo.calls.createReferralBonus).toEqual([
+        { referrerId: 'referrer-1', referredId: 'user-new', amount: 1.0 },
+      ]);
     });
 
-    it('should throw NotFoundError for invalid code', async () => {
-      mockFindUserByReferralCode.mockResolvedValue(null);
+    it('throws NotFoundError for invalid code', async () => {
+      const { service } = buildService();
 
-      await expect(applyReferral('user-new', 'INVALID')).rejects.toThrow('Invalid referral code');
+      await expect(service.applyReferral('user-new', 'INVALID')).rejects.toThrow(
+        'Invalid referral code',
+      );
     });
 
-    it('should throw ValidationError for self-referral', async () => {
-      mockFindUserByReferralCode.mockResolvedValue({
-        id: 'user-1',
-        username: 'john',
-        referralCode: 'MYCODE',
+    it('throws ValidationError for self-referral', async () => {
+      const repo = createFakeReferralsRepository({
+        userByCode: {
+          MYCODE: { id: 'user-1', username: 'john', referralCode: 'MYCODE' },
+        },
       });
+      const { service } = buildService({ repo });
 
-      await expect(applyReferral('user-1', 'MYCODE')).rejects.toThrow('Cannot refer yourself');
+      await expect(service.applyReferral('user-1', 'MYCODE')).rejects.toThrow(
+        'Cannot refer yourself',
+      );
     });
   });
 
   describe('creditPendingBonuses', () => {
-    it('should credit bonus to referrer wallet', async () => {
-      mockFindPendingBonusByReferredId.mockResolvedValue({
+    it('credits bonus to referrer wallet', async () => {
+      const pendingBonus = {
         id: 'bonus-1',
         referrerId: 'referrer-1',
         referredId: 'referred-1',
         amount: 1.0,
         status: 'PENDING',
+        createdAt: new Date('2024-01-01'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any as ReferralBonus;
+
+      const repo = createFakeReferralsRepository({
+        pendingBonusByReferred: { 'referred-1': pendingBonus },
       });
-
-      mockGetOrCreateWallet.mockResolvedValue({
-        id: 'wallet-1',
-        balance: 10.0,
-        holdAmount: 0,
+      const walletOps = createFakeWalletOps({
+        walletsByUser: {
+          'referrer-1': { id: 'wallet-1', balance: 10.0, holdAmount: 0 },
+        },
       });
+      const { service, prismaHelper } = buildService({ repo, walletOps });
 
-      await creditPendingBonuses('referred-1');
+      await service.creditPendingBonuses('referred-1');
 
-      expect(mockTransaction).toHaveBeenCalled();
-      expect(mockUpdateBalance).toHaveBeenCalledWith(
-        expect.objectContaining({
-          walletId: 'wallet-1',
-          newBalance: 11.0,
-          newHold: 0,
-        }),
-      );
-      expect(mockCreateLedgerEntry).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'referrer-1',
-          type: 'DEPOSIT',
-          amount: 1.0,
-          balanceBefore: 10.0,
-          balanceAfter: 11.0,
-          referenceType: 'referral',
-          referenceId: 'bonus-1',
-        }),
-        expect.anything(),
-      );
-      expect(mockCreditBonus).toHaveBeenCalledWith('bonus-1');
+      expect(prismaHelper.calls.transactions).toBe(1);
+      expect(walletOps.calls.updateBalance).toEqual([
+        { walletId: 'wallet-1', newBalance: 11.0, newHold: 0 },
+      ]);
+      expect(walletOps.calls.createLedgerEntry).toHaveLength(1);
+      expect(walletOps.calls.createLedgerEntry[0]).toMatchObject({
+        userId: 'referrer-1',
+        walletId: 'wallet-1',
+        type: 'DEPOSIT',
+        amount: 1.0,
+        balanceBefore: 10.0,
+        balanceAfter: 11.0,
+        referenceType: 'referral',
+        referenceId: 'bonus-1',
+      });
+      expect(repo.calls.creditBonus).toEqual(['bonus-1']);
     });
 
-    it('should do nothing when no pending bonus exists', async () => {
-      mockFindPendingBonusByReferredId.mockResolvedValue(null);
+    it('does nothing when no pending bonus exists', async () => {
+      const repo = createFakeReferralsRepository();
+      const { service, prismaHelper } = buildService({ repo });
 
-      await creditPendingBonuses('referred-1');
+      await service.creditPendingBonuses('referred-1');
 
-      expect(mockTransaction).not.toHaveBeenCalled();
-      expect(mockCreditBonus).not.toHaveBeenCalled();
+      expect(prismaHelper.calls.transactions).toBe(0);
+      expect(repo.calls.creditBonus).toHaveLength(0);
     });
   });
 });
