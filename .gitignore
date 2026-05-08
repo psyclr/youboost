@@ -24,3 +24,6 @@ tests/screenshots/
 .scannerwork/
 test-results/
 YouBoost Design System.zip
+
+# MCP tool cache
+.serena/
