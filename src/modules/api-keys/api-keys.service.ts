@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
-import { NotFoundError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import * as repo from './api-keys.repository';
+import type { Logger } from 'pino';
+import type { ApiKeysRepository } from './api-keys.repository';
 import type {
   CreateApiKeyInput,
   ApiKeysQuery,
@@ -10,7 +9,19 @@ import type {
   PaginatedApiKeys,
 } from './api-keys.types';
 
-const log = createServiceLogger('api-keys');
+export interface ApiKeysService {
+  createApiKey(
+    userId: string,
+    input: CreateApiKeyInput,
+  ): Promise<{ apiKey: ApiKeyResponse; rawKey: string }>;
+  listApiKeys(userId: string, query: ApiKeysQuery): Promise<PaginatedApiKeys>;
+  revokeApiKey(userId: string, keyId: string): Promise<void>;
+}
+
+export interface ApiKeysServiceDeps {
+  apiKeysRepo: ApiKeysRepository;
+  logger: Logger;
+}
 
 function mapToResponse(record: ApiKeyRecord): ApiKeyResponse {
   return {
@@ -28,54 +39,52 @@ export function hashApiKey(rawKey: string): string {
   return crypto.createHash('sha256').update(rawKey).digest('hex');
 }
 
-export async function generateApiKey(
-  userId: string,
-  input: CreateApiKeyInput,
-): Promise<{ apiKey: ApiKeyResponse; rawKey: string }> {
-  const rawKey = `yb_${crypto.randomBytes(32).toString('hex')}`;
-  const keyHash = hashApiKey(rawKey);
+export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
+  const { apiKeysRepo, logger } = deps;
 
-  const record = await repo.createApiKey({
-    userId,
-    name: input.name,
-    keyHash,
-    permissions: input.permissions,
-    rateLimitTier: input.rateLimitTier,
-    ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
-  });
+  async function createApiKey(
+    userId: string,
+    input: CreateApiKeyInput,
+  ): Promise<{ apiKey: ApiKeyResponse; rawKey: string }> {
+    const rawKey = `yb_${crypto.randomBytes(32).toString('hex')}`;
+    const keyHash = hashApiKey(rawKey);
 
-  log.info({ userId, keyId: record.id }, 'API key generated');
+    const record = await apiKeysRepo.createApiKey({
+      userId,
+      name: input.name,
+      keyHash,
+      permissions: input.permissions,
+      rateLimitTier: input.rateLimitTier,
+      ...(input.expiresAt ? { expiresAt: input.expiresAt } : {}),
+    });
 
-  return { apiKey: mapToResponse(record), rawKey };
-}
+    logger.info({ userId, keyId: record.id }, 'API key generated');
 
-export async function listApiKeys(userId: string, query: ApiKeysQuery): Promise<PaginatedApiKeys> {
-  const { apiKeys, total } = await repo.findApiKeysByUserId(userId, {
-    ...(query.isActive === undefined ? {} : { isActive: query.isActive }),
-    page: query.page,
-    limit: query.limit,
-  });
+    return { apiKey: mapToResponse(record), rawKey };
+  }
 
-  return {
-    apiKeys: apiKeys.map(mapToResponse),
-    pagination: {
+  async function listApiKeys(userId: string, query: ApiKeysQuery): Promise<PaginatedApiKeys> {
+    const { apiKeys, total } = await apiKeysRepo.findApiKeysByUserId(userId, {
+      ...(query.isActive === undefined ? {} : { isActive: query.isActive }),
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
-}
+    });
 
-export async function revokeApiKey(userId: string, keyId: string): Promise<void> {
-  await repo.deleteApiKey(keyId, userId);
-  log.info({ userId, keyId }, 'API key revoked');
-}
-
-export async function getApiKeyByHash(keyHash: string): Promise<ApiKeyRecord> {
-  const record = await repo.findApiKeyByHash(keyHash);
-  if (!record) {
-    throw new NotFoundError('API key not found', 'API_KEY_NOT_FOUND');
+    return {
+      apiKeys: apiKeys.map(mapToResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
-  return record;
+
+  async function revokeApiKey(userId: string, keyId: string): Promise<void> {
+    await apiKeysRepo.deleteApiKey(keyId, userId);
+    logger.info({ userId, keyId }, 'API key revoked');
+  }
+
+  return { createApiKey, listApiKeys, revokeApiKey };
 }

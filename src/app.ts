@@ -19,7 +19,9 @@ import { stripeRoutes } from './modules/billing/stripe/stripe.routes';
 import { cryptomusRoutes } from './modules/billing/cryptomus/cryptomus.routes';
 import { orderRoutes } from './modules/orders/orders.routes';
 import { providerRoutes } from './modules/providers/providers.routes';
-import { apiKeyRoutes } from './modules/api-keys/api-keys.routes';
+import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
+import { createApiKeysService } from './modules/api-keys/api-keys.service';
+import { createApiKeyRoutes } from './modules/api-keys/api-keys.routes';
 import { createWebhooksRepository } from './modules/webhooks/webhooks.repository';
 import { createWebhooksService } from './modules/webhooks/webhooks.service';
 import { createWebhookRoutes } from './modules/webhooks/webhooks.routes';
@@ -194,13 +196,21 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('webhooks'),
   });
 
+  const apiKeysRepo = createApiKeysRepository(prisma);
+  const apiKeysService = createApiKeysService({
+    apiKeysRepo,
+    logger: createServiceLogger('api-keys'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
   await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
   await app.register(orderRoutes, { prefix: '/orders' });
   await app.register(providerRoutes, { prefix: '/providers' });
-  await app.register(apiKeyRoutes, { prefix: '/api-keys' });
+  await app.register(createApiKeyRoutes({ service: apiKeysService, authenticate }), {
+    prefix: '/api-keys',
+  });
   await app.register(createWebhookRoutes({ service: webhooksService, authenticate }), {
     prefix: '/webhooks',
   });

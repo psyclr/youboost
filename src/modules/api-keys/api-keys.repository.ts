@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import type { ApiKeyRecord } from './api-keys.types';
 
@@ -17,7 +16,7 @@ interface ApiKeyFilters {
   limit: number;
 }
 
-export interface ApiKeyRepository {
+export interface ApiKeysRepository {
   createApiKey(data: CreateApiKeyData): Promise<ApiKeyRecord>;
   findApiKeysByUserId(
     userId: string,
@@ -30,7 +29,7 @@ export interface ApiKeyRepository {
   updateLastUsedAt(keyId: string): Promise<void>;
 }
 
-export function createApiKeyRepository(prisma: PrismaClient): ApiKeyRepository {
+export function createApiKeysRepository(prisma: PrismaClient): ApiKeysRepository {
   async function createApiKey(data: CreateApiKeyData): Promise<ApiKeyRecord> {
     return prisma.apiKey.create({
       data: {
@@ -96,30 +95,4 @@ export function createApiKeyRepository(prisma: PrismaClient): ApiKeyRepository {
     deleteApiKey,
     updateLastUsedAt,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createApiKey(data: CreateApiKeyData): Promise<ApiKeyRecord> {
-  return createApiKeyRepository(getPrisma()).createApiKey(data);
-}
-
-export async function findApiKeysByUserId(
-  userId: string,
-  filters: ApiKeyFilters,
-): Promise<{ apiKeys: ApiKeyRecord[]; total: number }> {
-  return createApiKeyRepository(getPrisma()).findApiKeysByUserId(userId, filters);
-}
-
-export async function findApiKeyByHash(
-  keyHash: string,
-): Promise<(ApiKeyRecord & { user: { role: string; email: string } }) | null> {
-  return createApiKeyRepository(getPrisma()).findApiKeyByHash(keyHash);
-}
-
-export async function deleteApiKey(keyId: string, userId: string): Promise<void> {
-  return createApiKeyRepository(getPrisma()).deleteApiKey(keyId, userId);
-}
-
-export async function updateLastUsedAt(keyId: string): Promise<void> {
-  return createApiKeyRepository(getPrisma()).updateLastUsedAt(keyId);
 }
