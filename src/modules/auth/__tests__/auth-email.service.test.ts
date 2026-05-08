@@ -1,53 +1,54 @@
-import { verifyEmail, forgotPassword, resetPassword } from '../auth-email.service';
-
-const mockFindByEmail = jest.fn();
-const mockSetEmailVerified = jest.fn();
-const mockUpdatePassword = jest.fn();
-
-jest.mock('../user.repository', () => ({
-  findByEmail: (...args: unknown[]): unknown => mockFindByEmail(...args),
-  setEmailVerified: (...args: unknown[]): unknown => mockSetEmailVerified(...args),
-  updatePassword: (...args: unknown[]): unknown => mockUpdatePassword(...args),
-}));
+import { createAuthEmailService } from '../auth-email.service';
+import {
+  createFakeUserRepository,
+  createFakeEmailTokenRepository,
+  createFakeEmailProvider,
+  silentLogger,
+} from './fakes';
 
 jest.mock('../utils/password', () => ({
   hashPassword: jest.fn().mockResolvedValue('new-hash'),
 }));
 
-const mockEmailTokenCreate = jest.fn();
-const mockEmailTokenFindUnique = jest.fn();
-const mockEmailTokenUpdate = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: () => ({
-    emailToken: {
-      create: (...args: unknown[]): unknown => mockEmailTokenCreate(...args),
-      findUnique: (...args: unknown[]): unknown => mockEmailTokenFindUnique(...args),
-      update: (...args: unknown[]): unknown => mockEmailTokenUpdate(...args),
-    },
-  }),
+jest.mock('../utils/tokens', () => ({
+  hashToken: (input: string): string => input, // identity hash so tests can control storage keys
 }));
 
-const mockEmailSend = jest.fn();
-
-jest.mock('../../notifications/utils/email-provider-factory', () => ({
-  getEmailProvider: () => ({
-    send: (...args: unknown[]): unknown => mockEmailSend(...args),
-  }),
-}));
-
-jest.mock('../../notifications/utils/email-templates', () => ({
+jest.mock('../../notifications', () => ({
   verificationEmail: jest.fn().mockReturnValue({ subject: 'Verify', body: '<html>verify</html>' }),
   passwordResetEmail: jest.fn().mockReturnValue({ subject: 'Reset', body: '<html>reset</html>' }),
 }));
 
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-  }),
-}));
+const mockUser = {
+  id: 'user-1',
+  email: 'a@b.com',
+  username: 'testuser',
+  passwordHash: 'hash',
+  role: 'USER',
+  status: 'ACTIVE',
+  emailVerified: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+function setup(seed: { users?: Array<typeof mockUser> } = {}): {
+  service: ReturnType<typeof createAuthEmailService>;
+  userRepo: ReturnType<typeof createFakeUserRepository>;
+  emailTokenRepo: ReturnType<typeof createFakeEmailTokenRepository>;
+  emailProvider: ReturnType<typeof createFakeEmailProvider>;
+} {
+  const userRepo = createFakeUserRepository(seed);
+  const emailTokenRepo = createFakeEmailTokenRepository();
+  const emailProvider = createFakeEmailProvider();
+  const service = createAuthEmailService({
+    userRepo,
+    emailTokenRepo,
+    emailProvider,
+    appUrl: 'https://app.test',
+    logger: silentLogger,
+  });
+  return { service, userRepo, emailTokenRepo, emailProvider };
+}
 
 describe('Auth Email Service', () => {
   beforeEach(() => {
@@ -56,99 +57,140 @@ describe('Auth Email Service', () => {
 
   describe('verifyEmail', () => {
     it('should verify email with valid token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue({
-        id: 'token-1',
+      const { service, emailTokenRepo, userRepo } = setup({ users: [mockUser] });
+      // Seed a VERIFY_EMAIL token directly
+      emailTokenRepo.store.set('valid-token', {
+        id: 'et-seed',
         userId: 'user-1',
+        tokenHash: 'valid-token',
         type: 'VERIFY_EMAIL',
         expiresAt: new Date(Date.now() + 60_000),
         usedAt: null,
       });
-      mockEmailTokenUpdate.mockResolvedValue({});
-      mockSetEmailVerified.mockResolvedValue({});
 
-      const result = await verifyEmail('some-valid-token');
+      const result = await service.verifyEmail('valid-token');
 
       expect(result.success).toBe(true);
-      expect(mockSetEmailVerified).toHaveBeenCalledWith('user-1');
-      expect(mockEmailTokenUpdate).toHaveBeenCalled();
+      expect(userRepo.calls.setEmailVerified).toEqual(['user-1']);
+      expect(emailTokenRepo.calls.markEmailTokenUsed).toEqual(['et-seed']);
     });
 
     it('should throw on invalid token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue(null);
-
-      await expect(verifyEmail('bad-token')).rejects.toThrow('Invalid or expired');
+      const { service } = setup();
+      await expect(service.verifyEmail('bad')).rejects.toThrow('Invalid or expired');
     });
 
     it('should throw on expired token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue({
-        id: 'token-1',
+      const { service, emailTokenRepo } = setup();
+      emailTokenRepo.store.set('expired', {
+        id: 'et-2',
         userId: 'user-1',
+        tokenHash: 'expired',
         type: 'VERIFY_EMAIL',
         expiresAt: new Date(Date.now() - 60_000),
         usedAt: null,
       });
-
-      await expect(verifyEmail('expired-token')).rejects.toThrow('Invalid or expired');
+      await expect(service.verifyEmail('expired')).rejects.toThrow('Invalid or expired');
     });
 
     it('should throw on already used token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue({
-        id: 'token-1',
+      const { service, emailTokenRepo } = setup();
+      emailTokenRepo.store.set('used', {
+        id: 'et-3',
         userId: 'user-1',
+        tokenHash: 'used',
         type: 'VERIFY_EMAIL',
         expiresAt: new Date(Date.now() + 60_000),
         usedAt: new Date(),
       });
+      await expect(service.verifyEmail('used')).rejects.toThrow('Invalid or expired');
+    });
 
-      await expect(verifyEmail('used-token')).rejects.toThrow('Invalid or expired');
+    it('should throw on wrong token type', async () => {
+      const { service, emailTokenRepo } = setup();
+      emailTokenRepo.store.set('wrong-type', {
+        id: 'et-4',
+        userId: 'user-1',
+        tokenHash: 'wrong-type',
+        type: 'RESET_PASSWORD',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+      });
+      await expect(service.verifyEmail('wrong-type')).rejects.toThrow('Invalid or expired');
     });
   });
 
   describe('forgotPassword', () => {
     it('should send reset email for existing user', async () => {
-      mockFindByEmail.mockResolvedValue({ id: 'user-1', email: 'a@b.com' });
-      mockEmailTokenCreate.mockResolvedValue({});
-      mockEmailSend.mockResolvedValue(undefined);
+      const { service, emailTokenRepo, emailProvider } = setup({ users: [mockUser] });
 
-      const result = await forgotPassword('a@b.com');
+      const result = await service.forgotPassword('a@b.com');
 
       expect(result.success).toBe(true);
-      expect(mockEmailTokenCreate).toHaveBeenCalled();
-      expect(mockEmailSend).toHaveBeenCalled();
+      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
+      expect(emailProvider.sent).toHaveLength(1);
+      expect(emailProvider.sent[0]?.to).toBe('a@b.com');
+      expect(emailProvider.sent[0]?.subject).toBe('Reset');
     });
 
     it('should return success even for non-existing user', async () => {
-      mockFindByEmail.mockResolvedValue(null);
+      const { service, emailTokenRepo, emailProvider } = setup();
 
-      const result = await forgotPassword('nope@test.com');
+      const result = await service.forgotPassword('nope@test.com');
 
       expect(result.success).toBe(true);
-      expect(mockEmailTokenCreate).not.toHaveBeenCalled();
+      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(0);
+      expect(emailProvider.sent).toHaveLength(0);
+    });
+
+    it('should swallow email provider errors and still return success', async () => {
+      const { service, emailProvider } = setup({ users: [mockUser] });
+      emailProvider.setFailure(new Error('SMTP down'));
+      const result = await service.forgotPassword('a@b.com');
+      expect(result.success).toBe(true);
     });
   });
 
   describe('resetPassword', () => {
     it('should reset password with valid token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue({
-        id: 'token-1',
+      const { service, emailTokenRepo, userRepo } = setup({ users: [mockUser] });
+      emailTokenRepo.store.set('reset-tok', {
+        id: 'et-5',
         userId: 'user-1',
+        tokenHash: 'reset-tok',
         type: 'RESET_PASSWORD',
         expiresAt: new Date(Date.now() + 60_000),
         usedAt: null,
       });
-      mockEmailTokenUpdate.mockResolvedValue({});
-      mockUpdatePassword.mockResolvedValue({});
 
-      const result = await resetPassword('valid-token', 'NewPassword1');
+      const result = await service.resetPassword('reset-tok', 'NewPassword1');
 
       expect(result.success).toBe(true);
-      expect(mockUpdatePassword).toHaveBeenCalledWith('user-1', 'new-hash');
+      expect(userRepo.calls.updatePassword).toEqual([{ userId: 'user-1', hash: 'new-hash' }]);
     });
 
     it('should throw on invalid token', async () => {
-      mockEmailTokenFindUnique.mockResolvedValue(null);
+      const { service } = setup();
+      await expect(service.resetPassword('bad', 'NewPassword1')).rejects.toThrow(
+        'Invalid or expired',
+      );
+    });
+  });
 
-      await expect(resetPassword('bad', 'NewPassword1')).rejects.toThrow('Invalid or expired');
+  describe('sendVerificationEmail', () => {
+    it('should create a token and send an email', async () => {
+      const { service, emailTokenRepo, emailProvider } = setup();
+      await service.sendVerificationEmail('user-1', 'a@b.com');
+      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
+      expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('VERIFY_EMAIL');
+      expect(emailProvider.sent).toHaveLength(1);
+      expect(emailProvider.sent[0]?.to).toBe('a@b.com');
+    });
+
+    it('should swallow provider errors', async () => {
+      const { service, emailProvider } = setup();
+      emailProvider.setFailure(new Error('SMTP down'));
+      await expect(service.sendVerificationEmail('user-1', 'a@b.com')).resolves.toBeUndefined();
     });
   });
 });

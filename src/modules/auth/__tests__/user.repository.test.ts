@@ -1,14 +1,5 @@
-import {
-  findByEmail,
-  findByUsername,
-  findById,
-  createUser,
-  setEmailVerified,
-  updatePassword,
-  findAllUsers,
-  updateUserRole,
-  updateUserStatus,
-} from '../user.repository';
+import { createUserRepository } from '../user.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
 const mockUser = {
   id: '123',
@@ -22,78 +13,100 @@ const mockUser = {
   updatedAt: new Date(),
 };
 
-const mockFindUnique = jest.fn();
-const mockCreate = jest.fn();
-const mockUpdate = jest.fn();
-
-const mockFindMany = jest.fn();
-const mockCount = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    user: {
-      findUnique: (...args: unknown[]): unknown => mockFindUnique(...args),
-      create: (...args: unknown[]): unknown => mockCreate(...args),
-      update: (...args: unknown[]): unknown => mockUpdate(...args),
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      count: (...args: unknown[]): unknown => mockCount(...args),
-    },
-  }),
-}));
+function createMockPrisma(): {
+  prisma: PrismaClient;
+  user: {
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+  };
+} {
+  const user = {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+  };
+  const prisma = { user } as unknown as PrismaClient;
+  return { prisma, user };
+}
 
 describe('User Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('findByEmail', () => {
     it('should find user by email', async () => {
-      mockFindUnique.mockResolvedValue(mockUser);
-      const result = await findByEmail('test@test.com');
+      const { prisma, user } = createMockPrisma();
+      user.findUnique.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.findByEmail('test@test.com');
+
       expect(result).toEqual(mockUser);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { email: 'test@test.com' } });
+      expect(user.findUnique).toHaveBeenCalledWith({ where: { email: 'test@test.com' } });
     });
 
     it('should return null when not found', async () => {
-      mockFindUnique.mockResolvedValue(null);
-      const result = await findByEmail('nope@test.com');
+      const { prisma, user } = createMockPrisma();
+      user.findUnique.mockResolvedValue(null);
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.findByEmail('nope@test.com');
+
       expect(result).toBeNull();
     });
   });
 
   describe('findByUsername', () => {
     it('should find user by username', async () => {
-      mockFindUnique.mockResolvedValue(mockUser);
-      const result = await findByUsername('testuser');
+      const { prisma, user } = createMockPrisma();
+      user.findUnique.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.findByUsername('testuser');
+
       expect(result).toEqual(mockUser);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { username: 'testuser' } });
+      expect(user.findUnique).toHaveBeenCalledWith({ where: { username: 'testuser' } });
     });
   });
 
   describe('findById', () => {
     it('should find user by id', async () => {
-      mockFindUnique.mockResolvedValue(mockUser);
-      const result = await findById('123');
+      const { prisma, user } = createMockPrisma();
+      user.findUnique.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.findById('123');
+
       expect(result).toEqual(mockUser);
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: '123' } });
+      expect(user.findUnique).toHaveBeenCalledWith({ where: { id: '123' } });
     });
   });
 
   describe('createUser', () => {
     it('should create a user', async () => {
-      mockCreate.mockResolvedValue(mockUser);
+      const { prisma, user } = createMockPrisma();
+      user.create.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
       const data = { email: 'test@test.com', username: 'testuser', passwordHash: 'hash' };
-      const result = await createUser(data);
+      const result = await repo.createUser(data);
+
       expect(result).toEqual(mockUser);
-      expect(mockCreate).toHaveBeenCalledWith({ data });
+      expect(user.create).toHaveBeenCalledWith({ data });
     });
   });
 
   describe('setEmailVerified', () => {
     it('should update emailVerified to true', async () => {
-      mockUpdate.mockResolvedValue(mockUser);
-      await setEmailVerified('123');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      const { prisma, user } = createMockPrisma();
+      user.update.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      await repo.setEmailVerified('123');
+
+      expect(user.update).toHaveBeenCalledWith({
         where: { id: '123' },
         data: { emailVerified: true },
       });
@@ -102,59 +115,112 @@ describe('User Repository', () => {
 
   describe('updatePassword', () => {
     it('should update password hash', async () => {
-      mockUpdate.mockResolvedValue(mockUser);
-      await updatePassword('123', 'newhash');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      const { prisma, user } = createMockPrisma();
+      user.update.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      await repo.updatePassword('123', 'newhash');
+
+      expect(user.update).toHaveBeenCalledWith({
         where: { id: '123' },
         data: { passwordHash: 'newhash' },
       });
     });
   });
 
+  describe('updateUsername', () => {
+    it('should update username', async () => {
+      const { prisma, user } = createMockPrisma();
+      user.update.mockResolvedValue(mockUser);
+      const repo = createUserRepository(prisma);
+
+      await repo.updateUsername('123', 'new_name');
+
+      expect(user.update).toHaveBeenCalledWith({
+        where: { id: '123' },
+        data: { username: 'new_name' },
+      });
+    });
+  });
+
   describe('findAllUsers', () => {
     it('should return paginated users', async () => {
-      mockFindMany.mockResolvedValue([mockUser]);
-      mockCount.mockResolvedValue(1);
-      const result = await findAllUsers({ page: 1, limit: 20 });
+      const { prisma, user } = createMockPrisma();
+      user.findMany.mockResolvedValue([mockUser]);
+      user.count.mockResolvedValue(1);
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.findAllUsers({ page: 1, limit: 20 });
+
       expect(result.users).toHaveLength(1);
       expect(result.total).toBe(1);
     });
 
     it('should filter by role and status', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
-      await findAllUsers({ page: 1, limit: 20, role: 'ADMIN', status: 'ACTIVE' });
-      expect(mockFindMany).toHaveBeenCalledWith(
+      const { prisma, user } = createMockPrisma();
+      user.findMany.mockResolvedValue([]);
+      user.count.mockResolvedValue(0);
+      const repo = createUserRepository(prisma);
+
+      await repo.findAllUsers({ page: 1, limit: 20, role: 'ADMIN', status: 'ACTIVE' });
+
+      expect(user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { role: 'ADMIN', status: 'ACTIVE' } }),
       );
     });
 
     it('should apply pagination offset', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
-      await findAllUsers({ page: 2, limit: 10 });
-      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 10 }));
+      const { prisma, user } = createMockPrisma();
+      user.findMany.mockResolvedValue([]);
+      user.count.mockResolvedValue(0);
+      const repo = createUserRepository(prisma);
+
+      await repo.findAllUsers({ page: 2, limit: 10 });
+
+      expect(user.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 10, take: 10 }));
     });
   });
 
   describe('updateUserRole', () => {
     it('should update user role', async () => {
-      mockUpdate.mockResolvedValue({ ...mockUser, role: 'ADMIN' });
-      const result = await updateUserRole('123', 'ADMIN');
+      const { prisma, user } = createMockPrisma();
+      user.update.mockResolvedValue({ ...mockUser, role: 'ADMIN' });
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.updateUserRole('123', 'ADMIN');
+
       expect(result.role).toBe('ADMIN');
-      expect(mockUpdate).toHaveBeenCalledWith({ where: { id: '123' }, data: { role: 'ADMIN' } });
+      expect(user.update).toHaveBeenCalledWith({ where: { id: '123' }, data: { role: 'ADMIN' } });
+    });
+
+    it('should reject invalid role', async () => {
+      const { prisma } = createMockPrisma();
+      const repo = createUserRepository(prisma);
+
+      await expect(repo.updateUserRole('123', 'HACKER')).rejects.toThrow('Invalid role');
     });
   });
 
   describe('updateUserStatus', () => {
     it('should update user status', async () => {
-      mockUpdate.mockResolvedValue({ ...mockUser, status: 'SUSPENDED' });
-      const result = await updateUserStatus('123', 'SUSPENDED');
+      const { prisma, user } = createMockPrisma();
+      user.update.mockResolvedValue({ ...mockUser, status: 'SUSPENDED' });
+      const repo = createUserRepository(prisma);
+
+      const result = await repo.updateUserStatus('123', 'SUSPENDED');
+
       expect(result.status).toBe('SUSPENDED');
-      expect(mockUpdate).toHaveBeenCalledWith({
+      expect(user.update).toHaveBeenCalledWith({
         where: { id: '123' },
         data: { status: 'SUSPENDED' },
       });
+    });
+
+    it('should reject invalid status', async () => {
+      const { prisma } = createMockPrisma();
+      const repo = createUserRepository(prisma);
+
+      await expect(repo.updateUserStatus('123', 'INVALID')).rejects.toThrow('Invalid status');
     });
   });
 });

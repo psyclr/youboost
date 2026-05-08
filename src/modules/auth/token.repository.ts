@@ -78,31 +78,9 @@ export function createTokenRepository(prisma: PrismaClient): TokenRepository {
   };
 }
 
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function saveRefreshToken(
-  userId: string,
-  tokenHash: string,
-  expiresAt: Date,
-): Promise<void> {
-  return createTokenRepository(getPrisma()).saveRefreshToken(userId, tokenHash, expiresAt);
-}
-
-export async function findRefreshToken(tokenHash: string): Promise<RefreshTokenRecord | null> {
-  return createTokenRepository(getPrisma()).findRefreshToken(tokenHash);
-}
-
-export async function revokeRefreshToken(tokenHash: string): Promise<void> {
-  return createTokenRepository(getPrisma()).revokeRefreshToken(tokenHash);
-}
-
-export async function revokeAllUserTokens(userId: string): Promise<void> {
-  return createTokenRepository(getPrisma()).revokeAllUserTokens(userId);
-}
-
-export async function blacklistAccessToken(jti: string, expiresIn: number): Promise<void> {
-  return createTokenRepository(getPrisma()).blacklistAccessToken(jti, expiresIn);
-}
-
+// Transitional shim for external tests (billing/orders/providers routes) that
+// jest.mock this module to control `isAccessTokenBlacklisted`. Used by the
+// `authenticate` shim in `./index.ts`. Delete in sweep phase F17.
 export async function isAccessTokenBlacklisted(jti: string): Promise<boolean> {
   return createTokenRepository(getPrisma()).isAccessTokenBlacklisted(jti);
 }

@@ -44,6 +44,12 @@ jest.mock('../../auth/auth.middleware', () => ({
   authenticate: jest.fn().mockImplementation(async (req: unknown) => {
     (req as Record<string, unknown>).user = { userId: 'admin-1', role: 'ADMIN' };
   }),
+  // `auth/index.ts` imports `createAuthenticate` to build the transitional
+  // `authenticate` shim used by unconverted callers (admin.routes). Provide
+  // a stub that returns the same bypass function above.
+  createAuthenticate: jest.fn().mockImplementation(() => async (req: unknown) => {
+    (req as Record<string, unknown>).user = { userId: 'admin-1', role: 'ADMIN' };
+  }),
 }));
 jest.mock('../../providers/providers.middleware', () => ({
   requireAdmin: jest.fn(),

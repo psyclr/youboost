@@ -1,56 +1,54 @@
-import Fastify, { type FastifyInstance } from 'fastify';
-import { authRoutes } from '../auth.routes';
+import Fastify, { type FastifyInstance, type preHandlerAsyncHookHandler } from 'fastify';
+import { createAuthRoutes } from '../auth.routes';
 import { AppError } from '../../../shared/errors/app-error';
+import { UnauthorizedError } from '../../../shared/errors';
+import type { AuthService } from '../auth.service';
+import type { AuthEmailService } from '../auth-email.service';
 
 const mockRegister = jest.fn();
 const mockLogin = jest.fn();
 const mockRefresh = jest.fn();
 const mockLogout = jest.fn();
 const mockGetMe = jest.fn();
-
-jest.mock('../auth.service', () => ({
-  register: (...args: unknown[]): unknown => mockRegister(...args),
-  login: (...args: unknown[]): unknown => mockLogin(...args),
-  refresh: (...args: unknown[]): unknown => mockRefresh(...args),
-  logout: (...args: unknown[]): unknown => mockLogout(...args),
-  getMe: (...args: unknown[]): unknown => mockGetMe(...args),
-}));
+const mockUpdateProfile = jest.fn();
 
 const mockVerifyEmail = jest.fn();
 const mockForgotPassword = jest.fn();
 const mockResetPassword = jest.fn();
-
-jest.mock('../auth-email.service', () => ({
-  verifyEmail: (...args: unknown[]): unknown => mockVerifyEmail(...args),
-  forgotPassword: (...args: unknown[]): unknown => mockForgotPassword(...args),
-  resetPassword: (...args: unknown[]): unknown => mockResetPassword(...args),
-}));
-
-const mockVerifyAccessToken = jest.fn();
-const mockIsBlacklisted = jest.fn();
-
-jest.mock('../utils/tokens', () => ({
-  verifyAccessToken: (...args: unknown[]): unknown => mockVerifyAccessToken(...args),
-}));
-
-jest.mock('../token.repository', () => ({
-  isAccessTokenBlacklisted: (...args: unknown[]): unknown => mockIsBlacklisted(...args),
-}));
-
-jest.mock('../../../shared/utils/logger', () => ({
-  createServiceLogger: jest.fn().mockReturnValue({
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  }),
-}));
+const mockSendVerificationEmail = jest.fn();
 
 const validUser = { userId: 'u1', email: 'a@b.com', role: 'USER', jti: 'jti-1' };
+let authShouldSucceed = true;
+
+const authenticate: preHandlerAsyncHookHandler = async (request, _reply) => {
+  if (!authShouldSucceed) {
+    throw new UnauthorizedError('Missing or invalid Authorization header', 'MISSING_TOKEN');
+  }
+  (request as unknown as { user: typeof validUser }).user = validUser;
+};
+
+function makeAuthService(): AuthService {
+  return {
+    register: mockRegister,
+    login: mockLogin,
+    refresh: mockRefresh,
+    logout: mockLogout,
+    getMe: mockGetMe,
+    updateProfile: mockUpdateProfile,
+  } as unknown as AuthService;
+}
+
+function makeAuthEmailService(): AuthEmailService {
+  return {
+    verifyEmail: mockVerifyEmail,
+    forgotPassword: mockForgotPassword,
+    resetPassword: mockResetPassword,
+    sendVerificationEmail: mockSendVerificationEmail,
+  } as unknown as AuthEmailService;
+}
 
 function withAuth(): Record<string, string> {
-  mockVerifyAccessToken.mockReturnValue(validUser);
-  mockIsBlacklisted.mockResolvedValue(false);
+  authShouldSucceed = true;
   return { authorization: 'Bearer valid-token' };
 }
 
@@ -67,7 +65,14 @@ describe('Auth Routes', () => {
       return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: error.message } });
     });
 
-    await app.register(authRoutes, { prefix: '/auth' });
+    await app.register(
+      createAuthRoutes({
+        authService: makeAuthService(),
+        authEmailService: makeAuthEmailService(),
+        authenticate,
+      }),
+      { prefix: '/auth' },
+    );
     await app.ready();
   });
 
@@ -77,6 +82,7 @@ describe('Auth Routes', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    authShouldSucceed = true;
   });
 
   describe('POST /auth/register', () => {
@@ -169,6 +175,7 @@ describe('Auth Routes', () => {
     });
 
     it('should return 401 without token', async () => {
+      authShouldSucceed = false;
       const res = await app.inject({
         method: 'POST',
         url: '/auth/logout',
@@ -201,6 +208,7 @@ describe('Auth Routes', () => {
     });
 
     it('should return 401 without token', async () => {
+      authShouldSucceed = false;
       const res = await app.inject({
         method: 'GET',
         url: '/auth/me',
@@ -272,6 +280,30 @@ describe('Auth Routes', () => {
       });
 
       expect(res.statusCode).toBe(422);
+    });
+  });
+
+  describe('PUT /auth/profile', () => {
+    it('should return 200 when authenticated', async () => {
+      const headers = withAuth();
+      mockUpdateProfile.mockResolvedValue({
+        userId: 'u1',
+        email: 'a@b.com',
+        username: 'new_name',
+        role: 'USER',
+        emailVerified: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/auth/profile',
+        headers,
+        payload: { username: 'new_name' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(mockUpdateProfile).toHaveBeenCalledWith('u1', { username: 'new_name' });
     });
   });
 });

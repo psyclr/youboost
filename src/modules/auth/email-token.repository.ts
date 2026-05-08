@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import { generateEmailToken, hashToken } from './utils/tokens';
 
@@ -52,27 +51,4 @@ export function createEmailTokenRepository(prisma: PrismaClient): EmailTokenRepo
   }
 
   return { createEmailToken, findEmailTokenByHash, markEmailTokenUsed };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createEmailToken(
-  userId: string,
-  type: EmailTokenType,
-  ttlMs: number,
-): Promise<string> {
-  return createEmailTokenRepository(getPrisma()).createEmailToken(userId, type, ttlMs);
-}
-
-export async function findEmailTokenByHash(tokenHash: string): Promise<{
-  id: string;
-  userId: string;
-  type: EmailTokenType;
-  expiresAt: Date;
-  usedAt: Date | null;
-} | null> {
-  return createEmailTokenRepository(getPrisma()).findEmailTokenByHash(tokenHash);
-}
-
-export async function markEmailTokenUsed(tokenId: string): Promise<void> {
-  return createEmailTokenRepository(getPrisma()).markEmailTokenUsed(tokenId);
 }

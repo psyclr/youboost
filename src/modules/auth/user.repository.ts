@@ -143,33 +143,11 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
   };
 }
 
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function findByEmail(email: string): Promise<UserRecord | null> {
-  return createUserRepository(getPrisma()).findByEmail(email);
-}
-
-export async function findByUsername(username: string): Promise<UserRecord | null> {
-  return createUserRepository(getPrisma()).findByUsername(username);
-}
-
+// Transitional shims for unconverted callers (admin module, F16).
+// Only the functions still used externally via `userRepo` namespace are kept;
+// the rest have been removed. Delete the remainder in sweep phase F17.
 export async function findById(id: string): Promise<UserRecord | null> {
   return createUserRepository(getPrisma()).findById(id);
-}
-
-export async function createUser(data: CreateUserData): Promise<UserRecord> {
-  return createUserRepository(getPrisma()).createUser(data);
-}
-
-export async function setEmailVerified(userId: string): Promise<void> {
-  return createUserRepository(getPrisma()).setEmailVerified(userId);
-}
-
-export async function updatePassword(userId: string, hash: string): Promise<void> {
-  return createUserRepository(getPrisma()).updatePassword(userId, hash);
-}
-
-export async function updateUsername(userId: string, username: string): Promise<void> {
-  return createUserRepository(getPrisma()).updateUsername(userId, username);
 }
 
 export async function findAllUsers(filters: {

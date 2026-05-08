@@ -13,7 +13,9 @@ import { getConfig } from './shared/config';
 import { getPrisma } from './shared/database/prisma';
 import { getRedis } from './shared/redis/redis';
 import { createRedisCache } from './shared/cache/redis-cache';
-import { authRoutes } from './modules/auth/auth.routes';
+// prettier-ignore
+import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthEmailService } from './modules/auth';
+import { createAuthRoutes } from './modules/auth/auth.routes';
 import { billingRoutes } from './modules/billing/billing.routes';
 import { stripeRoutes } from './modules/billing/stripe/stripe.routes';
 import { cryptomusRoutes } from './modules/billing/cryptomus/cryptomus.routes';
@@ -49,7 +51,6 @@ import { createCouponRoutes, createAdminCouponRoutes } from './modules/coupons/c
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
 import { createAdminTrackingRoutes } from './modules/tracking/tracking.routes';
-import { authenticate } from './modules/auth/auth.middleware';
 import { requireAdmin } from './modules/providers/providers.middleware';
 
 const log = createServiceLogger('http');
@@ -147,12 +148,16 @@ export async function createApp(): Promise<FastifyInstance> {
     status: 'running',
   }));
 
-  // Composition root — converted modules (factory-based DI) are wired here.
-  // Unconverted modules continue to use singleton shims internally; they
-  // will be migrated to this pattern in subsequent phases.
+  // Composition root — factory-based DI. Unconverted modules still use singletons.
   const prisma = getPrisma();
   const redis = getRedis();
   const cache = createRedisCache(redis);
+
+  // Auth repos + middleware wired early; services wired below (need notifications + referrals).
+  const userRepo = createUserRepository(prisma);
+  const tokenRepo = createTokenRepository(prisma);
+  const emailTokenRepo = createEmailTokenRepository(prisma);
+  const authenticate = createAuthenticate({ tokenStore: tokenRepo });
 
   const catalogRepo = createCatalogRepository(prisma);
   const catalogService = createCatalogService({
@@ -179,10 +184,11 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('coupons'),
   });
 
+  const emailProvider = getEmailProvider();
   const notificationRepo = createNotificationRepository(prisma);
   const notificationDispatcher = createNotificationDispatcher({
     notificationRepo,
-    emailProvider: getEmailProvider(),
+    emailProvider,
     logger: createServiceLogger('notification-dispatcher'),
   });
   const notificationsService = createNotificationsService({
@@ -191,11 +197,8 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('notifications'),
   });
 
+  // webhookDispatcher still lives in webhooks/index.ts shim (inlined in F17).
   const webhooksRepo = createWebhooksRepository(prisma);
-  // NOTE: webhookDispatcher is currently constructed via the transitional shims
-  // in src/modules/webhooks/index.ts (driven by src/index.ts). Explicit
-  // composition-root wiring will land in sweep phase F17 once start/stop
-  // become explicit here. See webhooks/index.ts.
   const webhooksService = createWebhooksService({
     webhooksRepo,
     logger: createServiceLogger('webhooks'),
@@ -244,7 +247,14 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('referrals'),
   });
 
-  await app.register(authRoutes, { prefix: '/auth' });
+  // prettier-ignore
+  const authEmailService = createAuthEmailService({ userRepo, emailTokenRepo, emailProvider, appUrl: config.app.url, logger: createServiceLogger('auth-email') });
+  // prettier-ignore
+  const authService = createAuthService({ userRepo, tokenStore: tokenRepo, sendVerificationEmail: authEmailService.sendVerificationEmail, applyReferral: referralsService.applyReferral, logger: createServiceLogger('auth') });
+
+  await app.register(createAuthRoutes({ authService, authEmailService, authenticate }), {
+    prefix: '/auth',
+  });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
   await app.register(cryptomusRoutes, { prefix: '/billing/cryptomus' });
