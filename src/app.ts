@@ -26,7 +26,9 @@ import { createCatalogService } from './modules/catalog/catalog.service';
 import { createCatalogRoutes } from './modules/catalog/catalog.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { notificationRoutes } from './modules/notifications/notifications.routes';
-import { supportRoutes, adminSupportRoutes } from './modules/support/support.routes';
+import { createSupportRepository } from './modules/support/support.repository';
+import { createSupportService } from './modules/support/support.service';
+import { createSupportRoutes, createAdminSupportRoutes } from './modules/support/support.routes';
 import { referralRoutes } from './modules/referrals/referrals.routes';
 import { couponRoutes, adminCouponRoutes } from './modules/coupons/coupons.routes';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
@@ -150,6 +152,12 @@ export async function createApp(): Promise<FastifyInstance> {
     logger: createServiceLogger('tracking'),
   });
 
+  const supportRepo = createSupportRepository(prisma);
+  const supportService = createSupportService({
+    supportRepo,
+    logger: createServiceLogger('support'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -161,8 +169,13 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(createCatalogRoutes(catalogService), { prefix: '/catalog' });
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(notificationRoutes, { prefix: '/notifications' });
-  await app.register(supportRoutes, { prefix: '/support' });
-  await app.register(adminSupportRoutes, { prefix: '/admin/support' });
+  await app.register(createSupportRoutes({ service: supportService, authenticate }), {
+    prefix: '/support',
+  });
+  await app.register(
+    createAdminSupportRoutes({ service: supportService, authenticate, requireAdmin }),
+    { prefix: '/admin/support' },
+  );
   await app.register(referralRoutes, { prefix: '/referrals' });
   await app.register(couponRoutes, { prefix: '/coupons' });
   await app.register(adminCouponRoutes, { prefix: '/admin/coupons' });

@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient, SupportTicket, TicketMessage } from '../../generated/prisma';
 
 interface CreateTicketData {
@@ -175,56 +174,4 @@ export function createSupportRepository(prisma: PrismaClient): SupportRepository
     addMessage,
     updateTicketStatus,
   };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function createTicket(data: CreateTicketData): Promise<SupportTicket> {
-  return createSupportRepository(getPrisma()).createTicket(data);
-}
-
-export async function findTicketById(
-  ticketId: string,
-  userId?: string,
-): Promise<
-  | (SupportTicket & {
-      messages: Array<
-        TicketMessage & {
-          user: { id: string; username: string };
-        }
-      >;
-    })
-  | null
-> {
-  return createSupportRepository(getPrisma()).findTicketById(ticketId, userId);
-}
-
-export async function findTicketsByUserId(
-  userId: string,
-  filters: TicketFilters,
-): Promise<{ tickets: SupportTicket[]; total: number }> {
-  return createSupportRepository(getPrisma()).findTicketsByUserId(userId, filters);
-}
-
-export async function findAllTickets(filters: TicketFilters): Promise<{
-  tickets: Array<SupportTicket & { user: { id: string; username: string; email: string } }>;
-  total: number;
-}> {
-  return createSupportRepository(getPrisma()).findAllTickets(filters);
-}
-
-export async function addMessage(params: {
-  ticketId: string;
-  userId: string;
-  isAdmin: boolean;
-  body: string;
-}): Promise<TicketMessage> {
-  return createSupportRepository(getPrisma()).addMessage(params);
-}
-
-export async function updateTicketStatus(
-  ticketId: string,
-  status: string,
-  closedAt?: Date,
-): Promise<SupportTicket> {
-  return createSupportRepository(getPrisma()).updateTicketStatus(ticketId, status, closedAt);
 }

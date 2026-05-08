@@ -1,6 +1,6 @@
+import type { Logger } from 'pino';
 import { NotFoundError, ValidationError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import * as repo from './support.repository';
+import type { SupportRepository } from './support.repository';
 import type {
   CreateTicketInput,
   TicketQuery,
@@ -9,8 +9,6 @@ import type {
   TicketMessageResponse,
   PaginatedTickets,
 } from './support.types';
-
-const log = createServiceLogger('support');
 
 function mapTicketToResponse(ticket: {
   id: string;
@@ -56,137 +54,170 @@ function mapMessages(
   }));
 }
 
-// ---- User operations ----
-
-export async function createTicket(
-  userId: string,
-  input: CreateTicketInput,
-): Promise<TicketResponse> {
-  const ticket = await repo.createTicket({
-    userId,
-    subject: input.subject,
-    description: input.description,
-    priority: input.priority,
-  });
-
-  log.info({ userId, ticketId: ticket.id }, 'Ticket created');
-  return mapTicketToResponse(ticket);
+export interface SupportService {
+  createTicket(userId: string, input: CreateTicketInput): Promise<TicketResponse>;
+  getTicket(ticketId: string, userId: string): Promise<TicketDetailResponse>;
+  listTickets(userId: string, query: TicketQuery): Promise<PaginatedTickets>;
+  addMessage(ticketId: string, userId: string, body: string): Promise<{ id: string }>;
+  adminListTickets(query: TicketQuery): Promise<PaginatedTickets>;
+  adminGetTicket(ticketId: string): Promise<TicketDetailResponse>;
+  adminAddMessage(ticketId: string, adminUserId: string, body: string): Promise<{ id: string }>;
+  adminUpdateStatus(ticketId: string, status: string): Promise<TicketResponse>;
 }
 
-export async function getTicket(ticketId: string, userId: string): Promise<TicketDetailResponse> {
-  const ticket = await repo.findTicketById(ticketId, userId);
-  if (!ticket) {
-    throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+export interface SupportServiceDeps {
+  supportRepo: SupportRepository;
+  logger: Logger;
+}
+
+export function createSupportService(deps: SupportServiceDeps): SupportService {
+  const { supportRepo, logger } = deps;
+
+  // ---- User operations ----
+
+  async function createTicket(userId: string, input: CreateTicketInput): Promise<TicketResponse> {
+    const ticket = await supportRepo.createTicket({
+      userId,
+      subject: input.subject,
+      description: input.description,
+      priority: input.priority,
+    });
+
+    logger.info({ userId, ticketId: ticket.id }, 'Ticket created');
+    return mapTicketToResponse(ticket);
   }
 
-  return {
-    ...mapTicketToResponse(ticket),
-    messages: mapMessages(ticket.messages),
-  };
-}
+  async function getTicket(ticketId: string, userId: string): Promise<TicketDetailResponse> {
+    const ticket = await supportRepo.findTicketById(ticketId, userId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    }
 
-export async function listTickets(userId: string, query: TicketQuery): Promise<PaginatedTickets> {
-  const { tickets, total } = await repo.findTicketsByUserId(userId, {
-    status: query.status,
-    page: query.page,
-    limit: query.limit,
-  });
+    return {
+      ...mapTicketToResponse(ticket),
+      messages: mapMessages(ticket.messages),
+    };
+  }
 
-  return {
-    tickets: tickets.map(mapTicketToResponse),
-    pagination: {
+  async function listTickets(userId: string, query: TicketQuery): Promise<PaginatedTickets> {
+    const { tickets, total } = await supportRepo.findTicketsByUserId(userId, {
+      status: query.status,
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
-}
+    });
 
-export async function addMessage(
-  ticketId: string,
-  userId: string,
-  body: string,
-): Promise<{ id: string }> {
-  const ticket = await repo.findTicketById(ticketId, userId);
-  if (!ticket) {
-    throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
-  }
-  if (ticket.status === 'CLOSED') {
-    throw new ValidationError('Cannot add message to a closed ticket', 'TICKET_CLOSED');
+    return {
+      tickets: tickets.map(mapTicketToResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
 
-  const message = await repo.addMessage({ ticketId, userId, isAdmin: false, body });
-  log.info({ userId, ticketId, messageId: message.id }, 'User message added');
-  return { id: message.id };
-}
+  async function addMessage(
+    ticketId: string,
+    userId: string,
+    body: string,
+  ): Promise<{ id: string }> {
+    const ticket = await supportRepo.findTicketById(ticketId, userId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    }
+    if (ticket.status === 'CLOSED') {
+      throw new ValidationError('Cannot add message to a closed ticket', 'TICKET_CLOSED');
+    }
 
-// ---- Admin operations ----
+    const message = await supportRepo.addMessage({ ticketId, userId, isAdmin: false, body });
+    logger.info({ userId, ticketId, messageId: message.id }, 'User message added');
+    return { id: message.id };
+  }
 
-export async function adminListTickets(query: TicketQuery): Promise<PaginatedTickets> {
-  const { tickets, total } = await repo.findAllTickets({
-    status: query.status,
-    page: query.page,
-    limit: query.limit,
-  });
+  // ---- Admin operations ----
 
-  const mapped = tickets.map((t) => ({
-    ...mapTicketToResponse(t),
-    username: (t as unknown as { user: { username: string } }).user?.username,
-    email: (t as unknown as { user: { email: string } }).user?.email,
-  }));
-
-  return {
-    tickets: mapped,
-    pagination: {
+  async function adminListTickets(query: TicketQuery): Promise<PaginatedTickets> {
+    const { tickets, total } = await supportRepo.findAllTickets({
+      status: query.status,
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
-}
+    });
 
-export async function adminGetTicket(ticketId: string): Promise<TicketDetailResponse> {
-  const ticket = await repo.findTicketById(ticketId);
-  if (!ticket) {
-    throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    const mapped = tickets.map((t) => ({
+      ...mapTicketToResponse(t),
+      username: (t as unknown as { user: { username: string } }).user?.username,
+      email: (t as unknown as { user: { email: string } }).user?.email,
+    }));
+
+    return {
+      tickets: mapped,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
+  async function adminGetTicket(ticketId: string): Promise<TicketDetailResponse> {
+    const ticket = await supportRepo.findTicketById(ticketId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    }
+
+    return {
+      ...mapTicketToResponse(ticket),
+      messages: mapMessages(ticket.messages),
+    };
+  }
+
+  async function adminAddMessage(
+    ticketId: string,
+    adminUserId: string,
+    body: string,
+  ): Promise<{ id: string }> {
+    const ticket = await supportRepo.findTicketById(ticketId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    }
+
+    if (ticket.status === 'OPEN') {
+      await supportRepo.updateTicketStatus(ticketId, 'IN_PROGRESS');
+    }
+
+    const message = await supportRepo.addMessage({
+      ticketId,
+      userId: adminUserId,
+      isAdmin: true,
+      body,
+    });
+    logger.info({ adminUserId, ticketId, messageId: message.id }, 'Admin message added');
+    return { id: message.id };
+  }
+
+  async function adminUpdateStatus(ticketId: string, status: string): Promise<TicketResponse> {
+    const ticket = await supportRepo.findTicketById(ticketId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
+    }
+
+    const closedAt = status === 'CLOSED' ? new Date() : undefined;
+    const updated = await supportRepo.updateTicketStatus(ticketId, status, closedAt);
+
+    logger.info({ ticketId, status }, 'Ticket status updated');
+    return mapTicketToResponse(updated);
   }
 
   return {
-    ...mapTicketToResponse(ticket),
-    messages: mapMessages(ticket.messages),
+    createTicket,
+    getTicket,
+    listTickets,
+    addMessage,
+    adminListTickets,
+    adminGetTicket,
+    adminAddMessage,
+    adminUpdateStatus,
   };
-}
-
-export async function adminAddMessage(
-  ticketId: string,
-  adminUserId: string,
-  body: string,
-): Promise<{ id: string }> {
-  const ticket = await repo.findTicketById(ticketId);
-  if (!ticket) {
-    throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
-  }
-
-  if (ticket.status === 'OPEN') {
-    await repo.updateTicketStatus(ticketId, 'IN_PROGRESS');
-  }
-
-  const message = await repo.addMessage({ ticketId, userId: adminUserId, isAdmin: true, body });
-  log.info({ adminUserId, ticketId, messageId: message.id }, 'Admin message added');
-  return { id: message.id };
-}
-
-export async function adminUpdateStatus(ticketId: string, status: string): Promise<TicketResponse> {
-  const ticket = await repo.findTicketById(ticketId);
-  if (!ticket) {
-    throw new NotFoundError('Ticket not found', 'TICKET_NOT_FOUND');
-  }
-
-  const closedAt = status === 'CLOSED' ? new Date() : undefined;
-  const updated = await repo.updateTicketStatus(ticketId, status, closedAt);
-
-  log.info({ ticketId, status }, 'Ticket status updated');
-  return mapTicketToResponse(updated);
 }
