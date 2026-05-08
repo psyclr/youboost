@@ -25,10 +25,7 @@ module.exports = {
   ],
 
   // Обязательные тесты
-  testMatch: [
-    '**/__tests__/**/*.ts',
-    '**/?(*.)+(spec|test).ts',
-  ],
+  testMatch: ['**/?(*.)+(spec|test).ts'],
 
   // Paths mapping (соответствует tsconfig.json)
   moduleNameMapper: {

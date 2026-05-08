@@ -1,4 +1,3 @@
-import { getPrisma } from '../../shared/database';
 import type { PrismaClient } from '../../generated/prisma';
 import type { ServiceRecord } from '../orders';
 
@@ -48,15 +47,4 @@ export function createCatalogRepository(prisma: PrismaClient): CatalogRepository
   }
 
   return { findActiveServices, findActiveServiceById };
-}
-
-// Deprecated shims — delegate to factory with shared prisma. Delete in Phase 18.
-export async function findActiveServices(
-  filters: CatalogFilters,
-): Promise<{ services: ServiceRecord[]; total: number }> {
-  return createCatalogRepository(getPrisma()).findActiveServices(filters);
-}
-
-export async function findActiveServiceById(serviceId: string): Promise<ServiceRecord | null> {
-  return createCatalogRepository(getPrisma()).findActiveServiceById(serviceId);
 }

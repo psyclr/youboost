@@ -10,6 +10,9 @@ import { AppError } from './shared/errors/app-error';
 import { checkHealth } from './shared/health/health';
 import { createServiceLogger } from './shared/utils/logger';
 import { getConfig } from './shared/config';
+import { getPrisma } from './shared/database/prisma';
+import { getRedis } from './shared/redis/redis';
+import { createRedisCache } from './shared/cache/redis-cache';
 import { authRoutes } from './modules/auth/auth.routes';
 import { billingRoutes } from './modules/billing/billing.routes';
 import { stripeRoutes } from './modules/billing/stripe/stripe.routes';
@@ -18,7 +21,9 @@ import { orderRoutes } from './modules/orders/orders.routes';
 import { providerRoutes } from './modules/providers/providers.routes';
 import { apiKeyRoutes } from './modules/api-keys/api-keys.routes';
 import { webhookRoutes } from './modules/webhooks/webhooks.routes';
-import { catalogRoutes } from './modules/catalog/catalog.routes';
+import { createCatalogRepository } from './modules/catalog/catalog.repository';
+import { createCatalogService } from './modules/catalog/catalog.service';
+import { createCatalogRoutes } from './modules/catalog/catalog.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { notificationRoutes } from './modules/notifications/notifications.routes';
 import { supportRoutes, adminSupportRoutes } from './modules/support/support.routes';
@@ -121,6 +126,20 @@ export async function createApp(): Promise<FastifyInstance> {
     status: 'running',
   }));
 
+  // Composition root — converted modules (factory-based DI) are wired here.
+  // Unconverted modules continue to use singleton shims internally; they
+  // will be migrated to this pattern in subsequent phases.
+  const prisma = getPrisma();
+  const redis = getRedis();
+  const cache = createRedisCache(redis);
+
+  const catalogRepo = createCatalogRepository(prisma);
+  const catalogService = createCatalogService({
+    catalogRepo,
+    cache,
+    logger: createServiceLogger('catalog'),
+  });
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.register(stripeRoutes, { prefix: '/billing/stripe' });
@@ -129,7 +148,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(providerRoutes, { prefix: '/providers' });
   await app.register(apiKeyRoutes, { prefix: '/api-keys' });
   await app.register(webhookRoutes, { prefix: '/webhooks' });
-  await app.register(catalogRoutes, { prefix: '/catalog' });
+  await app.register(createCatalogRoutes(catalogService), { prefix: '/catalog' });
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(notificationRoutes, { prefix: '/notifications' });
   await app.register(supportRoutes, { prefix: '/support' });

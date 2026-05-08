@@ -1,18 +1,23 @@
-import { findActiveServices, findActiveServiceById } from '../catalog.repository';
+import { createCatalogRepository } from '../catalog.repository';
+import type { PrismaClient } from '../../../generated/prisma';
 
-const mockFindMany = jest.fn();
-const mockCount = jest.fn();
-const mockFindFirst = jest.fn();
-
-jest.mock('../../../shared/database', () => ({
-  getPrisma: jest.fn().mockReturnValue({
-    service: {
-      findMany: (...args: unknown[]): unknown => mockFindMany(...args),
-      count: (...args: unknown[]): unknown => mockCount(...args),
-      findFirst: (...args: unknown[]): unknown => mockFindFirst(...args),
-    },
-  }),
-}));
+function createFakePrisma(): {
+  prisma: PrismaClient;
+  mocks: {
+    findMany: jest.Mock;
+    count: jest.Mock;
+    findFirst: jest.Mock;
+  };
+} {
+  const findMany = jest.fn();
+  const count = jest.fn();
+  const findFirst = jest.fn();
+  const prisma = {
+    service: { findMany, count, findFirst },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any as PrismaClient;
+  return { prisma, mocks: { findMany, count, findFirst } };
+}
 
 const mockService = {
   id: 'svc-1',
@@ -29,20 +34,18 @@ const mockService = {
 };
 
 describe('Catalog Repository', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   describe('findActiveServices', () => {
-    it('should return services with pagination', async () => {
-      mockFindMany.mockResolvedValue([mockService]);
-      mockCount.mockResolvedValue(1);
+    it('returns services with pagination', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockService]);
+      mocks.count.mockResolvedValue(1);
+      const repo = createCatalogRepository(prisma);
 
-      const result = await findActiveServices({ page: 1, limit: 20 });
+      const result = await repo.findActiveServices({ page: 1, limit: 20 });
 
       expect(result.services).toHaveLength(1);
       expect(result.total).toBe(1);
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true },
           orderBy: { name: 'asc' },
@@ -50,65 +53,71 @@ describe('Catalog Repository', () => {
           take: 20,
         }),
       );
-      expect(mockCount).toHaveBeenCalledWith({ where: { isActive: true } });
+      expect(mocks.count).toHaveBeenCalledWith({ where: { isActive: true } });
     });
 
-    it('should filter by platform', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+    it('filters by platform', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
 
-      await findActiveServices({ platform: 'YOUTUBE', page: 1, limit: 20 });
+      await repo.findActiveServices({ platform: 'YOUTUBE', page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { isActive: true, platform: 'YOUTUBE' },
-        }),
+      expect(mocks.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isActive: true, platform: 'YOUTUBE' } }),
       );
-      expect(mockCount).toHaveBeenCalledWith({
+      expect(mocks.count).toHaveBeenCalledWith({
         where: { isActive: true, platform: 'YOUTUBE' },
       });
     });
 
-    it('should filter by type', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+    it('filters by type', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
 
-      await findActiveServices({ type: 'VIEWS', page: 1, limit: 20 });
+      await repo.findActiveServices({ type: 'VIEWS', page: 1, limit: 20 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { isActive: true, type: 'VIEWS' },
-        }),
+      expect(mocks.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isActive: true, type: 'VIEWS' } }),
       );
     });
 
-    it('should filter by both platform and type', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+    it('filters by both platform and type', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
 
-      await findActiveServices({ platform: 'INSTAGRAM', type: 'LIKES', page: 1, limit: 10 });
+      await repo.findActiveServices({ platform: 'INSTAGRAM', type: 'LIKES', page: 1, limit: 10 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(
+      expect(mocks.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { isActive: true, platform: 'INSTAGRAM', type: 'LIKES' },
         }),
       );
     });
 
-    it('should calculate skip based on page', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+    it('calculates skip based on page', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
 
-      await findActiveServices({ page: 3, limit: 10 });
+      await repo.findActiveServices({ page: 3, limit: 10 });
 
-      expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
+      expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 10 }));
     });
 
-    it('should return empty array when no services found', async () => {
-      mockFindMany.mockResolvedValue([]);
-      mockCount.mockResolvedValue(0);
+    it('returns empty array when no services found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
 
-      const result = await findActiveServices({ page: 1, limit: 20 });
+      const result = await repo.findActiveServices({ page: 1, limit: 20 });
 
       expect(result.services).toHaveLength(0);
       expect(result.total).toBe(0);
@@ -116,32 +125,38 @@ describe('Catalog Repository', () => {
   });
 
   describe('findActiveServiceById', () => {
-    it('should return active service by id', async () => {
-      mockFindFirst.mockResolvedValue(mockService);
+    it('returns active service by id', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(mockService);
+      const repo = createCatalogRepository(prisma);
 
-      const result = await findActiveServiceById('svc-1');
+      const result = await repo.findActiveServiceById('svc-1');
 
       expect(result).toEqual(mockService);
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      expect(mocks.findFirst).toHaveBeenCalledWith({
         where: { id: 'svc-1', isActive: true },
       });
     });
 
-    it('should return null if service not found', async () => {
-      mockFindFirst.mockResolvedValue(null);
+    it('returns null if service not found', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(null);
+      const repo = createCatalogRepository(prisma);
 
-      const result = await findActiveServiceById('nonexistent');
+      const result = await repo.findActiveServiceById('nonexistent');
 
       expect(result).toBeNull();
     });
 
-    it('should return null if service is inactive', async () => {
-      mockFindFirst.mockResolvedValue(null);
+    it('returns null if service is inactive', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findFirst.mockResolvedValue(null);
+      const repo = createCatalogRepository(prisma);
 
-      const result = await findActiveServiceById('svc-inactive');
+      const result = await repo.findActiveServiceById('svc-inactive');
 
       expect(result).toBeNull();
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      expect(mocks.findFirst).toHaveBeenCalledWith({
         where: { id: 'svc-inactive', isActive: true },
       });
     });

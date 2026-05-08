@@ -1,13 +1,22 @@
+import type { Logger } from 'pino';
 import { NotFoundError } from '../../shared/errors';
-import { createServiceLogger } from '../../shared/utils/logger';
-import { getRedis } from '../../shared/redis/redis';
-import * as catalogRepo from './catalog.repository';
+import type { CachePort } from '../../shared/cache/cache.port';
+import type { CatalogRepository } from './catalog.repository';
 import type { CatalogQuery, CatalogServiceResponse, PaginatedCatalog } from './catalog.types';
 import type { ServiceRecord } from '../orders';
 
-const log = createServiceLogger('catalog');
-
 const CACHE_TTL = 300;
+
+export interface CatalogService {
+  listServices(query: CatalogQuery): Promise<PaginatedCatalog>;
+  getService(serviceId: string): Promise<CatalogServiceResponse>;
+}
+
+export interface CatalogServiceDeps {
+  catalogRepo: CatalogRepository;
+  cache: CachePort;
+  logger: Logger;
+}
 
 function mapToResponse(record: ServiceRecord): CatalogServiceResponse {
   return {
@@ -23,57 +32,61 @@ function mapToResponse(record: ServiceRecord): CatalogServiceResponse {
   };
 }
 
-export async function listServices(query: CatalogQuery): Promise<PaginatedCatalog> {
-  const cacheKey = `catalog:list:${query.platform ?? 'all'}:${query.type ?? 'all'}:${query.page}:${query.limit}`;
-  const redis = getRedis();
+export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
+  const { catalogRepo, cache, logger } = deps;
 
-  const cached = await redis.get(cacheKey);
-  if (cached) {
-    log.debug({ cacheKey }, 'Cache hit for catalog list');
-    return JSON.parse(cached) as PaginatedCatalog;
-  }
+  async function listServices(query: CatalogQuery): Promise<PaginatedCatalog> {
+    const cacheKey = `catalog:list:${query.platform ?? 'all'}:${query.type ?? 'all'}:${query.page}:${query.limit}`;
 
-  const { services, total } = await catalogRepo.findActiveServices({
-    platform: query.platform,
-    type: query.type,
-    page: query.page,
-    limit: query.limit,
-  });
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      logger.debug({ cacheKey }, 'Cache hit for catalog list');
+      return JSON.parse(cached) as PaginatedCatalog;
+    }
 
-  const result: PaginatedCatalog = {
-    services: services.map(mapToResponse),
-    pagination: {
+    const { services, total } = await catalogRepo.findActiveServices({
+      platform: query.platform,
+      type: query.type,
       page: query.page,
       limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
+    });
 
-  await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(result));
-  log.debug({ cacheKey }, 'Cached catalog list');
+    const result: PaginatedCatalog = {
+      services: services.map(mapToResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
 
-  return result;
-}
+    await cache.setex(cacheKey, CACHE_TTL, JSON.stringify(result));
+    logger.debug({ cacheKey }, 'Cached catalog list');
 
-export async function getService(serviceId: string): Promise<CatalogServiceResponse> {
-  const cacheKey = `catalog:service:${serviceId}`;
-  const redis = getRedis();
-
-  const cached = await redis.get(cacheKey);
-  if (cached) {
-    log.debug({ cacheKey }, 'Cache hit for catalog service');
-    return JSON.parse(cached) as CatalogServiceResponse;
+    return result;
   }
 
-  const record = await catalogRepo.findActiveServiceById(serviceId);
-  if (!record) {
-    throw new NotFoundError('Service not found', 'SERVICE_NOT_FOUND');
+  async function getService(serviceId: string): Promise<CatalogServiceResponse> {
+    const cacheKey = `catalog:service:${serviceId}`;
+
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      logger.debug({ cacheKey }, 'Cache hit for catalog service');
+      return JSON.parse(cached) as CatalogServiceResponse;
+    }
+
+    const record = await catalogRepo.findActiveServiceById(serviceId);
+    if (!record) {
+      throw new NotFoundError('Service not found', 'SERVICE_NOT_FOUND');
+    }
+
+    const result = mapToResponse(record);
+    await cache.setex(cacheKey, CACHE_TTL, JSON.stringify(result));
+    logger.debug({ cacheKey }, 'Cached catalog service');
+
+    return result;
   }
 
-  const result = mapToResponse(record);
-  await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(result));
-  log.debug({ cacheKey }, 'Cached catalog service');
-
-  return result;
+  return { listServices, getService };
 }
