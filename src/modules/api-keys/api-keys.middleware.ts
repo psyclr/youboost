@@ -3,7 +3,6 @@ import type { Logger } from 'pino';
 import type Redis from 'ioredis';
 import { UnauthorizedError, ForbiddenError } from '../../shared/errors';
 import type { AppConfig } from '../../shared/config';
-import { fireAndForget } from '../../shared/utils/fire-and-forget';
 import { hashApiKey } from './api-keys.service';
 import type { ApiKeysRepository } from './api-keys.repository';
 
@@ -72,10 +71,8 @@ export function createApiKeyAuthMiddleware(
       jti: record.id,
     };
 
-    fireAndForget(apiKeysRepo.updateLastUsedAt(record.id), {
-      operation: 'updateLastUsedAt',
-      logger,
-      extra: { keyId: record.id },
+    apiKeysRepo.updateLastUsedAt(record.id).catch((err: unknown) => {
+      logger.warn({ err, keyId: record.id }, 'Failed to update lastUsedAt');
     });
   };
 }

@@ -1,15 +1,6 @@
+import type Redis from 'ioredis';
 import { createTokenRepository } from '../token.repository';
 import type { PrismaClient } from '../../../generated/prisma';
-
-const mockRedisSet = jest.fn().mockResolvedValue('OK');
-const mockRedisGet = jest.fn().mockResolvedValue(null);
-
-jest.mock('../../../shared/redis', () => ({
-  getRedis: jest.fn().mockReturnValue({
-    set: (...args: unknown[]) => mockRedisSet(...args),
-    get: (...args: unknown[]) => mockRedisGet(...args),
-  }),
-}));
 
 function createMockPrisma(): {
   prisma: PrismaClient;
@@ -24,17 +15,23 @@ function createMockPrisma(): {
   return { prisma, refreshToken };
 }
 
-describe('Token Store', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockRedisSet.mockResolvedValue('OK');
-    mockRedisGet.mockResolvedValue(null);
-  });
+function createMockRedis(): {
+  redis: Redis;
+  set: jest.Mock;
+  get: jest.Mock;
+} {
+  const set = jest.fn().mockResolvedValue('OK');
+  const get = jest.fn().mockResolvedValue(null);
+  const redis = { set, get } as unknown as Redis;
+  return { redis, set, get };
+}
 
+describe('Token Store', () => {
   describe('saveRefreshToken', () => {
     it('should save a refresh token to DB', async () => {
       const { prisma, refreshToken } = createMockPrisma();
-      const repo = createTokenRepository(prisma);
+      const { redis } = createMockRedis();
+      const repo = createTokenRepository(prisma, redis);
 
       const expiresAt = new Date();
       await repo.saveRefreshToken('user1', 'hash1', expiresAt);
@@ -48,9 +45,10 @@ describe('Token Store', () => {
   describe('findRefreshToken', () => {
     it('should find active non-revoked token', async () => {
       const { prisma, refreshToken } = createMockPrisma();
+      const { redis } = createMockRedis();
       const token = { id: '1', userId: 'u1', tokenHash: 'h1' };
       refreshToken.findFirst.mockResolvedValue(token);
-      const repo = createTokenRepository(prisma);
+      const repo = createTokenRepository(prisma, redis);
 
       const result = await repo.findRefreshToken('h1');
 
@@ -66,8 +64,9 @@ describe('Token Store', () => {
 
     it('should return null when not found', async () => {
       const { prisma, refreshToken } = createMockPrisma();
+      const { redis } = createMockRedis();
       refreshToken.findFirst.mockResolvedValue(null);
-      const repo = createTokenRepository(prisma);
+      const repo = createTokenRepository(prisma, redis);
 
       const result = await repo.findRefreshToken('nonexistent');
 
@@ -78,7 +77,8 @@ describe('Token Store', () => {
   describe('revokeRefreshToken', () => {
     it('should set revokedAt on the token', async () => {
       const { prisma, refreshToken } = createMockPrisma();
-      const repo = createTokenRepository(prisma);
+      const { redis } = createMockRedis();
+      const repo = createTokenRepository(prisma, redis);
 
       await repo.revokeRefreshToken('hash1');
 
@@ -92,7 +92,8 @@ describe('Token Store', () => {
   describe('revokeAllUserTokens', () => {
     it('should revoke all tokens for a user', async () => {
       const { prisma, refreshToken } = createMockPrisma();
-      const repo = createTokenRepository(prisma);
+      const { redis } = createMockRedis();
+      const repo = createTokenRepository(prisma, redis);
 
       await repo.revokeAllUserTokens('user1');
 
@@ -106,19 +107,21 @@ describe('Token Store', () => {
   describe('blacklistAccessToken', () => {
     it('should set key in Redis with TTL', async () => {
       const { prisma } = createMockPrisma();
-      const repo = createTokenRepository(prisma);
+      const { redis, set } = createMockRedis();
+      const repo = createTokenRepository(prisma, redis);
 
       await repo.blacklistAccessToken('jti-123', 3600);
 
-      expect(mockRedisSet).toHaveBeenCalledWith('bl:jti-123', '1', 'EX', 3600);
+      expect(set).toHaveBeenCalledWith('bl:jti-123', '1', 'EX', 3600);
     });
   });
 
   describe('isAccessTokenBlacklisted', () => {
     it('should return false when not blacklisted', async () => {
       const { prisma } = createMockPrisma();
-      mockRedisGet.mockResolvedValue(null);
-      const repo = createTokenRepository(prisma);
+      const { redis, get } = createMockRedis();
+      get.mockResolvedValue(null);
+      const repo = createTokenRepository(prisma, redis);
 
       const result = await repo.isAccessTokenBlacklisted('jti-123');
 
@@ -127,8 +130,9 @@ describe('Token Store', () => {
 
     it('should return true when blacklisted', async () => {
       const { prisma } = createMockPrisma();
-      mockRedisGet.mockResolvedValue('1');
-      const repo = createTokenRepository(prisma);
+      const { redis, get } = createMockRedis();
+      get.mockResolvedValue('1');
+      const repo = createTokenRepository(prisma, redis);
 
       const result = await repo.isAccessTokenBlacklisted('jti-456');
 

@@ -15,7 +15,6 @@ const mockUpdateProfile = jest.fn();
 const mockVerifyEmail = jest.fn();
 const mockForgotPassword = jest.fn();
 const mockResetPassword = jest.fn();
-const mockSendVerificationEmail = jest.fn();
 
 const validUser = { userId: 'u1', email: 'a@b.com', role: 'USER', jti: 'jti-1' };
 let authShouldSucceed = true;
@@ -43,7 +42,6 @@ function makeAuthEmailService(): AuthEmailService {
     verifyEmail: mockVerifyEmail,
     forgotPassword: mockForgotPassword,
     resetPassword: mockResetPassword,
-    sendVerificationEmail: mockSendVerificationEmail,
   } as unknown as AuthEmailService;
 }
 

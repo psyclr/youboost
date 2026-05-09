@@ -8,7 +8,7 @@ import { StatusCodes } from 'http-status-codes';
 import type { Logger } from 'pino';
 import { openapiSpec } from '../shared/swagger/openapi-spec';
 import { AppError } from '../shared/errors/app-error';
-import { checkHealth } from '../shared/health/health';
+import type { HealthStatus } from '../shared/health/health';
 
 export interface FastifySetupConfig {
   corsOrigin: string;
@@ -19,6 +19,7 @@ export interface FastifySetupConfig {
 export async function setupFastifyApp(
   config: FastifySetupConfig,
   logger: Logger,
+  checkHealth: () => Promise<HealthStatus>,
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,

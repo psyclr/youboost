@@ -1,4 +1,6 @@
-import type { PrismaClient } from '../../generated/prisma';
+import type { Prisma, PrismaClient } from '../../generated/prisma';
+
+type PrismaTransactionClient = Prisma.TransactionClient;
 
 const VALID_ROLES = ['USER', 'RESELLER', 'ADMIN'] as const;
 const VALID_STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED'] as const;
@@ -25,7 +27,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   findByUsername(username: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
-  createUser(data: CreateUserData): Promise<UserRecord>;
+  createUser(data: CreateUserData, tx?: PrismaTransactionClient): Promise<UserRecord>;
   setEmailVerified(userId: string): Promise<void>;
   updatePassword(userId: string, hash: string): Promise<void>;
   updateUsername(userId: string, username: string): Promise<void>;
@@ -52,8 +54,12 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     return prisma.user.findUnique({ where: { id } });
   }
 
-  async function createUser(data: CreateUserData): Promise<UserRecord> {
-    return prisma.user.create({ data });
+  async function createUser(
+    data: CreateUserData,
+    tx?: PrismaTransactionClient,
+  ): Promise<UserRecord> {
+    const client = tx ?? prisma;
+    return client.user.create({ data });
   }
 
   async function setEmailVerified(userId: string): Promise<void> {

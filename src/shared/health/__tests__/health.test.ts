@@ -1,18 +1,20 @@
-import { checkHealth, type HealthStatus } from '../health';
+import type Redis from 'ioredis';
+import type { PrismaClient } from '../../../generated/prisma';
+import { createHealthCheck, type HealthStatus } from '../health';
+
+const mockDbHealth = jest.fn();
+const mockRedisHealth = jest.fn();
 
 jest.mock('../../database/prisma', () => ({
-  isDatabaseHealthy: jest.fn(),
+  isPrismaHealthy: (...args: unknown[]): unknown => mockDbHealth(...args),
 }));
 
 jest.mock('../../redis/redis', () => ({
-  isRedisHealthy: jest.fn(),
+  isRedisClientHealthy: (...args: unknown[]): unknown => mockRedisHealth(...args),
 }));
 
-import { isDatabaseHealthy } from '../../database/prisma';
-import { isRedisHealthy } from '../../redis/redis';
-
-const mockDbHealth = isDatabaseHealthy as jest.MockedFunction<typeof isDatabaseHealthy>;
-const mockRedisHealth = isRedisHealthy as jest.MockedFunction<typeof isRedisHealthy>;
+const fakePrisma = {} as PrismaClient;
+const fakeRedis = {} as Redis;
 
 describe('Health Check', () => {
   beforeEach(() => {
@@ -23,6 +25,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(true);
     mockRedisHealth.mockResolvedValue(true);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result = await checkHealth();
 
     expect(result.status).toBe('ok');
@@ -36,6 +39,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(false);
     mockRedisHealth.mockResolvedValue(true);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result = await checkHealth();
 
     expect(result.status).toBe('degraded');
@@ -47,6 +51,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(true);
     mockRedisHealth.mockResolvedValue(false);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result = await checkHealth();
 
     expect(result.status).toBe('degraded');
@@ -58,6 +63,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(false);
     mockRedisHealth.mockResolvedValue(false);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result = await checkHealth();
 
     expect(result.status).toBe('error');
@@ -69,6 +75,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(true);
     mockRedisHealth.mockResolvedValue(true);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result = await checkHealth();
 
     expect(result.checks.memory).toBeDefined();
@@ -80,6 +87,7 @@ describe('Health Check', () => {
     mockDbHealth.mockResolvedValue(true);
     mockRedisHealth.mockResolvedValue(true);
 
+    const checkHealth = createHealthCheck({ prisma: fakePrisma, redis: fakeRedis });
     const result: HealthStatus = await checkHealth();
 
     expect(result).toBeDefined();

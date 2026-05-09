@@ -1,11 +1,12 @@
 import type { Logger } from 'pino';
+import type { PrismaClient } from '../../generated/prisma';
 import {
   ConflictError,
   UnauthorizedError,
   NotFoundError,
   ValidationError,
 } from '../../shared/errors';
-import { fireAndForget } from '../../shared/utils/fire-and-forget';
+import type { OutboxPort } from '../../shared/outbox';
 import { hashPassword, comparePassword } from './utils/password';
 import {
   generateAccessToken,
@@ -15,6 +16,7 @@ import {
 } from './utils/tokens';
 import type { UserRepository } from './user.repository';
 import type { TokenRepository } from './token.repository';
+import type { EmailTokenRepository } from './email-token.repository';
 import type {
   RegisterInput,
   LoginInput,
@@ -22,6 +24,8 @@ import type {
   UserProfile,
   UpdateProfileInput,
 } from './auth.types';
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AuthService {
   register(input: RegisterInput): Promise<{ userId: string; email: string; username: string }>;
@@ -35,15 +39,17 @@ export interface AuthService {
 }
 
 export interface AuthServiceDeps {
+  prisma: PrismaClient;
   userRepo: UserRepository;
   tokenStore: TokenRepository;
-  sendVerificationEmail: (userId: string, email: string) => Promise<void>;
-  applyReferral: (userId: string, referralCode: string) => Promise<void>;
+  emailTokenRepo: EmailTokenRepository;
+  outbox: OutboxPort;
+  appUrl: string;
   logger: Logger;
 }
 
 export function createAuthService(deps: AuthServiceDeps): AuthService {
-  const { userRepo, tokenStore, sendVerificationEmail, applyReferral, logger } = deps;
+  const { prisma, userRepo, tokenStore, emailTokenRepo, outbox, appUrl, logger } = deps;
 
   async function register(
     input: RegisterInput,
@@ -56,27 +62,53 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     }
 
     const passwordHash = await hashPassword(input.password);
-    const user = await userRepo.createUser({
-      email: input.email,
-      username: input.username,
-      passwordHash,
+
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await userRepo.createUser(
+        {
+          email: input.email,
+          username: input.username,
+          passwordHash,
+        },
+        tx,
+      );
+
+      const verifyToken = await emailTokenRepo.createEmailToken({
+        userId: created.id,
+        type: 'VERIFY_EMAIL',
+        ttlMs: VERIFICATION_TOKEN_TTL_MS,
+        tx,
+      });
+      const verifyUrl = `${appUrl}/verify-email?token=${verifyToken}`;
+
+      await outbox.emit(
+        {
+          type: 'user.email_verification_requested',
+          aggregateType: 'user',
+          aggregateId: created.id,
+          userId: created.id,
+          payload: { userId: created.id, email: created.email, verifyUrl },
+        },
+        tx,
+      );
+
+      if (input.referralCode) {
+        await outbox.emit(
+          {
+            type: 'referral.applied',
+            aggregateType: 'user',
+            aggregateId: created.id,
+            userId: created.id,
+            payload: { userId: created.id, referralCode: input.referralCode },
+          },
+          tx,
+        );
+      }
+
+      return created;
     });
 
     logger.info({ userId: user.id }, 'User registered');
-
-    fireAndForget(sendVerificationEmail(user.id, user.email), {
-      operation: 'send verification email',
-      logger,
-      extra: { userId: user.id },
-    });
-
-    if (input.referralCode) {
-      fireAndForget(applyReferral(user.id, input.referralCode), {
-        operation: 'apply referral code',
-        logger,
-        extra: { userId: user.id, referralCode: input.referralCode },
-      });
-    }
 
     return { userId: user.id, email: user.email, username: user.username };
   }

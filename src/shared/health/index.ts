@@ -1,2 +1,2 @@
-export { checkHealth } from './health';
-export type { HealthStatus } from './health';
+export { createHealthCheck } from './health';
+export type { HealthStatus, HealthCheckDeps } from './health';

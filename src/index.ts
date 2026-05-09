@@ -1,18 +1,10 @@
 import 'dotenv/config';
 import { loadConfig } from './shared/config/env';
 import { createServiceLogger } from './shared/utils/logger';
-import {
-  createPrismaClient,
-  setSharedPrisma,
-  connectPrisma,
-  disconnectPrisma,
-} from './shared/database/prisma';
-import {
-  createRedisClient,
-  setSharedRedis,
-  connectRedisClient,
-  disconnectRedisClient,
-} from './shared/redis/redis';
+import { createPrismaClient, connectPrisma, disconnectPrisma } from './shared/database/prisma';
+import { createRedisClient, connectRedisClient, disconnectRedisClient } from './shared/redis/redis';
+import { setSharedRedis } from './shared/redis/redis';
+import { createEmailProvider } from './modules/notifications';
 import { createApp } from './app';
 
 const log = createServiceLogger('main');
@@ -22,14 +14,20 @@ async function main(): Promise<void> {
   log.info({ env: config.app.nodeEnv }, 'Starting youboost server');
 
   const prisma = createPrismaClient({ databaseUrl: config.db.url });
-  setSharedPrisma(prisma);
   await connectPrisma(prisma);
 
   const redis = createRedisClient({ url: config.redis.url });
+  // Wire the shared redis handle before queue infra is touched (queue.ts
+  // reads through shared/redis/redis.ts::getRedis as an internal helper).
   setSharedRedis(redis);
   await connectRedisClient(redis);
 
-  const { app, workers } = await createApp();
+  const emailProvider = createEmailProvider({
+    smtp: config.smtp,
+    logger: createServiceLogger('email-provider-factory'),
+  });
+
+  const { app, workers } = await createApp({ prisma, redis, emailProvider, config });
   await app.listen({ port: config.app.port, host: '0.0.0.0' });
   log.info({ port: config.app.port }, 'Server listening');
 

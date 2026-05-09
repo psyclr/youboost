@@ -1,4 +1,5 @@
-import { getPrisma, connectDatabase, disconnectDatabase, isDatabaseHealthy } from '../prisma';
+import { createPrismaClient, connectPrisma, disconnectPrisma, isPrismaHealthy } from '../prisma';
+import type { PrismaClient } from '../../../generated/prisma';
 
 jest.mock('../../../generated/prisma', () => {
   const mockConnect = jest.fn().mockResolvedValue(undefined);
@@ -15,6 +16,10 @@ jest.mock('../../../generated/prisma', () => {
   };
 });
 
+jest.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: jest.fn().mockImplementation(() => ({})),
+}));
+
 jest.mock('../../utils/logger', () => ({
   createServiceLogger: jest.fn().mockReturnValue({
     info: jest.fn(),
@@ -25,53 +30,44 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 describe('Prisma Database Module', () => {
-  afterEach(async () => {
-    await disconnectDatabase();
-  });
-
-  describe('getPrisma', () => {
+  describe('createPrismaClient', () => {
     it('should return a PrismaClient instance', () => {
-      const client = getPrisma();
+      const client = createPrismaClient({ databaseUrl: 'postgres://test' });
       expect(client).toBeDefined();
       expect(typeof client.$connect).toBe('function');
-      expect(typeof client.$disconnect).toBe('function');
-    });
-
-    it('should return the same instance (singleton)', () => {
-      const client1 = getPrisma();
-      const client2 = getPrisma();
-      expect(client1).toBe(client2);
     });
   });
 
-  describe('connectDatabase', () => {
-    it('should connect to the database', async () => {
-      const client = getPrisma();
-      await connectDatabase();
+  describe('connectPrisma', () => {
+    it('should connect the given client', async () => {
+      const client = createPrismaClient({ databaseUrl: 'postgres://test' });
+      await connectPrisma(client);
       expect(client.$connect).toHaveBeenCalled();
     });
   });
 
-  describe('disconnectDatabase', () => {
-    it('should disconnect from the database', async () => {
-      const client = getPrisma();
-      await connectDatabase();
-      await disconnectDatabase();
+  describe('disconnectPrisma', () => {
+    it('should disconnect the given client', async () => {
+      const client = createPrismaClient({ databaseUrl: 'postgres://test' });
+      await disconnectPrisma(client);
       expect(client.$disconnect).toHaveBeenCalled();
     });
   });
 
-  describe('isDatabaseHealthy', () => {
-    it('should return true when database is reachable', async () => {
-      const healthy = await isDatabaseHealthy();
+  describe('isPrismaHealthy', () => {
+    it('should return true when query succeeds', async () => {
+      const client = createPrismaClient({ databaseUrl: 'postgres://test' });
+      const healthy = await isPrismaHealthy(client);
       expect(healthy).toBe(true);
     });
 
     it('should return false when query fails', async () => {
-      const client = getPrisma();
-      (client.$queryRaw as jest.Mock).mockRejectedValueOnce(new Error('Connection refused'));
+      const client = createPrismaClient({ databaseUrl: 'postgres://test' }) as PrismaClient & {
+        $queryRaw: jest.Mock;
+      };
+      client.$queryRaw.mockRejectedValueOnce(new Error('Connection refused'));
 
-      const healthy = await isDatabaseHealthy();
+      const healthy = await isPrismaHealthy(client);
       expect(healthy).toBe(false);
     });
   });

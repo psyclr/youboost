@@ -1,34 +1,35 @@
-import { createServiceLogger } from '../../../shared/utils/logger';
-import { getConfig } from '../../../shared/config';
+import type { Logger } from 'pino';
 import type { EmailProvider } from './email-provider';
 import { StubEmailProvider } from './stub-email-provider';
 import { NodemailerEmailProvider } from './nodemailer-email-provider';
 
-const log = createServiceLogger('email-provider-factory');
+export interface SmtpConfig {
+  host: string | undefined;
+  port: number;
+  user: string | undefined;
+  pass: string | undefined;
+  from: string;
+}
 
-let provider: EmailProvider | null = null;
+export interface CreateEmailProviderDeps {
+  smtp: SmtpConfig;
+  logger: Logger;
+}
 
-export function getEmailProvider(): EmailProvider {
-  if (provider) return provider;
+export function createEmailProvider(deps: CreateEmailProviderDeps): EmailProvider {
+  const { smtp, logger } = deps;
 
-  const { smtp } = getConfig();
   if (smtp.host) {
-    log.info({ host: smtp.host }, 'Using Nodemailer email provider');
-    provider = new NodemailerEmailProvider({
+    logger.info({ host: smtp.host }, 'Using Nodemailer email provider');
+    return new NodemailerEmailProvider({
       host: smtp.host,
       port: smtp.port,
       user: smtp.user,
       pass: smtp.pass,
       from: smtp.from,
     });
-  } else {
-    log.info('Using stub email provider (SMTP_HOST not configured)');
-    provider = new StubEmailProvider();
   }
 
-  return provider;
-}
-
-export function resetEmailProvider(): void {
-  provider = null;
+  logger.info('Using stub email provider (SMTP_HOST not configured)');
+  return new StubEmailProvider();
 }

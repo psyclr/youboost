@@ -53,8 +53,14 @@ export async function isRedisClientHealthy(client: Redis): Promise<boolean> {
   }
 }
 
-// Deprecated — singleton shim kept during Phase F1-F2 so unconverted modules still compile.
-// Delete in Phase 18 (sweep) after every module is factory-based.
+/**
+ * Internal singleton setter used only by the composition root and shared
+ * queue infrastructure. NOT exported via `shared/redis/index.ts` — modules
+ * must receive their Redis client through factory DI.
+ *
+ * Queue infra (`shared/queue/queue.ts`) is a module-level singleton by
+ * design; it consults this internal getter to obtain the shared client.
+ */
 let sharedRedis: Redis | null = null;
 
 export function setSharedRedis(client: Redis): void {
@@ -63,24 +69,9 @@ export function setSharedRedis(client: Redis): void {
 
 export function getRedis(): Redis {
   if (!sharedRedis) {
-    sharedRedis = createRedisClient({
-      url: process.env['REDIS_URL'] ?? 'redis://localhost:6379',
-    });
+    throw new Error(
+      'Shared Redis client not initialized. Call setSharedRedis(client) from the composition root before using queue infrastructure.',
+    );
   }
   return sharedRedis;
-}
-
-export async function connectRedis(): Promise<void> {
-  await connectRedisClient(getRedis());
-}
-
-export async function disconnectRedis(): Promise<void> {
-  if (sharedRedis) {
-    await disconnectRedisClient(sharedRedis);
-    sharedRedis = null;
-  }
-}
-
-export async function isRedisHealthy(): Promise<boolean> {
-  return isRedisClientHealthy(getRedis());
 }

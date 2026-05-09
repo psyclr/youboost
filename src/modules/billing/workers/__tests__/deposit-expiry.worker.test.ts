@@ -2,25 +2,24 @@ import type { DepositRecord } from '../../deposit.types';
 import type { DepositRepository } from '../../deposit.repository';
 import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 
-jest.mock('../../../../shared/redis/redis', () => ({
-  getRedis: jest.fn().mockReturnValue({ duplicate: jest.fn().mockReturnValue({}) }),
-}));
+// Intercept shared/queue so we don't touch real redis/bullmq wiring in tests.
+// Worker processor is captured via the startNamedWorker mock so tests can drive it.
+let capturedProcessor: ((job: unknown) => Promise<void>) | null = null;
 
-jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({
+jest.mock('../../../../shared/queue', () => ({
+  getNamedQueue: jest.fn().mockReturnValue({
     add: jest.fn().mockResolvedValue(undefined),
     close: jest.fn().mockResolvedValue(undefined),
-  })),
-  Worker: jest.fn().mockImplementation((_name: string, processor: Function) => {
-    (Worker as unknown as { __processor: Function }).__processor = processor;
-    return {
-      on: jest.fn(),
-      close: jest.fn().mockResolvedValue(undefined),
-    };
   }),
+  startNamedWorker: jest
+    .fn()
+    .mockImplementation(
+      async (_name: string, processor: (job: unknown) => Promise<void>): Promise<void> => {
+        capturedProcessor = processor;
+      },
+    ),
+  stopNamedWorker: jest.fn().mockResolvedValue(undefined),
 }));
-
-const { Worker } = jest.requireMock<typeof import('bullmq')>('bullmq');
 
 import { createDepositExpiryWorker } from '../deposit-expiry.worker';
 import { silentLogger } from '../../__tests__/fakes';
@@ -75,14 +74,15 @@ async function runProcessor(
 ): Promise<void> {
   const worker = createDepositExpiryWorker({ depositRepo, lifecycle, logger: silentLogger });
   await worker.start();
-  const processor = (Worker as unknown as { __processor: Function }).__processor;
-  await processor({});
+  if (!capturedProcessor) throw new Error('processor not captured');
+  await capturedProcessor({});
   await worker.stop();
 }
 
 describe('Deposit Expiry Worker', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    capturedProcessor = null;
   });
 
   it('should do nothing when no expired deposits', async () => {

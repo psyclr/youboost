@@ -1,8 +1,9 @@
+import type { Prisma, PrismaClient } from '../../../generated/prisma';
 import { createAuthEmailService } from '../auth-email.service';
 import {
   createFakeUserRepository,
   createFakeEmailTokenRepository,
-  createFakeEmailProvider,
+  createFakeOutbox,
   silentLogger,
 } from './fakes';
 
@@ -12,11 +13,6 @@ jest.mock('../utils/password', () => ({
 
 jest.mock('../utils/tokens', () => ({
   hashToken: (input: string): string => input, // identity hash so tests can control storage keys
-}));
-
-jest.mock('../../notifications', () => ({
-  verificationEmail: jest.fn().mockReturnValue({ subject: 'Verify', body: '<html>verify</html>' }),
-  passwordResetEmail: jest.fn().mockReturnValue({ subject: 'Reset', body: '<html>reset</html>' }),
 }));
 
 const mockUser = {
@@ -31,23 +27,32 @@ const mockUser = {
   updatedAt: new Date(),
 };
 
+function createFakePrisma(): PrismaClient {
+  const tx = {} as Prisma.TransactionClient;
+  return {
+    $transaction: async <T>(cb: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => cb(tx),
+  } as unknown as PrismaClient;
+}
+
 function setup(seed: { users?: Array<typeof mockUser> } = {}): {
   service: ReturnType<typeof createAuthEmailService>;
   userRepo: ReturnType<typeof createFakeUserRepository>;
   emailTokenRepo: ReturnType<typeof createFakeEmailTokenRepository>;
-  emailProvider: ReturnType<typeof createFakeEmailProvider>;
+  outbox: ReturnType<typeof createFakeOutbox>;
 } {
   const userRepo = createFakeUserRepository(seed);
   const emailTokenRepo = createFakeEmailTokenRepository();
-  const emailProvider = createFakeEmailProvider();
+  const outbox = createFakeOutbox();
+  const prisma = createFakePrisma();
   const service = createAuthEmailService({
+    prisma,
     userRepo,
     emailTokenRepo,
-    emailProvider,
+    outbox: outbox.port,
     appUrl: 'https://app.test',
     logger: silentLogger,
   });
-  return { service, userRepo, emailTokenRepo, emailProvider };
+  return { service, userRepo, emailTokenRepo, outbox };
 }
 
 describe('Auth Email Service', () => {
@@ -121,33 +126,34 @@ describe('Auth Email Service', () => {
   });
 
   describe('forgotPassword', () => {
-    it('should send reset email for existing user', async () => {
-      const { service, emailTokenRepo, emailProvider } = setup({ users: [mockUser] });
+    it('should emit password reset event for existing user', async () => {
+      const { service, emailTokenRepo, outbox } = setup({ users: [mockUser] });
 
       const result = await service.forgotPassword('a@b.com');
 
       expect(result.success).toBe(true);
       expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
-      expect(emailProvider.sent).toHaveLength(1);
-      expect(emailProvider.sent[0]?.to).toBe('a@b.com');
-      expect(emailProvider.sent[0]?.subject).toBe('Reset');
+      expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('RESET_PASSWORD');
+
+      const events = outbox.events.filter((e) => e.event.type === 'user.password_reset_requested');
+      expect(events).toHaveLength(1);
+      const payload = events[0]?.event.payload as {
+        userId: string;
+        email: string;
+        resetUrl: string;
+      };
+      expect(payload.email).toBe('a@b.com');
+      expect(payload.resetUrl).toMatch(/^https:\/\/app\.test\/reset-password\?token=/);
     });
 
-    it('should return success even for non-existing user', async () => {
-      const { service, emailTokenRepo, emailProvider } = setup();
+    it('should return success without emitting for non-existing user', async () => {
+      const { service, emailTokenRepo, outbox } = setup();
 
       const result = await service.forgotPassword('nope@test.com');
 
       expect(result.success).toBe(true);
       expect(emailTokenRepo.calls.createEmailToken).toHaveLength(0);
-      expect(emailProvider.sent).toHaveLength(0);
-    });
-
-    it('should swallow email provider errors and still return success', async () => {
-      const { service, emailProvider } = setup({ users: [mockUser] });
-      emailProvider.setFailure(new Error('SMTP down'));
-      const result = await service.forgotPassword('a@b.com');
-      expect(result.success).toBe(true);
+      expect(outbox.events).toHaveLength(0);
     });
   });
 
@@ -174,23 +180,6 @@ describe('Auth Email Service', () => {
       await expect(service.resetPassword('bad', 'NewPassword1')).rejects.toThrow(
         'Invalid or expired',
       );
-    });
-  });
-
-  describe('sendVerificationEmail', () => {
-    it('should create a token and send an email', async () => {
-      const { service, emailTokenRepo, emailProvider } = setup();
-      await service.sendVerificationEmail('user-1', 'a@b.com');
-      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
-      expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('VERIFY_EMAIL');
-      expect(emailProvider.sent).toHaveLength(1);
-      expect(emailProvider.sent[0]?.to).toBe('a@b.com');
-    });
-
-    it('should swallow provider errors', async () => {
-      const { service, emailProvider } = setup();
-      emailProvider.setFailure(new Error('SMTP down'));
-      await expect(service.sendVerificationEmail('user-1', 'a@b.com')).resolves.toBeUndefined();
     });
   });
 });

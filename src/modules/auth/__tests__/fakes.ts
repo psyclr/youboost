@@ -1,7 +1,8 @@
+import type { Prisma } from '../../../generated/prisma';
+import type { OutboxPort, OutboxEvent } from '../../../shared/outbox';
 import type { UserRepository } from '../user.repository';
 import type { TokenRepository } from '../token.repository';
 import type { EmailTokenRepository, EmailTokenType } from '../email-token.repository';
-import type { EmailProvider } from '../../notifications';
 
 type UserRecord = {
   id: string;
@@ -66,7 +67,7 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
       calls.findById.push(id);
       return store.get(id) ?? null;
     },
-    async createUser(data) {
+    async createUser(data, _tx) {
       calls.createUser.push(data);
       const id = `user-${idCounter++}`;
       const record: UserRecord = {
@@ -246,7 +247,8 @@ export function createFakeEmailTokenRepository(): FakeEmailTokenRepository {
   };
 
   return {
-    async createEmailToken(userId, type, ttlMs) {
+    async createEmailToken(params) {
+      const { userId, type, ttlMs } = params;
       calls.createEmailToken.push({ userId, type, ttlMs });
       const token = overrideToken ?? `token-${idCounter}`;
       // In real impl, the DB stores the hashed token. Here we store by token value
@@ -284,47 +286,21 @@ export function createFakeEmailTokenRepository(): FakeEmailTokenRepository {
   };
 }
 
-export type FakeEmailProvider = EmailProvider & {
-  sent: Array<{ to: string; subject: string; body: string }>;
-  setFailure: (err: Error | null) => void;
-};
-
-export function createFakeEmailProvider(): FakeEmailProvider {
-  const sent: FakeEmailProvider['sent'] = [];
-  let failure: Error | null = null;
-
-  return {
-    async send(params) {
-      if (failure) throw failure;
-      sent.push(params);
-    },
-    sent,
-    setFailure(err) {
-      failure = err;
-    },
-  };
+export interface FakeOutbox {
+  port: OutboxPort;
+  events: { event: OutboxEvent; tx: Prisma.TransactionClient }[];
 }
 
-export type FakeApplyReferral = ((userId: string, code: string) => Promise<void>) & {
-  calls: Array<{ userId: string; code: string }>;
-  setFailure: (err: Error | null) => void;
-};
-
-export function createFakeApplyReferral(): FakeApplyReferral {
-  const calls: FakeApplyReferral['calls'] = [];
-  let failure: Error | null = null;
-
-  const fn = (async (userId: string, code: string) => {
-    calls.push({ userId, code });
-    if (failure) throw failure;
-  }) as FakeApplyReferral;
-
-  fn.calls = calls;
-  fn.setFailure = (err) => {
-    failure = err;
+export function createFakeOutbox(): FakeOutbox {
+  const events: { event: OutboxEvent; tx: Prisma.TransactionClient }[] = [];
+  return {
+    port: {
+      async emit(event, tx): Promise<void> {
+        events.push({ event, tx });
+      },
+    },
+    events,
   };
-
-  return fn;
 }
 
 export const silentLogger = {

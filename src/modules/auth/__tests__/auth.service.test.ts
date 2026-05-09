@@ -1,8 +1,10 @@
+import type { Prisma, PrismaClient } from '../../../generated/prisma';
 import { createAuthService } from '../auth.service';
 import {
   createFakeUserRepository,
   createFakeTokenRepository,
-  createFakeApplyReferral,
+  createFakeEmailTokenRepository,
+  createFakeOutbox,
   silentLogger,
 } from './fakes';
 
@@ -30,25 +32,35 @@ const mockUser = {
   updatedAt: new Date(),
 };
 
+function createFakePrisma(): PrismaClient {
+  const tx = {} as Prisma.TransactionClient;
+  return {
+    $transaction: async <T>(cb: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => cb(tx),
+  } as unknown as PrismaClient;
+}
+
 function setup(seed: { users?: Array<typeof mockUser> } = {}): {
   service: ReturnType<typeof createAuthService>;
   userRepo: ReturnType<typeof createFakeUserRepository>;
   tokenStore: ReturnType<typeof createFakeTokenRepository>;
-  applyReferral: ReturnType<typeof createFakeApplyReferral>;
-  sendVerificationEmail: jest.Mock;
+  emailTokenRepo: ReturnType<typeof createFakeEmailTokenRepository>;
+  outbox: ReturnType<typeof createFakeOutbox>;
 } {
   const userRepo = createFakeUserRepository(seed);
   const tokenStore = createFakeTokenRepository();
-  const sendVerificationEmail = jest.fn().mockResolvedValue(undefined);
-  const applyReferral = createFakeApplyReferral();
+  const emailTokenRepo = createFakeEmailTokenRepository();
+  const outbox = createFakeOutbox();
+  const prisma = createFakePrisma();
   const service = createAuthService({
+    prisma,
     userRepo,
     tokenStore,
-    sendVerificationEmail,
-    applyReferral,
+    emailTokenRepo,
+    outbox: outbox.port,
+    appUrl: 'https://app.test',
     logger: silentLogger,
   });
-  return { service, userRepo, tokenStore, applyReferral, sendVerificationEmail };
+  return { service, userRepo, tokenStore, emailTokenRepo, outbox };
 }
 
 describe('Auth Service', () => {
@@ -92,40 +104,67 @@ describe('Auth Service', () => {
       ).rejects.toThrow('Email or username already taken');
     });
 
-    it('should fire-and-forget verification email', async () => {
-      const { service, sendVerificationEmail } = setup();
+    it('should emit user.email_verification_requested via outbox', async () => {
+      const { service, outbox } = setup();
       await service.register({
         email: 'new@test.com',
         password: 'Password1',
         username: 'newuser',
       });
-      // fireAndForget resolves synchronously in happy path
-      await new Promise((r) => setImmediate(r));
-      expect(sendVerificationEmail).toHaveBeenCalledTimes(1);
+
+      const verificationEvents = outbox.events.filter(
+        (e) => e.event.type === 'user.email_verification_requested',
+      );
+      expect(verificationEvents).toHaveLength(1);
+      const payload = verificationEvents[0]?.event.payload as {
+        userId: string;
+        email: string;
+        verifyUrl: string;
+      };
+      expect(payload.email).toBe('new@test.com');
+      expect(payload.verifyUrl).toMatch(/^https:\/\/app\.test\/verify-email\?token=/);
     });
 
-    it('should fire-and-forget referral when code provided', async () => {
-      const { service, applyReferral } = setup();
+    it('should create a verification email token', async () => {
+      const { service, emailTokenRepo } = setup();
+      await service.register({
+        email: 'new@test.com',
+        password: 'Password1',
+        username: 'newuser',
+      });
+
+      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
+      expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('VERIFY_EMAIL');
+    });
+
+    it('should emit referral.applied when referralCode provided', async () => {
+      const { service, outbox } = setup();
       await service.register({
         email: 'new@test.com',
         password: 'Password1',
         username: 'newuser',
         referralCode: 'REF123',
       });
-      await new Promise((r) => setImmediate(r));
-      expect(applyReferral.calls).toHaveLength(1);
-      expect(applyReferral.calls[0]?.code).toBe('REF123');
+
+      const referralEvents = outbox.events.filter((e) => e.event.type === 'referral.applied');
+      expect(referralEvents).toHaveLength(1);
+      const payload = referralEvents[0]?.event.payload as {
+        userId: string;
+        referralCode: string;
+      };
+      expect(payload.referralCode).toBe('REF123');
     });
 
-    it('should not call referral when code omitted', async () => {
-      const { service, applyReferral } = setup();
+    it('should not emit referral.applied when code omitted', async () => {
+      const { service, outbox } = setup();
       await service.register({
         email: 'new@test.com',
         password: 'Password1',
         username: 'newuser',
       });
-      await new Promise((r) => setImmediate(r));
-      expect(applyReferral.calls).toHaveLength(0);
+
+      const referralEvents = outbox.events.filter((e) => e.event.type === 'referral.applied');
+      expect(referralEvents).toHaveLength(0);
     });
   });
 

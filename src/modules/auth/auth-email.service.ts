@@ -1,29 +1,31 @@
 import type { Logger } from 'pino';
+import type { PrismaClient } from '../../generated/prisma';
 import { ValidationError } from '../../shared/errors';
+import type { OutboxPort } from '../../shared/outbox';
 import { hashToken } from './utils/tokens';
 import { hashPassword } from './utils/password';
 import type { UserRepository } from './user.repository';
 import type { EmailTokenRepository, EmailTokenType } from './email-token.repository';
-import { verificationEmail, passwordResetEmail } from '../notifications';
-import type { EmailProvider } from '../notifications';
+
+const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export interface AuthEmailService {
   verifyEmail(token: string): Promise<{ success: boolean }>;
   forgotPassword(email: string): Promise<{ success: boolean }>;
   resetPassword(token: string, newPassword: string): Promise<{ success: boolean }>;
-  sendVerificationEmail(userId: string, email: string): Promise<void>;
 }
 
 export interface AuthEmailServiceDeps {
+  prisma: PrismaClient;
   userRepo: UserRepository;
   emailTokenRepo: EmailTokenRepository;
-  emailProvider: EmailProvider;
+  outbox: OutboxPort;
   appUrl: string;
   logger: Logger;
 }
 
 export function createAuthEmailService(deps: AuthEmailServiceDeps): AuthEmailService {
-  const { userRepo, emailTokenRepo, emailProvider, appUrl, logger } = deps;
+  const { prisma, userRepo, emailTokenRepo, outbox, appUrl, logger } = deps;
 
   async function consumeEmailToken(token: string, expectedType: EmailTokenType): Promise<string> {
     const tokenHash = hashToken(token);
@@ -51,21 +53,28 @@ export function createAuthEmailService(deps: AuthEmailServiceDeps): AuthEmailSer
       return { success: true };
     }
 
-    const token = await emailTokenRepo.createEmailToken(user.id, 'RESET_PASSWORD', 60 * 60 * 1000);
-    const resetUrl = `${appUrl}/reset-password?token=${token}`;
-
-    try {
-      const emailContent = passwordResetEmail(resetUrl);
-      await emailProvider.send({
-        to: user.email,
-        subject: emailContent.subject,
-        body: emailContent.body,
+    await prisma.$transaction(async (tx) => {
+      const token = await emailTokenRepo.createEmailToken({
+        userId: user.id,
+        type: 'RESET_PASSWORD',
+        ttlMs: PASSWORD_RESET_TOKEN_TTL_MS,
+        tx,
       });
-      logger.info({ userId: user.id }, 'Password reset email sent');
-    } catch (err) {
-      logger.error({ err, userId: user.id }, 'Failed to send password reset email');
-    }
+      const resetUrl = `${appUrl}/reset-password?token=${token}`;
 
+      await outbox.emit(
+        {
+          type: 'user.password_reset_requested',
+          aggregateType: 'user',
+          aggregateId: user.id,
+          userId: user.id,
+          payload: { userId: user.id, email: user.email, resetUrl },
+        },
+        tx,
+      );
+    });
+
+    logger.info({ userId: user.id }, 'Password reset requested');
     return { success: true };
   }
 
@@ -77,31 +86,9 @@ export function createAuthEmailService(deps: AuthEmailServiceDeps): AuthEmailSer
     return { success: true };
   }
 
-  async function sendVerificationEmail(userId: string, email: string): Promise<void> {
-    const token = await emailTokenRepo.createEmailToken(
-      userId,
-      'VERIFY_EMAIL',
-      24 * 60 * 60 * 1000,
-    );
-    const verifyUrl = `${appUrl}/verify-email?token=${token}`;
-
-    try {
-      const emailContent = verificationEmail(verifyUrl);
-      await emailProvider.send({
-        to: email,
-        subject: emailContent.subject,
-        body: emailContent.body,
-      });
-      logger.info({ userId }, 'Verification email sent');
-    } catch (err) {
-      logger.error({ err, userId }, 'Failed to send verification email');
-    }
-  }
-
   return {
     verifyEmail,
     forgotPassword,
     resetPassword,
-    sendVerificationEmail,
   };
 }

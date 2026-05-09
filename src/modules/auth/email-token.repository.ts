@@ -1,10 +1,19 @@
-import type { PrismaClient } from '../../generated/prisma';
+import type { Prisma, PrismaClient } from '../../generated/prisma';
 import { generateEmailToken, hashToken } from './utils/tokens';
+
+type PrismaTransactionClient = Prisma.TransactionClient;
 
 export type EmailTokenType = 'VERIFY_EMAIL' | 'RESET_PASSWORD';
 
+export interface CreateEmailTokenParams {
+  userId: string;
+  type: EmailTokenType;
+  ttlMs: number;
+  tx?: PrismaTransactionClient;
+}
+
 export interface EmailTokenRepository {
-  createEmailToken(userId: string, type: EmailTokenType, ttlMs: number): Promise<string>;
+  createEmailToken(params: CreateEmailTokenParams): Promise<string>;
   findEmailTokenByHash(tokenHash: string): Promise<{
     id: string;
     userId: string;
@@ -16,16 +25,14 @@ export interface EmailTokenRepository {
 }
 
 export function createEmailTokenRepository(prisma: PrismaClient): EmailTokenRepository {
-  async function createEmailToken(
-    userId: string,
-    type: EmailTokenType,
-    ttlMs: number,
-  ): Promise<string> {
+  async function createEmailToken(params: CreateEmailTokenParams): Promise<string> {
+    const { userId, type, ttlMs, tx } = params;
     const token = generateEmailToken();
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + ttlMs);
 
-    await prisma.emailToken.create({
+    const client = tx ?? prisma;
+    await client.emailToken.create({
       data: { userId, tokenHash, type, expiresAt },
     });
 

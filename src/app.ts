@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
+import type Redis from 'ioredis';
 import Stripe from 'stripe';
+import type { PrismaClient } from './generated/prisma';
+import type { AppConfig } from './shared/config';
 import { createServiceLogger } from './shared/utils/logger';
-import { getConfig } from './shared/config';
-import { getPrisma } from './shared/database/prisma';
-import { getRedis } from './shared/redis/redis';
 import { createRedisCache } from './shared/cache/redis-cache';
 import { setupFastifyApp } from './composition/setup-fastify';
 import { buildOutboxHandlers } from './composition/outbox-handlers';
@@ -31,7 +31,7 @@ import { createCatalogService } from './modules/catalog/catalog.service';
 import { createNotificationRepository } from './modules/notifications/notification.repository';
 import { createNotificationsService } from './modules/notifications/notifications.service';
 import { createNotificationDispatcher } from './modules/notifications/notification-dispatcher';
-import { getEmailProvider } from './modules/notifications/utils/email-provider-factory';
+import type { EmailProvider } from './modules/notifications';
 import { createSupportRepository } from './modules/support/support.repository';
 import { createSupportService } from './modules/support/support.service';
 import { createReferralsRepository } from './modules/referrals/referrals.repository';
@@ -42,6 +42,7 @@ import { createCouponsRepository } from './modules/coupons/coupons.repository';
 import { createCouponsService } from './modules/coupons/coupons.service';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
+import { createHealthCheck } from './shared/health/health';
 
 const log = createServiceLogger('http');
 
@@ -55,8 +56,17 @@ export interface CreatedApp {
   workers: AppWorkers;
 }
 
-export async function createApp(): Promise<CreatedApp> {
-  const config = getConfig();
+export interface CreateAppDeps {
+  prisma: PrismaClient;
+  redis: Redis;
+  emailProvider: EmailProvider;
+  config: AppConfig;
+}
+
+export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
+  const { prisma, redis, emailProvider, config } = deps;
+
+  const checkHealth = createHealthCheck({ prisma, redis });
   const app = await setupFastifyApp(
     {
       corsOrigin: config.security.corsOrigin,
@@ -64,16 +74,15 @@ export async function createApp(): Promise<CreatedApp> {
       rateLimitWindowMs: config.security.rateLimitWindowMs,
     },
     log,
+    checkHealth,
   );
 
   // Composition root — factory-based DI.
-  const prisma = getPrisma();
-  const redis = getRedis();
   const cache = createRedisCache(redis);
 
-  // Auth repos + middleware wired early; services wired below (need notifications + referrals).
+  // Auth repos + middleware wired early; services wired below (need outbox + email).
   const userRepo = createUserRepository(prisma);
-  const tokenRepo = createTokenRepository(prisma);
+  const tokenRepo = createTokenRepository(prisma, redis);
   const emailTokenRepo = createEmailTokenRepository(prisma);
   const authenticate = createAuthenticate({ tokenStore: tokenRepo });
 
@@ -105,7 +114,6 @@ export async function createApp(): Promise<CreatedApp> {
   // prettier-ignore
   const couponsService = createCouponsService({ couponsRepo, logger: createServiceLogger('coupons') });
 
-  const emailProvider = getEmailProvider();
   const notificationRepo = createNotificationRepository(prisma);
   const notificationDispatcher = createNotificationDispatcher({
     notificationRepo,
@@ -170,35 +178,18 @@ export async function createApp(): Promise<CreatedApp> {
   const referralsService = createReferralsService({ referralsRepo, walletOps: referralsWalletOps, prisma, logger: createServiceLogger('referrals') });
 
   // prettier-ignore
-  const authEmailService = createAuthEmailService({ userRepo, emailTokenRepo, emailProvider, appUrl: config.app.url, logger: createServiceLogger('auth-email') });
+  const authEmailService = createAuthEmailService({ prisma, userRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth-email') });
   // prettier-ignore
-  const authService = createAuthService({ userRepo, tokenStore: tokenRepo, sendVerificationEmail: authEmailService.sendVerificationEmail, applyReferral: referralsService.applyReferral, logger: createServiceLogger('auth') });
+  const authService = createAuthService({ prisma, userRepo, tokenStore: tokenRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth') });
 
   // Orders module — factory-wired with outbox producer semantics.
   const ordersRepo = createOrdersRepository(prisma);
   const servicesRepo = createServicesRepository(prisma);
-  const fundSettlement = createFundSettlement({
-    billing: {
-      chargeFunds: billingInternal.chargeFunds,
-      releaseFunds: billingInternal.releaseFunds,
-      refundFunds: billingInternal.refundFunds,
-    },
-    logger: createServiceLogger('fund-settlement'),
-  });
+  // prettier-ignore
+  const fundSettlement = createFundSettlement({ billing: { chargeFunds: billingInternal.chargeFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, logger: createServiceLogger('fund-settlement') });
   const circuitBreaker = createCircuitBreaker();
-  const ordersService = createOrdersService({
-    prisma,
-    ordersRepo,
-    servicesRepo,
-    billing: {
-      holdFunds: billingInternal.holdFunds,
-      releaseFunds: billingInternal.releaseFunds,
-    },
-    providerSelector,
-    couponsService,
-    outbox,
-    logger: createServiceLogger('orders'),
-  });
+  // prettier-ignore
+  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, couponsService, outbox, logger: createServiceLogger('orders') });
 
   // Admin module — fan-in consumer of every other module.
   const adminServices = buildAdminServices({
@@ -231,7 +222,13 @@ export async function createApp(): Promise<CreatedApp> {
 
   // Outbox handler registry — wires domain events to side-effect producers.
   const handlerRegistry = createHandlerRegistry(
-    buildOutboxHandlers({ webhookDispatcher, notificationsService, couponsService }),
+    buildOutboxHandlers({
+      webhookDispatcher,
+      notificationsService,
+      couponsService,
+      referralsService,
+      emailProvider,
+    }),
   );
   const outboxWorker = createOutboxWorker({
     outboxRepo,

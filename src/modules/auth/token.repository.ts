@@ -1,5 +1,5 @@
+import type Redis from 'ioredis';
 import type { PrismaClient } from '../../generated/prisma';
-import { getRedis } from '../../shared/redis';
 
 const BLACKLIST_PREFIX = 'bl:';
 
@@ -21,7 +21,7 @@ export interface TokenRepository {
   isAccessTokenBlacklisted(jti: string): Promise<boolean>;
 }
 
-export function createTokenRepository(prisma: PrismaClient): TokenRepository {
+export function createTokenRepository(prisma: PrismaClient, redis: Redis): TokenRepository {
   async function saveRefreshToken(
     userId: string,
     tokenHash: string,
@@ -57,12 +57,10 @@ export function createTokenRepository(prisma: PrismaClient): TokenRepository {
   }
 
   async function blacklistAccessToken(jti: string, expiresIn: number): Promise<void> {
-    const redis = getRedis();
     await redis.set(`${BLACKLIST_PREFIX}${jti}`, '1', 'EX', expiresIn);
   }
 
   async function isAccessTokenBlacklisted(jti: string): Promise<boolean> {
-    const redis = getRedis();
     const result = await redis.get(`${BLACKLIST_PREFIX}${jti}`);
     return result !== null;
   }

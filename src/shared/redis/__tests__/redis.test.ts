@@ -1,4 +1,9 @@
-import { getRedis, connectRedis, disconnectRedis, isRedisHealthy } from '../redis';
+import {
+  createRedisClient,
+  connectRedisClient,
+  disconnectRedisClient,
+  isRedisClientHealthy,
+} from '../redis';
 
 const mockPing = jest.fn().mockResolvedValue('PONG');
 const mockQuit = jest.fn().mockResolvedValue('OK');
@@ -28,62 +33,59 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 describe('Redis Module', () => {
-  afterEach(async () => {
-    await disconnectRedis();
+  beforeEach(() => {
     jest.clearAllMocks();
     capturedOptions = {};
   });
 
-  describe('getRedis', () => {
+  describe('createRedisClient', () => {
     it('should return a Redis instance', () => {
-      const client = getRedis();
+      const client = createRedisClient({ url: 'redis://localhost' });
       expect(client).toBeDefined();
       expect(typeof client.ping).toBe('function');
     });
 
-    it('should return the same instance (singleton)', () => {
-      const client1 = getRedis();
-      const client2 = getRedis();
-      expect(client1).toBe(client2);
+    it('should return a new instance each call', () => {
+      const c1 = createRedisClient({ url: 'redis://localhost' });
+      const c2 = createRedisClient({ url: 'redis://localhost' });
+      expect(c1).not.toBe(c2);
     });
   });
 
-  describe('connectRedis', () => {
+  describe('connectRedisClient', () => {
     it('should verify connection with ping', async () => {
-      await connectRedis();
+      const client = createRedisClient({ url: 'redis://localhost' });
+      await connectRedisClient(client);
       expect(mockPing).toHaveBeenCalled();
     });
   });
 
-  describe('disconnectRedis', () => {
+  describe('disconnectRedisClient', () => {
     it('should call quit on the client', async () => {
-      getRedis();
-      await disconnectRedis();
+      const client = createRedisClient({ url: 'redis://localhost' });
+      await disconnectRedisClient(client);
       expect(mockQuit).toHaveBeenCalled();
-    });
-
-    it('should be safe to call when not connected', async () => {
-      await disconnectRedis();
-      expect(mockQuit).not.toHaveBeenCalled();
     });
   });
 
-  describe('isRedisHealthy', () => {
+  describe('isRedisClientHealthy', () => {
     it('should return true when redis responds with PONG', async () => {
-      const healthy = await isRedisHealthy();
+      const client = createRedisClient({ url: 'redis://localhost' });
+      const healthy = await isRedisClientHealthy(client);
       expect(healthy).toBe(true);
     });
 
     it('should return false when ping fails', async () => {
+      const client = createRedisClient({ url: 'redis://localhost' });
       mockPing.mockRejectedValueOnce(new Error('Connection refused'));
-      const healthy = await isRedisHealthy();
+      const healthy = await isRedisClientHealthy(client);
       expect(healthy).toBe(false);
     });
   });
 
   describe('retryStrategy', () => {
     it('should return a delay with exponential backoff', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const retryStrategy = capturedOptions['retryStrategy'] as (times: number) => number | null;
       expect(retryStrategy(1)).toBe(200);
       expect(retryStrategy(2)).toBe(400);
@@ -91,13 +93,13 @@ describe('Redis Module', () => {
     });
 
     it('should cap delay at 5000ms', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const retryStrategy = capturedOptions['retryStrategy'] as (times: number) => number | null;
       expect(retryStrategy(10)).toBe(2000);
     });
 
     it('should return null after max retries', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const retryStrategy = capturedOptions['retryStrategy'] as (times: number) => number | null;
       expect(retryStrategy(11)).toBeNull();
     });
@@ -105,7 +107,7 @@ describe('Redis Module', () => {
 
   describe('event handlers', () => {
     it('should register error and connect handlers', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const calls = mockOn.mock.calls as [string, (...args: unknown[]) => void][];
       const eventNames = calls.map(([name]) => name);
       expect(eventNames).toContain('error');
@@ -113,7 +115,7 @@ describe('Redis Module', () => {
     });
 
     it('should handle error events without throwing', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const calls = mockOn.mock.calls as [string, (...args: unknown[]) => void][];
       const errorHandler = calls.find(([name]) => name === 'error');
       expect(() => {
@@ -122,7 +124,7 @@ describe('Redis Module', () => {
     });
 
     it('should handle connect events without throwing', () => {
-      getRedis();
+      createRedisClient({ url: 'redis://localhost' });
       const calls = mockOn.mock.calls as [string, (...args: unknown[]) => void][];
       const connectHandler = calls.find(([name]) => name === 'connect');
       expect(() => {
