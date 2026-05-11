@@ -3,7 +3,7 @@ import { generateEmailToken, hashToken } from './utils/tokens';
 
 type PrismaTransactionClient = Prisma.TransactionClient;
 
-export type EmailTokenType = 'VERIFY_EMAIL' | 'RESET_PASSWORD';
+export type EmailTokenType = 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'AUTO_USER_SETUP';
 
 export interface CreateEmailTokenParams {
   userId: string;
