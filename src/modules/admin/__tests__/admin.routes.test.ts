@@ -8,6 +8,7 @@ import type { AdminDepositsService } from '../admin-deposits.service';
 import type { AdminOrdersService } from '../admin-orders.service';
 import type { AdminServicesService } from '../admin-services.service';
 import type { AdminUsersService } from '../admin-users.service';
+import type { AdminOutboxService } from '../admin-outbox.service';
 
 function buildFakes(): {
   dashboardService: jest.Mocked<AdminDashboardService>;
@@ -16,6 +17,7 @@ function buildFakes(): {
   ordersService: jest.Mocked<AdminOrdersService>;
   servicesService: jest.Mocked<AdminServicesService>;
   usersService: jest.Mocked<AdminUsersService>;
+  outboxService: jest.Mocked<AdminOutboxService>;
 } {
   return {
     dashboardService: {
@@ -46,6 +48,9 @@ function buildFakes(): {
       getUser: jest.fn(),
       updateUser: jest.fn(),
     } as unknown as jest.Mocked<AdminUsersService>,
+    outboxService: {
+      getStats: jest.fn(),
+    } as unknown as jest.Mocked<AdminOutboxService>,
   };
 }
 
@@ -89,6 +94,34 @@ beforeEach(() => {
 });
 
 describe('Admin Routes (factory)', () => {
+  describe('GET /admin/outbox', () => {
+    it('returns outbox stats with default limit', async () => {
+      fakes.outboxService.getStats.mockResolvedValue({
+        counts: { PENDING: 2, DISPATCHED: 5, FAILED: 1 },
+        stuck: [],
+      });
+      const res = await app.inject({ method: 'GET', url: '/admin/outbox' });
+      expect(res.statusCode).toBe(200);
+      expect(fakes.outboxService.getStats).toHaveBeenCalledWith(50);
+      expect(JSON.parse(res.body)).toEqual({
+        counts: { PENDING: 2, DISPATCHED: 5, FAILED: 1 },
+        stuck: [],
+      });
+    });
+
+    it('respects custom limit capped at 500', async () => {
+      fakes.outboxService.getStats.mockResolvedValue({
+        counts: { PENDING: 0, DISPATCHED: 0, FAILED: 0 },
+        stuck: [],
+      });
+      await app.inject({ method: 'GET', url: '/admin/outbox?limit=10' });
+      expect(fakes.outboxService.getStats).toHaveBeenCalledWith(10);
+      fakes.outboxService.getStats.mockClear();
+      await app.inject({ method: 'GET', url: '/admin/outbox?limit=9999' });
+      expect(fakes.outboxService.getStats).toHaveBeenCalledWith(500);
+    });
+  });
+
   describe('GET /admin/users', () => {
     it('should return users list', async () => {
       fakes.usersService.listUsers.mockResolvedValue({ users: [], ...paginatedRes });

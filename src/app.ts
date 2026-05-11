@@ -202,6 +202,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     servicesRepo,
     providersRepo,
     billingInternal,
+    outboxRepo,
   });
 
   // Workers (lifecycle-only instances; started/stopped via returned workers facade).

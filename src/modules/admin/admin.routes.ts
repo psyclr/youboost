@@ -12,6 +12,7 @@ import type { AdminDepositsService } from './admin-deposits.service';
 import type { AdminOrdersService } from './admin-orders.service';
 import type { AdminServicesService } from './admin-services.service';
 import type { AdminUsersService } from './admin-users.service';
+import type { AdminOutboxService } from './admin-outbox.service';
 import {
   adminUsersQuerySchema,
   adminUserIdSchema,
@@ -74,6 +75,7 @@ export interface AdminRoutesDeps {
   ordersService: AdminOrdersService;
   servicesService: AdminServicesService;
   usersService: AdminUsersService;
+  outboxService: AdminOutboxService;
   authenticate: preHandlerAsyncHookHandler;
   requireAdmin: (req: FastifyRequest) => void | Promise<void>;
 }
@@ -86,12 +88,24 @@ export function createAdminRoutes(deps: AdminRoutesDeps): FastifyPluginAsync {
     ordersService,
     servicesService,
     usersService,
+    outboxService,
     authenticate,
     requireAdmin,
   } = deps;
 
   return async (app) => {
     app.addHook('preHandler', authenticate);
+
+    // Outbox observability
+    app.get('/outbox', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const q = request.query as { limit?: string } | undefined;
+      const parsedLimit = q?.limit != null ? Number.parseInt(q.limit, 10) : 50;
+      const limit =
+        Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 50;
+      const result = await outboxService.getStats(limit);
+      return reply.status(StatusCodes.OK).send(result);
+    });
 
     // Users
     app.get('/users', async (request: FastifyRequest, reply: FastifyReply) => {

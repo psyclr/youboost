@@ -10,6 +10,7 @@ import type {
 } from '../modules/billing';
 import type { OrdersRepository, ServicesRepository } from '../modules/orders';
 import type { ProvidersRepository } from '../modules/providers';
+import type { OutboxRepository } from '../shared/outbox';
 import { createAdminDashboardRepository } from '../modules/admin/admin-dashboard.repository';
 import {
   createAdminDashboardService,
@@ -35,6 +36,10 @@ import {
   createAdminUsersService,
   type AdminUsersService,
 } from '../modules/admin/admin-users.service';
+import {
+  createAdminOutboxService,
+  type AdminOutboxService,
+} from '../modules/admin/admin-outbox.service';
 
 export interface AdminServices {
   dashboardService: AdminDashboardService;
@@ -43,6 +48,7 @@ export interface AdminServices {
   ordersService: AdminOrdersService;
   servicesService: AdminServicesService;
   usersService: AdminUsersService;
+  outboxService: AdminOutboxService;
 }
 
 export interface BuildAdminServicesDeps {
@@ -55,6 +61,7 @@ export interface BuildAdminServicesDeps {
   servicesRepo: ServicesRepository;
   providersRepo: ProvidersRepository;
   billingInternal: BillingInternalService;
+  outboxRepo: OutboxRepository;
   loggerFactory?: (name: string) => Logger;
 }
 
@@ -96,6 +103,10 @@ export function buildAdminServices(deps: BuildAdminServicesDeps): AdminServices 
       userRepo: deps.userRepo,
       walletRepo: deps.walletRepo,
       logger: logger('admin-users'),
+    }),
+    outboxService: createAdminOutboxService({
+      outboxRepo: deps.outboxRepo,
+      logger: logger('admin-outbox'),
     }),
   };
 }
