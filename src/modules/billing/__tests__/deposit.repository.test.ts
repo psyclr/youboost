@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../../../generated/prisma';
+import type { Prisma, PrismaClient } from '../../../generated/prisma';
 import { createDepositRepository } from '../deposit.repository';
 
 const mockDeposit = {
@@ -22,18 +22,35 @@ function makePrisma(): {
   create: jest.Mock;
   findFirst: jest.Mock;
   findMany: jest.Mock;
+  findUnique: jest.Mock;
   count: jest.Mock;
   update: jest.Mock;
 } {
   const create = jest.fn();
   const findFirst = jest.fn();
   const findMany = jest.fn();
+  const findUnique = jest.fn();
   const count = jest.fn();
   const update = jest.fn();
   const prisma = {
-    deposit: { create, findFirst, findMany, count, update },
+    deposit: { create, findFirst, findMany, findUnique, count, update },
   } as unknown as PrismaClient;
-  return { prisma, create, findFirst, findMany, count, update };
+  return { prisma, create, findFirst, findMany, findUnique, count, update };
+}
+
+function makeTx(): {
+  tx: Prisma.TransactionClient;
+  findFirst: jest.Mock;
+  findUnique: jest.Mock;
+  update: jest.Mock;
+} {
+  const findFirst = jest.fn();
+  const findUnique = jest.fn();
+  const update = jest.fn();
+  const tx = {
+    deposit: { findFirst, findUnique, update },
+  } as unknown as Prisma.TransactionClient;
+  return { tx, findFirst, findUnique, update };
 }
 
 describe('Deposit Repository', () => {
@@ -203,6 +220,211 @@ describe('Deposit Repository', () => {
         where: { id: 'dep-1' },
         data: { status: 'EXPIRED' },
       });
+    });
+
+    it('should use transaction client when tx is provided', async () => {
+      const { prisma, update: prismaUpdate } = makePrisma();
+      const { tx, update: txUpdate } = makeTx();
+      txUpdate.mockResolvedValue({ ...mockDeposit, status: 'CONFIRMED' });
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.updateDepositStatus(
+        'dep-1',
+        { status: 'CONFIRMED', txHash: '0x1', confirmedAt: new Date(), ledgerEntryId: 'l-1' },
+        tx,
+      );
+
+      expect(result.status).toBe('CONFIRMED');
+      expect(txUpdate).toHaveBeenCalledTimes(1);
+      expect(prismaUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findDepositById with tx', () => {
+    it('should use transaction client when tx is provided', async () => {
+      const { prisma, findFirst: prismaFindFirst } = makePrisma();
+      const { tx, findFirst: txFindFirst } = makeTx();
+      txFindFirst.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findDepositById('dep-1', undefined, tx);
+
+      expect(result?.id).toBe('dep-1');
+      expect(txFindFirst).toHaveBeenCalledWith({ where: { id: 'dep-1' } });
+      expect(prismaFindFirst).not.toHaveBeenCalled();
+    });
+
+    it('should include userId in where clause when tx and userId provided', async () => {
+      const { prisma } = makePrisma();
+      const { tx, findFirst: txFindFirst } = makeTx();
+      txFindFirst.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
+
+      await repo.findDepositById('dep-1', 'user-1', tx);
+
+      expect(txFindFirst).toHaveBeenCalledWith({
+        where: { id: 'dep-1', userId: 'user-1' },
+      });
+    });
+  });
+
+  describe('findAllDeposits', () => {
+    it('returns paginated deposits with empty filters', async () => {
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([mockDeposit]);
+      count.mockResolvedValue(1);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findAllDeposits({ page: 1, limit: 10 });
+
+      expect(result).toEqual({ deposits: [mockDeposit], total: 1 });
+      expect(findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 10,
+      });
+      expect(count).toHaveBeenCalledWith({ where: {} });
+    });
+
+    it('filters by status and userId', async () => {
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
+
+      await repo.findAllDeposits({ status: 'CONFIRMED', userId: 'user-1', page: 2, limit: 5 });
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { status: 'CONFIRMED', userId: 'user-1' },
+        orderBy: { createdAt: 'desc' },
+        skip: 5,
+        take: 5,
+      });
+      expect(count).toHaveBeenCalledWith({ where: { status: 'CONFIRMED', userId: 'user-1' } });
+    });
+
+    it('filters by status only', async () => {
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
+
+      await repo.findAllDeposits({ status: 'EXPIRED', page: 1, limit: 20 });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'EXPIRED' },
+        }),
+      );
+    });
+
+    it('filters by userId only', async () => {
+      const { prisma, findMany, count } = makePrisma();
+      findMany.mockResolvedValue([]);
+      count.mockResolvedValue(0);
+      const repo = createDepositRepository(prisma);
+
+      await repo.findAllDeposits({ userId: 'user-1', page: 1, limit: 20 });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-1' },
+        }),
+      );
+    });
+  });
+
+  describe('findExpiredPendingDeposits', () => {
+    it('returns PENDING deposits past expiresAt ordered asc', async () => {
+      const { prisma, findMany } = makePrisma();
+      findMany.mockResolvedValue([mockDeposit]);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findExpiredPendingDeposits();
+
+      expect(result).toEqual([mockDeposit]);
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          status: 'PENDING',
+          expiresAt: { lt: expect.any(Date) },
+        },
+        orderBy: { expiresAt: 'asc' },
+        take: 200,
+      });
+    });
+  });
+
+  describe('updateDepositStripeSession', () => {
+    it('sets stripeSessionId and payment method STRIPE', async () => {
+      const { prisma, update } = makePrisma();
+      update.mockResolvedValue({ ...mockDeposit, stripeSessionId: 'sess_1' });
+      const repo = createDepositRepository(prisma);
+
+      await repo.updateDepositStripeSession('dep-1', 'sess_1');
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'dep-1' },
+        data: { stripeSessionId: 'sess_1', paymentMethod: 'STRIPE' },
+      });
+    });
+  });
+
+  describe('updateDepositCryptomusOrder', () => {
+    it('sets cryptomus order fields and payment method CRYPTOMUS', async () => {
+      const { prisma, update } = makePrisma();
+      update.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
+
+      await repo.updateDepositCryptomusOrder('dep-1', {
+        cryptomusOrderId: 'crypto-1',
+        cryptomusCheckoutUrl: 'https://pay.cryptomus.com/abc',
+      });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'dep-1' },
+        data: {
+          cryptomusOrderId: 'crypto-1',
+          cryptomusCheckoutUrl: 'https://pay.cryptomus.com/abc',
+          paymentMethod: 'CRYPTOMUS',
+        },
+      });
+    });
+  });
+
+  describe('findDepositByCryptomusOrderId', () => {
+    it('returns deposit when found via prisma', async () => {
+      const { prisma, findUnique } = makePrisma();
+      findUnique.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findDepositByCryptomusOrderId('crypto-1');
+
+      expect(result?.id).toBe('dep-1');
+      expect(findUnique).toHaveBeenCalledWith({ where: { cryptomusOrderId: 'crypto-1' } });
+    });
+
+    it('returns null when not found', async () => {
+      const { prisma, findUnique } = makePrisma();
+      findUnique.mockResolvedValue(null);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findDepositByCryptomusOrderId('missing');
+
+      expect(result).toBeNull();
+    });
+
+    it('uses transaction client when tx is provided', async () => {
+      const { prisma, findUnique: prismaFindUnique } = makePrisma();
+      const { tx, findUnique: txFindUnique } = makeTx();
+      txFindUnique.mockResolvedValue(mockDeposit);
+      const repo = createDepositRepository(prisma);
+
+      const result = await repo.findDepositByCryptomusOrderId('crypto-1', tx);
+
+      expect(result?.id).toBe('dep-1');
+      expect(txFindUnique).toHaveBeenCalledWith({ where: { cryptomusOrderId: 'crypto-1' } });
+      expect(prismaFindUnique).not.toHaveBeenCalled();
     });
   });
 });
