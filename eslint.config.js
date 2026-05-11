@@ -3,6 +3,7 @@ const tsparser = require('@typescript-eslint/parser');
 const security = require('eslint-plugin-security');
 const sonarjs = require('eslint-plugin-sonarjs');
 const unicorn = require('eslint-plugin-unicorn');
+const boundaries = require('eslint-plugin-boundaries');
 
 module.exports = [
   {
@@ -30,6 +31,23 @@ module.exports = [
       'security': security,
       'sonarjs': sonarjs,
       'unicorn': unicorn,
+      'boundaries': boundaries,
+    },
+    settings: {
+      'boundaries/elements': [
+        // Module public surface — the barrel. One per module.
+        { type: 'module-public', pattern: 'src/modules/*/index.ts', mode: 'full', capture: ['name'] },
+        // Module internals — everything else under the module directory.
+        { type: 'module-internal', pattern: 'src/modules/*/**/*.ts', mode: 'full', capture: ['name'] },
+        // Composition root — allowed to reach into any module internal.
+        { type: 'composition', pattern: 'src/composition/**/*.ts' },
+        { type: 'composition', pattern: 'src/app.ts' },
+        { type: 'composition', pattern: 'src/index.ts' },
+        // Shared infra — cross-cutting, importable from anywhere.
+        { type: 'shared', pattern: 'src/shared/**/*.ts' },
+        // Generated Prisma code — infra.
+        { type: 'generated', pattern: 'src/generated/**/*.ts' },
+      ],
     },
     rules: {
       // МАКСИМАЛЬНАЯ СТРОГОСТЬ
@@ -70,39 +88,72 @@ module.exports = [
     },
   },
   {
-    // Module boundary enforcement: cross-module imports must go via index.ts
-    files: ['src/modules/*/*.ts'],
-    ignores: ['src/modules/**/__tests__/**', 'src/modules/**/*.test.ts'],
+    // Module boundary enforcement via eslint-plugin-boundaries.
+    //
+    // Rules:
+    //   - module-internal files may import siblings in their own module
+    //     and from their own index (module-public).
+    //   - module-internal files may NOT import from another module's
+    //     internals — only that module's public barrel.
+    //   - module-public (barrel) may import any internal of its own module.
+    //   - composition root (app.ts, index.ts, src/composition/) may reach
+    //     into any module's internals for explicit wiring.
+    //   - shared/* is importable from anywhere; generated/* too.
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/__tests__/**', 'src/**/*.test.ts'],
     rules: {
-      'no-restricted-imports': [
+      'boundaries/dependencies': [
         'error',
         {
-          patterns: [
+          default: 'disallow',
+          rules: [
+            // Internal → own internals (same module).
             {
-              regex:
-                '^\\.\\./(auth|billing|orders|providers|admin|catalog|webhooks|notifications|api-keys|tracking|referrals|support|coupons)/.+$',
-              message:
-                'Cross-module imports must go through the module index. Import from "../<module>" instead of deep paths.',
+              from: { type: 'module-internal' },
+              allow: {
+                to: { type: 'module-internal', captured: { name: '{{from.captured.name}}' } },
+              },
             },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    // Same rule for nested module files (e.g. billing/stripe, orders/workers)
-    files: ['src/modules/*/*/*.ts'],
-    ignores: ['src/modules/**/__tests__/**', 'src/modules/**/*.test.ts'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
+            // Internal → any public barrel.
             {
-              regex:
-                '^\\.\\./\\.\\./(auth|billing|orders|providers|admin|catalog|webhooks|notifications|api-keys|tracking|referrals|support|coupons)/.+$',
-              message:
-                'Cross-module imports must go through the module index. Import from "../../<module>" instead of deep paths.',
+              from: { type: 'module-internal' },
+              allow: { to: { type: 'module-public' } },
+            },
+            // Internal → shared / generated.
+            {
+              from: { type: 'module-internal' },
+              allow: { to: { type: ['shared', 'generated'] } },
+            },
+            // Public barrel → own internals (same module).
+            {
+              from: { type: 'module-public' },
+              allow: {
+                to: { type: 'module-internal', captured: { name: '{{from.captured.name}}' } },
+              },
+            },
+            // Public barrel → other public barrels (not itself).
+            {
+              from: { type: 'module-public' },
+              allow: {
+                to: { type: 'module-public', captured: { name: '!{{from.captured.name}}' } },
+              },
+            },
+            // Public barrel → shared / generated.
+            {
+              from: { type: 'module-public' },
+              allow: { to: { type: ['shared', 'generated'] } },
+            },
+            // Composition root → may reach anywhere.
+            {
+              from: { type: 'composition' },
+              allow: {
+                to: { type: ['module-internal', 'module-public', 'composition', 'shared', 'generated'] },
+              },
+            },
+            // Shared → only shared or generated.
+            {
+              from: { type: 'shared' },
+              allow: { to: { type: ['shared', 'generated'] } },
             },
           ],
         },

@@ -52,6 +52,7 @@
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "eslint": "^9.39.2",
+    "eslint-plugin-boundaries": "^6.0.2",
     "eslint-plugin-security": "^3.0.1",
     "eslint-plugin-sonarjs": "^3.0.6",
     "eslint-plugin-unicorn": "^62.0.0",
