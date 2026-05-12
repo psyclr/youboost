@@ -102,6 +102,22 @@ export const adminLandingsQuerySchema = z.object({
   status: landingStatusSchema.optional(),
 });
 
+export const landingCalculateSchema = z.object({
+  serviceId: z.uuid(),
+  quantity: z.number().int().positive(),
+  link: z.string().min(1).max(2048).optional(),
+});
+
+export type LandingCalculateInput = z.infer<typeof landingCalculateSchema>;
+
+export interface LandingCalculateResult {
+  valid: boolean;
+  price: number | null;
+  serviceId: string;
+  quantity: number;
+  reason: string | null;
+}
+
 export type LandingCreateInput = z.infer<typeof landingCreateSchema>;
 export type LandingUpdateInput = z.infer<typeof landingUpdateSchema>;
 export type LandingTierInput = z.infer<typeof landingTierInputSchema>;

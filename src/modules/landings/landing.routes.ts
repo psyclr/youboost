@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { validateParams } from '../../shared/middleware/validation';
+import { validateBody, validateParams } from '../../shared/middleware/validation';
 import type { LandingService } from './landing.service';
-import { landingSlugParamSchema } from './landing.types';
+import { landingCalculateSchema, landingSlugParamSchema } from './landing.types';
 
 export interface LandingRoutesDeps {
   service: LandingService;
@@ -22,5 +22,18 @@ export function createLandingRoutes(deps: LandingRoutesDeps): FastifyPluginAsync
       });
       return reply.status(StatusCodes.OK).send(result);
     });
+
+    app.post(
+      '/:slug/calculate',
+      {
+        config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const params = validateParams(landingSlugParamSchema, request.params);
+        const body = validateBody(landingCalculateSchema, request.body);
+        const result = await service.calculate(params.slug, body);
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
   };
 }

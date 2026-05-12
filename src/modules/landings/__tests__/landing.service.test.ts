@@ -4,6 +4,7 @@ import { createLandingService } from '../landing.service';
 import type { LandingCreateInput, LandingUpdateInput } from '../landing.types';
 import { createFakeLandingRepository, fixedClock, silentLogger } from './fakes';
 import type { LandingRepository } from '../landing.repository';
+import type { ServiceLookupPort, ServiceLookupRecord } from '../ports/service-lookup.port';
 
 function createFakeOutbox(): { port: OutboxPort; events: OutboxEvent[] } {
   const events: OutboxEvent[] = [];
@@ -70,22 +71,51 @@ const baseInput: LandingCreateInput = {
   ],
 };
 
-function setup(): {
+function createFakeServiceLookup(seed: Partial<ServiceLookupRecord> = {}): {
+  port: ServiceLookupPort;
+  calls: string[];
+  record: ServiceLookupRecord;
+} {
+  const record: ServiceLookupRecord = {
+    id: seed.id ?? '00000000-0000-0000-0000-000000000001',
+    name: seed.name ?? 'YouTube Views',
+    pricePer1000: seed.pricePer1000 ?? 2,
+    minQuantity: seed.minQuantity ?? 100,
+    maxQuantity: seed.maxQuantity ?? 100000,
+  };
+  const calls: string[] = [];
+  return {
+    port: {
+      async getService(serviceId): Promise<ServiceLookupRecord> {
+        calls.push(serviceId);
+        if (serviceId !== record.id) throw new Error('service not found');
+        return record;
+      },
+    },
+    calls,
+    record,
+  };
+}
+
+function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
   service: ReturnType<typeof createLandingService>;
   landingRepo: ReturnType<typeof createFakeLandingRepository>;
   outbox: ReturnType<typeof createFakeOutbox>;
+  serviceLookup: ReturnType<typeof createFakeServiceLookup>;
 } {
   const landingRepo = createFakeLandingRepository();
   const outbox = createFakeOutbox();
   const prisma = createFakePrisma();
+  const serviceLookup = createFakeServiceLookup(serviceLookupSeed);
   const service = createLandingService({
     prisma,
     landingRepo: landingRepo as unknown as LandingRepository,
+    serviceLookup: serviceLookup.port,
     outbox: outbox.port,
     clock: fixedClock,
     logger: silentLogger,
   });
-  return { service, landingRepo, outbox };
+  return { service, landingRepo, outbox, serviceLookup };
 }
 
 describe('Landing Service', () => {
@@ -319,6 +349,114 @@ describe('Landing Service', () => {
       await expect(service.adminGet('nope')).rejects.toMatchObject({
         code: 'LANDING_NOT_FOUND',
       });
+    });
+  });
+
+  describe('calculate', () => {
+    async function withPublished(serviceLookupSeed: Partial<ServiceLookupRecord> = {}) {
+      const ctx = setup(serviceLookupSeed);
+      const landing = await ctx.service.adminCreate(baseInput);
+      await ctx.service.adminPublish(landing.id);
+      return { ...ctx, landing };
+    }
+
+    it('returns valid price when quantity within bounds', async () => {
+      const { service, outbox } = await withPublished({ pricePer1000: 2 });
+
+      const result = await service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 1000,
+      });
+
+      expect(result).toEqual({
+        valid: true,
+        price: 2,
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 1000,
+        reason: null,
+      });
+      expect(outbox.events.at(-1)?.type).toBe('landing.calculator_used');
+    });
+
+    it('rounds price to 2 decimals', async () => {
+      const { service } = await withPublished({ pricePer1000: 2.35 });
+
+      const result = await service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 333,
+      });
+
+      expect(result.price).toBeCloseTo(0.78, 2);
+    });
+
+    it('rejects service not on landing without outbox emit', async () => {
+      const { service, outbox } = await withPublished();
+      const tally = outbox.events.length;
+
+      const result = await service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000009999',
+        quantity: 1000,
+      });
+
+      expect(result).toMatchObject({ valid: false, reason: 'SERVICE_NOT_ON_LANDING' });
+      expect(outbox.events).toHaveLength(tally);
+    });
+
+    it('rejects quantity below min with reason tag', async () => {
+      const { service } = await withPublished({ minQuantity: 500 });
+
+      const result = await service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 100,
+      });
+
+      expect(result).toMatchObject({ valid: false, reason: 'QUANTITY_BELOW_MIN:500' });
+    });
+
+    it('rejects quantity above max with reason tag', async () => {
+      const { service } = await withPublished({ maxQuantity: 5000 });
+
+      const result = await service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 99999,
+      });
+
+      expect(result).toMatchObject({ valid: false, reason: 'QUANTITY_ABOVE_MAX:5000' });
+    });
+
+    it('throws NotFound when landing missing', async () => {
+      const { service } = setup();
+
+      await expect(
+        service.calculate('ghost', {
+          serviceId: '00000000-0000-0000-0000-000000000001',
+          quantity: 100,
+        }),
+      ).rejects.toMatchObject({ code: 'LANDING_NOT_FOUND' });
+    });
+
+    it('throws NotFound when landing is DRAFT', async () => {
+      const ctx = setup();
+      await ctx.service.adminCreate(baseInput);
+
+      await expect(
+        ctx.service.calculate('home', {
+          serviceId: '00000000-0000-0000-0000-000000000001',
+          quantity: 100,
+        }),
+      ).rejects.toMatchObject({ code: 'LANDING_NOT_FOUND' });
+    });
+
+    it('returns SERVICE_NOT_FOUND if lookup throws', async () => {
+      const ctx = setup();
+      const landing = await ctx.service.adminCreate(baseInput);
+      await ctx.service.adminPublish(landing.id);
+      // serviceLookup fake throws when serviceId !== seed id (default 00...001)
+      const result = await ctx.service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000002',
+        quantity: 100,
+      });
+      expect(result).toMatchObject({ valid: false, reason: 'SERVICE_NOT_FOUND' });
     });
   });
 });

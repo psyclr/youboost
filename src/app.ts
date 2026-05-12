@@ -43,6 +43,7 @@ import { createCouponsService } from './modules/coupons/coupons.service';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
 import { createLandingRepository, createLandingService } from './modules/landings';
+import { createLandingServiceLookup } from './composition/landings-adapters';
 import { createHealthCheck } from './shared/health/health';
 
 const log = createServiceLogger('http');
@@ -166,7 +167,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
 
   // prettier-ignore
-  const landingService = createLandingService({ prisma, landingRepo, outbox, clock: createSystemClock(), logger: createServiceLogger('landings') });
+  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), outbox, clock: createSystemClock(), logger: createServiceLogger('landings') });
 
   const referralsRepo = createReferralsRepository(prisma);
   // Port uses `string` for ledger type; billing expects LedgerType enum. Service

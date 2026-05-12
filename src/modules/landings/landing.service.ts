@@ -6,8 +6,11 @@ import type { OutboxPort } from '../../shared/outbox/outbox.port';
 import type { LandingRepository } from './landing.repository';
 import { presentLanding, presentListItem } from './landing.presenter';
 import { buildCreateData, buildUpdateData, validateTiersUnique } from './landing.write-helpers';
+import type { ServiceLookupPort } from './ports/service-lookup.port';
 import type {
   AdminLandingsQuery,
+  LandingCalculateInput,
+  LandingCalculateResult,
   LandingCreateInput,
   LandingResponse,
   LandingUpdateInput,
@@ -22,6 +25,7 @@ export interface LandingViewContext {
 
 export interface LandingService {
   getPublishedBySlug(slug: string, context: LandingViewContext): Promise<LandingResponse>;
+  calculate(slug: string, input: LandingCalculateInput): Promise<LandingCalculateResult>;
   adminList(query: AdminLandingsQuery): Promise<PaginatedLandings>;
   adminGet(landingId: string): Promise<LandingResponse>;
   adminCreate(input: LandingCreateInput): Promise<LandingResponse>;
@@ -34,13 +38,14 @@ export interface LandingService {
 export interface LandingServiceDeps {
   prisma: PrismaClient;
   landingRepo: LandingRepository;
+  serviceLookup: ServiceLookupPort;
   outbox: OutboxPort;
   clock: Clock;
   logger: Logger;
 }
 
 export function createLandingService(deps: LandingServiceDeps): LandingService {
-  const { prisma, landingRepo, outbox, clock, logger } = deps;
+  const { prisma, landingRepo, serviceLookup, outbox, clock, logger } = deps;
 
   async function getPublishedBySlug(
     slug: string,
@@ -71,6 +76,86 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     });
     logger.debug({ landingId: record.id, slug: record.slug }, 'landing viewed');
     return response;
+  }
+
+  async function calculate(
+    slug: string,
+    input: LandingCalculateInput,
+  ): Promise<LandingCalculateResult> {
+    const landing = await landingRepo.findBySlug(slug);
+    if (!landing || landing.status !== 'PUBLISHED') {
+      throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    }
+    const tier = landing.tiers.find((t) => t.serviceId === input.serviceId);
+    if (!tier) {
+      return {
+        valid: false,
+        price: null,
+        serviceId: input.serviceId,
+        quantity: input.quantity,
+        reason: 'SERVICE_NOT_ON_LANDING',
+      };
+    }
+    let service;
+    try {
+      service = await serviceLookup.getService(input.serviceId);
+    } catch {
+      return {
+        valid: false,
+        price: null,
+        serviceId: input.serviceId,
+        quantity: input.quantity,
+        reason: 'SERVICE_NOT_FOUND',
+      };
+    }
+    if (input.quantity < service.minQuantity) {
+      return {
+        valid: false,
+        price: null,
+        serviceId: input.serviceId,
+        quantity: input.quantity,
+        reason: `QUANTITY_BELOW_MIN:${service.minQuantity}`,
+      };
+    }
+    if (input.quantity > service.maxQuantity) {
+      return {
+        valid: false,
+        price: null,
+        serviceId: input.serviceId,
+        quantity: input.quantity,
+        reason: `QUANTITY_ABOVE_MAX:${service.maxQuantity}`,
+      };
+    }
+    const price = Math.round(((service.pricePer1000 * input.quantity) / 1000) * 100) / 100;
+    await prisma.$transaction(async (tx) => {
+      await outbox.emit(
+        {
+          type: 'landing.calculator_used',
+          aggregateType: 'landing',
+          aggregateId: landing.id,
+          userId: null,
+          payload: {
+            landingId: landing.id,
+            slug: landing.slug,
+            serviceId: input.serviceId,
+            quantity: input.quantity,
+            computedPrice: price,
+          },
+        },
+        tx,
+      );
+    });
+    logger.debug(
+      { landingId: landing.id, serviceId: input.serviceId, quantity: input.quantity, price },
+      'landing calculator used',
+    );
+    return {
+      valid: true,
+      price,
+      serviceId: input.serviceId,
+      quantity: input.quantity,
+      reason: null,
+    };
   }
 
   async function adminList(query: AdminLandingsQuery): Promise<PaginatedLandings> {
@@ -157,6 +242,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
 
   return {
     getPublishedBySlug,
+    calculate,
     adminList,
     adminGet,
     adminCreate,
