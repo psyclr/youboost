@@ -1,5 +1,7 @@
-export type { AuthService, AuthServiceDeps } from './auth.service';
+export type { AuthService, AuthServiceDeps, AutoUserTicket } from './auth.service';
 export { createAuthService } from './auth.service';
+export type { AuthAutoUserService, AuthAutoUserServiceDeps } from './auth-auto-user.service';
+export { createAuthAutoUserService } from './auth-auto-user.service';
 export type { AuthEmailService, AuthEmailServiceDeps } from './auth-email.service';
 export { createAuthEmailService } from './auth-email.service';
 export type { UserRepository } from './user.repository';

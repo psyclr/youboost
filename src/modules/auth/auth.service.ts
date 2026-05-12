@@ -27,6 +27,10 @@ import type {
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
+import type { AuthAutoUserService, AutoUserTicket } from './auth-auto-user.service';
+
+export type { AutoUserTicket } from './auth-auto-user.service';
+
 export interface AuthService {
   register(input: RegisterInput): Promise<{ userId: string; email: string; username: string }>;
   login(input: LoginInput): Promise<TokenPair>;
@@ -36,6 +40,8 @@ export interface AuthService {
   logout(userId: string, jti: string): Promise<void>;
   getMe(userId: string): Promise<UserProfile>;
   updateProfile(userId: string, input: UpdateProfileInput): Promise<UserProfile>;
+  createAutoUser(email: string): Promise<AutoUserTicket>;
+  setPasswordViaAutoUserToken(rawToken: string, newPassword: string): Promise<{ userId: string }>;
 }
 
 export interface AuthServiceDeps {
@@ -44,12 +50,13 @@ export interface AuthServiceDeps {
   tokenStore: TokenRepository;
   emailTokenRepo: EmailTokenRepository;
   outbox: OutboxPort;
+  autoUser: AuthAutoUserService;
   appUrl: string;
   logger: Logger;
 }
 
 export function createAuthService(deps: AuthServiceDeps): AuthService {
-  const { prisma, userRepo, tokenStore, emailTokenRepo, outbox, appUrl, logger } = deps;
+  const { prisma, userRepo, tokenStore, emailTokenRepo, outbox, autoUser, appUrl, logger } = deps;
 
   async function register(
     input: RegisterInput,
@@ -230,5 +237,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     logout,
     getMe,
     updateProfile,
+    createAutoUser: autoUser.createAutoUser,
+    setPasswordViaAutoUserToken: autoUser.setPasswordViaAutoUserToken,
   };
 }

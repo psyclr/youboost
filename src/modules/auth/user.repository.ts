@@ -11,6 +11,12 @@ interface CreateUserData {
   passwordHash: string;
 }
 
+interface CreateAutoUserData {
+  email: string;
+  username: string;
+  passwordHash: string;
+}
+
 type UserRecord = {
   id: string;
   email: string;
@@ -19,6 +25,7 @@ type UserRecord = {
   role: string;
   status: string;
   emailVerified: boolean;
+  isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -28,6 +35,12 @@ export interface UserRepository {
   findByUsername(username: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   createUser(data: CreateUserData, tx?: PrismaTransactionClient): Promise<UserRecord>;
+  createAutoUser(data: CreateAutoUserData, tx?: PrismaTransactionClient): Promise<UserRecord>;
+  finalizeAutoUser(
+    userId: string,
+    passwordHash: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<UserRecord>;
   setEmailVerified(userId: string): Promise<void>;
   updatePassword(userId: string, hash: string): Promise<void>;
   updateUsername(userId: string, username: string): Promise<void>;
@@ -60,6 +73,33 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
   ): Promise<UserRecord> {
     const client = tx ?? prisma;
     return client.user.create({ data });
+  }
+
+  async function createAutoUser(
+    data: CreateAutoUserData,
+    tx?: PrismaTransactionClient,
+  ): Promise<UserRecord> {
+    const client = tx ?? prisma;
+    return client.user.create({
+      data: {
+        email: data.email,
+        username: data.username,
+        passwordHash: data.passwordHash,
+        isAutoCreated: true,
+      },
+    });
+  }
+
+  async function finalizeAutoUser(
+    userId: string,
+    passwordHash: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<UserRecord> {
+    const client = tx ?? prisma;
+    return client.user.update({
+      where: { id: userId },
+      data: { passwordHash, isAutoCreated: false, emailVerified: true },
+    });
   }
 
   async function setEmailVerified(userId: string): Promise<void> {
@@ -139,6 +179,8 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     findByUsername,
     findById,
     createUser,
+    createAutoUser,
+    finalizeAutoUser,
     setEmailVerified,
     updatePassword,
     updateUsername,

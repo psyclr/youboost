@@ -12,6 +12,7 @@ type UserRecord = {
   role: string;
   status: string;
   emailVerified: boolean;
+  isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -23,6 +24,8 @@ export type FakeUserRepository = UserRepository & {
     findByUsername: string[];
     findById: string[];
     createUser: Array<{ email: string; username: string; passwordHash: string }>;
+    createAutoUser: Array<{ email: string; username: string; passwordHash: string }>;
+    finalizeAutoUser: Array<{ userId: string; passwordHash: string }>;
     setEmailVerified: string[];
     updatePassword: Array<{ userId: string; hash: string }>;
     updateUsername: Array<{ userId: string; username: string }>;
@@ -46,6 +49,8 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
     findByUsername: [],
     findById: [],
     createUser: [],
+    createAutoUser: [],
+    finalizeAutoUser: [],
     setEmailVerified: [],
     updatePassword: [],
     updateUsername: [],
@@ -78,11 +83,43 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
         role: 'USER',
         status: 'ACTIVE',
         emailVerified: false,
+        isAutoCreated: false,
         createdAt: new Date('2026-01-01T00:00:00Z'),
         updatedAt: new Date('2026-01-01T00:00:00Z'),
       };
       store.set(id, record);
       return record;
+    },
+    async createAutoUser(data, _tx) {
+      calls.createAutoUser.push(data);
+      const id = `user-${idCounter++}`;
+      const record: UserRecord = {
+        id,
+        email: data.email,
+        username: data.username,
+        passwordHash: data.passwordHash,
+        role: 'USER',
+        status: 'ACTIVE',
+        emailVerified: false,
+        isAutoCreated: true,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      };
+      store.set(id, record);
+      return record;
+    },
+    async finalizeAutoUser(userId, passwordHash, _tx) {
+      calls.finalizeAutoUser.push({ userId, passwordHash });
+      const existing = store.get(userId);
+      if (!existing) throw new Error(`User ${userId} not found`);
+      const updated: UserRecord = {
+        ...existing,
+        passwordHash,
+        isAutoCreated: false,
+        emailVerified: true,
+      };
+      store.set(userId, updated);
+      return updated;
     },
     async setEmailVerified(userId) {
       calls.setEmailVerified.push(userId);
@@ -115,7 +152,7 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
       calls.updateUserRole.push({ userId, role });
       const existing = store.get(userId);
       if (!existing) throw new Error(`User ${userId} not found`);
-      const updated = { ...existing, role };
+      const updated: UserRecord = { ...existing, role };
       store.set(userId, updated);
       return updated;
     },
@@ -123,7 +160,7 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
       calls.updateUserStatus.push({ userId, status });
       const existing = store.get(userId);
       if (!existing) throw new Error(`User ${userId} not found`);
-      const updated = { ...existing, status };
+      const updated: UserRecord = { ...existing, status };
       store.set(userId, updated);
       return updated;
     },

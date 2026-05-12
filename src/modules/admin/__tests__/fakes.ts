@@ -128,6 +128,7 @@ type UserRecord = {
   role: string;
   status: string;
   emailVerified: boolean;
+  isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -141,6 +142,7 @@ export function makeUserRecord(overrides: Partial<UserRecord> = {}): UserRecord 
     role: 'USER',
     status: 'ACTIVE',
     emailVerified: true,
+    isAutoCreated: false,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
     ...overrides,
@@ -174,6 +176,30 @@ export function createFakeUserRepo(seed: { users?: UserRecord[] } = {}): FakeUse
       });
       users.push(record);
       return record;
+    },
+    async createAutoUser(data): Promise<UserRecord> {
+      const record = makeUserRecord({
+        id: `user-${users.length + 1}`,
+        email: data.email,
+        username: data.username,
+        passwordHash: data.passwordHash,
+        isAutoCreated: true,
+        emailVerified: false,
+      });
+      users.push(record);
+      return record;
+    },
+    async finalizeAutoUser(userId, passwordHash): Promise<UserRecord> {
+      const idx = users.findIndex((u) => u.id === userId);
+      if (idx === -1) throw new Error(`User ${userId} not found`);
+      const next: UserRecord = {
+        ...users[idx]!,
+        passwordHash,
+        isAutoCreated: false,
+        emailVerified: true,
+      };
+      users[idx] = next;
+      return next;
     },
     async setEmailVerified(userId): Promise<void> {
       const idx = users.findIndex((u) => u.id === userId);

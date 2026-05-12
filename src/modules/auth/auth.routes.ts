@@ -17,6 +17,7 @@ import {
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  setPasswordSchema,
   updateProfileSchema,
 } from './auth.types';
 
@@ -144,6 +145,21 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       const result = await authEmailService.resetPassword(input.token, input.newPassword);
       return reply.status(StatusCodes.OK).send(result);
     });
+
+    app.post(
+      '/set-password',
+      {
+        config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const input = validateBody(setPasswordSchema, request.body);
+        const result = await authService.setPasswordViaAutoUserToken(
+          input.token,
+          input.newPassword,
+        );
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
 
     app.put(
       '/profile',

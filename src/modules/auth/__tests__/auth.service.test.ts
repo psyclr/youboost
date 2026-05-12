@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../generated/prisma';
 import { createAuthService } from '../auth.service';
+import { createAuthAutoUserService } from '../auth-auto-user.service';
 import {
   createFakeUserRepository,
   createFakeTokenRepository,
@@ -28,6 +29,7 @@ const mockUser = {
   role: 'USER',
   status: 'ACTIVE',
   emailVerified: false,
+  isAutoCreated: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -51,12 +53,21 @@ function setup(seed: { users?: Array<typeof mockUser> } = {}): {
   const emailTokenRepo = createFakeEmailTokenRepository();
   const outbox = createFakeOutbox();
   const prisma = createFakePrisma();
+  const autoUser = createAuthAutoUserService({
+    prisma,
+    userRepo,
+    emailTokenRepo,
+    outbox: outbox.port,
+    appUrl: 'https://app.test',
+    logger: silentLogger,
+  });
   const service = createAuthService({
     prisma,
     userRepo,
     tokenStore,
     emailTokenRepo,
     outbox: outbox.port,
+    autoUser,
     appUrl: 'https://app.test',
     logger: silentLogger,
   });
@@ -299,6 +310,86 @@ describe('Auth Service', () => {
           newPassword: 'NewPassword1',
         }),
       ).rejects.toThrow('Current password is incorrect');
+    });
+  });
+
+  describe('createAutoUser', () => {
+    it('creates fresh auto user + setup token + emits user.registered', async () => {
+      const { service, userRepo, outbox, emailTokenRepo } = setup();
+
+      const ticket = await service.createAutoUser('fresh@test.com');
+
+      expect(ticket.fresh).toBe(true);
+      expect(ticket.email).toBe('fresh@test.com');
+      expect(ticket.setupUrl).toContain('/set-password?token=');
+      expect(userRepo.calls.createAutoUser).toHaveLength(1);
+      expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
+      expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('AUTO_USER_SETUP');
+      expect(outbox.events).toHaveLength(1);
+      expect(outbox.events[0]?.event.type).toBe('user.registered');
+    });
+
+    it('reuses existing auto user on repeat checkout — no extra register event', async () => {
+      const { service, outbox } = setup();
+
+      await service.createAutoUser('repeat@test.com');
+      const second = await service.createAutoUser('repeat@test.com');
+
+      expect(second.fresh).toBe(false);
+      expect(outbox.events.filter((e) => e.event.type === 'user.registered')).toHaveLength(1);
+    });
+
+    it('rejects email that belongs to a real (non-auto) user', async () => {
+      const { service } = setup({ users: [{ ...mockUser, isAutoCreated: false }] });
+
+      await expect(service.createAutoUser(mockUser.email)).rejects.toMatchObject({
+        code: 'ALREADY_REGISTERED',
+      });
+    });
+
+    it('normalizes email to lowercase + trim', async () => {
+      const { service, userRepo } = setup();
+
+      await service.createAutoUser('  Fresh@Test.COM  ');
+
+      expect(userRepo.calls.createAutoUser[0]?.email).toBe('fresh@test.com');
+    });
+  });
+
+  describe('setPasswordViaAutoUserToken', () => {
+    it('finalizes auto user and emits guest_account_activated', async () => {
+      const { service, userRepo, outbox, emailTokenRepo } = setup();
+      // hashToken() is mocked to 'hashed-token' — make fake store key match so the
+      // service's hashed-lookup path resolves to the seeded record.
+      emailTokenRepo.nextToken('hashed-token');
+      const ticket = await service.createAutoUser('set@test.com');
+      outbox.events.length = 0;
+
+      const result = await service.setPasswordViaAutoUserToken(ticket.setupToken, 'NewStrongPass1');
+
+      expect(result.userId).toBe(ticket.userId);
+      expect(userRepo.calls.finalizeAutoUser).toHaveLength(1);
+      expect(outbox.events.some((e) => e.event.type === 'landing.guest_account_activated')).toBe(
+        true,
+      );
+    });
+
+    it('rejects invalid token', async () => {
+      const { service } = setup();
+      await expect(
+        service.setPasswordViaAutoUserToken('bogus', 'NewStrongPass1'),
+      ).rejects.toMatchObject({ code: 'INVALID_SETUP_TOKEN' });
+    });
+
+    it('rejects already-used token', async () => {
+      const { service, emailTokenRepo } = setup();
+      emailTokenRepo.nextToken('hashed-token');
+      const ticket = await service.createAutoUser('used@test.com');
+      await service.setPasswordViaAutoUserToken(ticket.setupToken, 'NewStrongPass1');
+
+      await expect(
+        service.setPasswordViaAutoUserToken(ticket.setupToken, 'AnotherPass1'),
+      ).rejects.toMatchObject({ code: 'SETUP_TOKEN_USED' });
     });
   });
 });

@@ -9,7 +9,7 @@ import { setupFastifyApp } from './composition/setup-fastify';
 import { buildOutboxHandlers } from './composition/outbox-handlers';
 import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
-import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthEmailService } from './modules/auth';
+import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService } from './modules/auth';
 // prettier-ignore
 import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry } from './modules/billing';
 // prettier-ignore
@@ -187,7 +187,9 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   // prettier-ignore
   const authEmailService = createAuthEmailService({ prisma, userRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth-email') });
   // prettier-ignore
-  const authService = createAuthService({ prisma, userRepo, tokenStore: tokenRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth') });
+  const authAutoUserService = createAuthAutoUserService({ prisma, userRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth-auto-user') });
+  // prettier-ignore
+  const authService = createAuthService({ prisma, userRepo, tokenStore: tokenRepo, emailTokenRepo, outbox, autoUser: authAutoUserService, appUrl: config.app.url, logger: createServiceLogger('auth') });
 
   // Orders module — factory-wired with outbox producer semantics.
   const ordersRepo = createOrdersRepository(prisma);

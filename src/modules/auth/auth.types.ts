@@ -42,6 +42,11 @@ export const resetPasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const setPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: passwordSchema,
+});
+
 export const updateProfileSchema = z
   .object({
     username: usernameSchema.optional(),

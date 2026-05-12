@@ -23,6 +23,7 @@ const mockUser = {
   role: 'USER',
   status: 'ACTIVE',
   emailVerified: false,
+  isAutoCreated: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
