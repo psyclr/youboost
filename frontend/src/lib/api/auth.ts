@@ -47,6 +47,12 @@ export const verifyEmail = (token: string) =>
     body: JSON.stringify({ token }),
   });
 
+export const setPassword = (body: { token: string; newPassword: string }) =>
+  apiRequest<{ userId: string }>('/auth/set-password', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
 export const updateProfile = (data: {
   username?: string;
   currentPassword?: string;

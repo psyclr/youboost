@@ -12,6 +12,7 @@ import {
   Tag,
   Link2,
   ArrowLeft,
+  FileText,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -43,6 +44,7 @@ export const adminNavItems: NavItem[] = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/admin/deposits', label: 'Deposits', icon: Wallet },
   { href: '/admin/services', label: 'Services', icon: Package },
+  { href: '/admin/landings', label: 'Landings', icon: FileText },
   { href: '/admin/providers', label: 'Providers', icon: Server },
   { href: '/admin/support', label: 'Support', icon: MessageSquare },
   { href: '/admin/coupons', label: 'Coupons', icon: Tag },

@@ -404,6 +404,173 @@ export interface ProviderBalanceInfo {
 }
 
 // ============================================
+// Landings (admin)
+// ============================================
+
+export type LandingStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export type LandingTierPill = 'SALE' | 'MEGA_FAST' | 'PREMIUM';
+export type LandingTierGlow = 'ORANGE' | 'COSMIC' | 'PURPLE';
+
+export interface LandingStatItem {
+  value: string;
+  label: string;
+}
+
+export interface LandingStepItem {
+  n: number;
+  title: string;
+  description: string;
+}
+
+export interface LandingFaqItem {
+  question: string;
+  answer: string;
+}
+
+export interface LandingFooterCta {
+  title: string;
+  lead: string;
+  label: string;
+  href: string;
+}
+
+export interface LandingTierInput {
+  serviceId: string;
+  order: number;
+  pillKind?: LandingTierPill | null;
+  glowKind?: LandingTierGlow | null;
+  titleOverride?: string | null;
+  descOverride?: string | null;
+  priceOverride?: number | null;
+  unit: string;
+}
+
+export interface LandingCreateInput {
+  slug: string;
+  seoTitle: string;
+  seoDescription: string;
+  seoOgImageUrl?: string | null;
+  heroEyebrow?: string | null;
+  heroTitle: string;
+  heroAccent?: string | null;
+  heroLead: string;
+  heroPlaceholder: string;
+  heroCtaLabel: string;
+  heroFineprint?: string | null;
+  heroMinAmount: number;
+  defaultServiceId?: string | null;
+  stats: LandingStatItem[];
+  steps: LandingStepItem[];
+  faq: LandingFaqItem[];
+  footerCta?: LandingFooterCta | null;
+  tiers: LandingTierInput[];
+}
+
+export type LandingUpdateInput = Partial<LandingCreateInput>;
+
+export interface LandingTierResponse {
+  id: string;
+  serviceId: string;
+  order: number;
+  pillKind: LandingTierPill | null;
+  glowKind: LandingTierGlow | null;
+  titleOverride: string | null;
+  descOverride: string | null;
+  priceOverride: number | null;
+  unit: string;
+  service: {
+    id: string;
+    name: string;
+    description: string | null;
+    platform: string;
+    type: string;
+    pricePer1000: number;
+    minQuantity: number;
+    maxQuantity: number;
+    refillDays: number | null;
+  };
+}
+
+export interface LandingResponse {
+  id: string;
+  slug: string;
+  status: LandingStatus;
+  seoTitle: string;
+  seoDescription: string;
+  seoOgImageUrl: string | null;
+  hero: {
+    eyebrow: string | null;
+    title: string;
+    accent: string | null;
+    lead: string;
+    placeholder: string;
+    ctaLabel: string;
+    fineprint: string | null;
+    minAmount: number;
+    defaultServiceId: string | null;
+  };
+  stats: LandingStatItem[];
+  steps: LandingStepItem[];
+  faq: LandingFaqItem[];
+  footerCta: LandingFooterCta | null;
+  tiers: LandingTierResponse[];
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminLandingListItem {
+  id: string;
+  slug: string;
+  status: LandingStatus;
+  seoTitle: string;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tierCount: number;
+}
+
+export interface PaginatedLandings {
+  landings: AdminLandingListItem[];
+  pagination: Pagination;
+}
+
+export interface LandingAnalyticsResponse {
+  views: number;
+  calculatorUses: number;
+  checkoutsStarted: number;
+  checkoutsCompleted: number;
+  revenueUsd: number;
+}
+
+export interface LandingCalculateBody {
+  serviceId: string;
+  quantity: number;
+  link?: string;
+}
+
+export interface LandingCalculateResult {
+  valid: boolean;
+  price: number | null;
+  serviceId: string;
+  quantity: number;
+  reason: string | null;
+}
+
+export interface LandingCheckoutBody {
+  email: string;
+  tierId: string;
+  link: string;
+  quantity: number;
+}
+
+export interface LandingCheckoutResult {
+  orderId: string;
+  userId: string;
+  checkoutUrl: string;
+}
+
+// ============================================
 // Error
 // ============================================
 

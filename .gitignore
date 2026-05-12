@@ -30,3 +30,8 @@ YouBoost Design System.zip
 
 # Stray media
 *.mp4
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+lp-home-full.png
+*.screenshot.png
