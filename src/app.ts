@@ -43,7 +43,13 @@ import { createCouponsService } from './modules/coupons/coupons.service';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
 import { createLandingRepository, createLandingService } from './modules/landings';
-import { createLandingServiceLookup } from './composition/landings-adapters';
+import {
+  createLandingServiceLookup,
+  createAutoUserCreatorPort,
+  createGuestOrderCreatorPort,
+  createGuestOrderStripePort,
+  createLateBoundGuestProcessor,
+} from './composition/landings-adapters';
 import { createHealthCheck } from './shared/health/health';
 
 const log = createServiceLogger('http');
@@ -57,7 +63,6 @@ export interface CreatedApp {
   app: FastifyInstance;
   workers: AppWorkers;
 }
-
 export interface CreateAppDeps {
   prisma: PrismaClient;
   redis: Redis;
@@ -159,15 +164,13 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   });
   // prettier-ignore
   const depositLifecycle = createDepositLifecycleService({ prisma, walletRepo, ledgerRepo, depositRepo, outbox, billingConfig: config.billing, logger: createServiceLogger('deposit-lifecycle') });
+  const guestOrderProcessor = createLateBoundGuestProcessor();
   // prettier-ignore
-  const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
+  const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, guestOrderProcessor: guestOrderProcessor.port, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
   // prettier-ignore
   const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
   // prettier-ignore
   const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
-
-  // prettier-ignore
-  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), outbox, clock: createSystemClock(), logger: createServiceLogger('landings') });
 
   const referralsRepo = createReferralsRepository(prisma);
   // Port uses `string` for ledger type; billing expects LedgerType enum. Service
@@ -199,6 +202,10 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const circuitBreaker = createCircuitBreaker();
   // prettier-ignore
   const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, couponsService, outbox, logger: createServiceLogger('orders') });
+  guestOrderProcessor.bind({ confirmGuestOrderPayment: ordersService.confirmGuestOrderPayment });
+
+  // prettier-ignore
+  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(ordersService), stripe: createGuestOrderStripePort(stripePayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
 
   // Admin module — fan-in consumer of every other module.
   const adminServices = buildAdminServices({
@@ -215,20 +222,8 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   });
 
   // Workers (lifecycle-only instances; started/stopped via returned workers facade).
-  const { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker } =
-    buildOrderWorkers({
-      prisma,
-      ordersRepo,
-      servicesRepo,
-      ordersService,
-      providerSelector,
-      fundSettlement,
-      circuitBreaker,
-      outbox,
-      depositRepo,
-      depositLifecycle,
-      config,
-    });
+  // prettier-ignore
+  const { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker, pendingPaymentExpiryWorker } = buildOrderWorkers({ prisma, ordersRepo, servicesRepo, ordersService, providerSelector, fundSettlement, circuitBreaker, outbox, depositRepo, depositLifecycle, config });
 
   // Outbox handler registry — wires domain events to side-effect producers.
   const handlerRegistry = createHandlerRegistry(
@@ -277,6 +272,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
       await dripFeedWorker.start();
       await orderTimeoutWorker.start();
       await depositExpiryWorker.start();
+      await pendingPaymentExpiryWorker.start();
       await webhookDispatcher.start();
       await notificationDispatcher.start();
       outboxWorker.start();
@@ -285,6 +281,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
       await outboxWorker.stop();
       await notificationDispatcher.stop();
       await webhookDispatcher.stop();
+      await pendingPaymentExpiryWorker.stop();
       await depositExpiryWorker.stop();
       await orderTimeoutWorker.stop();
       await dripFeedWorker.stop();

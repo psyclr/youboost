@@ -8,6 +8,7 @@ import type { OrdersRepository } from './orders.repository';
 import type { ServicesRepository } from './service.repository';
 import { mapOrderToDetailed, mapOrderToResponse } from './orders.helpers';
 import { executeCreateOrder } from './create-order.flow';
+import { confirmGuestOrderPayment } from './confirm-guest-order.flow';
 import type {
   CreateOrderInput,
   OrdersQuery,
@@ -18,6 +19,14 @@ import type {
   BulkOrderResult,
 } from './orders.types';
 
+export interface CreatePendingPaymentOrderInput {
+  userId: string;
+  serviceId: string;
+  link: string;
+  quantity: number;
+  price: number;
+}
+
 export interface OrdersService {
   createOrder(userId: string, input: CreateOrderInput): Promise<OrderDetailed>;
   getOrder(userId: string, orderId: string): Promise<OrderDetailed>;
@@ -26,6 +35,13 @@ export interface OrdersService {
   refillOrder(userId: string, orderId: string): Promise<OrderDetailed>;
   setRefillEligibility(orderId: string, refillDays: number): Promise<void>;
   createBulkOrders(userId: string, input: BulkOrderInput): Promise<BulkOrderResult>;
+  createPendingPaymentOrder(input: CreatePendingPaymentOrderInput): Promise<{ orderId: string }>;
+  attachStripeSessionId(orderId: string, sessionId: string): Promise<void>;
+  confirmGuestOrderPayment(params: {
+    orderId: string;
+    userId: string;
+    stripeSessionId: string;
+  }): Promise<void>;
 }
 
 export interface OrdersServiceDeps {
@@ -208,6 +224,36 @@ export function createOrdersService(deps: OrdersServiceDeps): OrdersService {
     return { results, totalCreated, totalFailed };
   }
 
+  async function createPendingPaymentOrder(
+    input: CreatePendingPaymentOrderInput,
+  ): Promise<{ orderId: string }> {
+    const order = await ordersRepo.createOrder({
+      userId: input.userId,
+      serviceId: input.serviceId,
+      link: input.link,
+      quantity: input.quantity,
+      price: input.price,
+      status: 'PENDING_PAYMENT',
+    });
+    logger.info({ orderId: order.id, userId: input.userId }, 'Pending-payment order created');
+    return { orderId: order.id };
+  }
+
+  async function attachStripeSessionId(orderId: string, sessionId: string): Promise<void> {
+    await ordersRepo.attachStripeSession(orderId, sessionId);
+  }
+
+  async function confirmGuest(params: {
+    orderId: string;
+    userId: string;
+    stripeSessionId: string;
+  }): Promise<void> {
+    await confirmGuestOrderPayment(
+      { prisma, ordersRepo, servicesRepo, providerSelector, outbox, logger },
+      params,
+    );
+  }
+
   return {
     createOrder,
     getOrder,
@@ -216,5 +262,8 @@ export function createOrdersService(deps: OrdersServiceDeps): OrdersService {
     refillOrder,
     setRefillEligibility,
     createBulkOrders,
+    createPendingPaymentOrder,
+    attachStripeSessionId,
+    confirmGuestOrderPayment: confirmGuest,
   };
 }

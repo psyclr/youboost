@@ -3,14 +3,22 @@ import type { PrismaClient } from '../../generated/prisma';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 import type { Clock } from '../../shared/utils/clock';
 import type { OutboxPort } from '../../shared/outbox/outbox.port';
-import type { LandingRepository } from './landing.repository';
+import type { LandingAnalytics, LandingRepository } from './landing.repository';
 import { presentLanding, presentListItem } from './landing.presenter';
 import { buildCreateData, buildUpdateData, validateTiersUnique } from './landing.write-helpers';
 import type { ServiceLookupPort } from './ports/service-lookup.port';
 import type {
+  AutoUserCreatorPort,
+  GuestOrderCreatorPort,
+  GuestOrderStripePort,
+} from './ports/guest-checkout.ports';
+import { executeGuestCheckout } from './guest-checkout.flow';
+import type {
   AdminLandingsQuery,
   LandingCalculateInput,
   LandingCalculateResult,
+  LandingCheckoutInput,
+  LandingCheckoutResult,
   LandingCreateInput,
   LandingResponse,
   LandingUpdateInput,
@@ -26,6 +34,7 @@ export interface LandingViewContext {
 export interface LandingService {
   getPublishedBySlug(slug: string, context: LandingViewContext): Promise<LandingResponse>;
   calculate(slug: string, input: LandingCalculateInput): Promise<LandingCalculateResult>;
+  checkout(slug: string, input: LandingCheckoutInput): Promise<LandingCheckoutResult>;
   adminList(query: AdminLandingsQuery): Promise<PaginatedLandings>;
   adminGet(landingId: string): Promise<LandingResponse>;
   adminCreate(input: LandingCreateInput): Promise<LandingResponse>;
@@ -33,19 +42,35 @@ export interface LandingService {
   adminPublish(landingId: string): Promise<LandingResponse>;
   adminUnpublish(landingId: string): Promise<LandingResponse>;
   adminArchive(landingId: string): Promise<LandingResponse>;
+  adminAnalytics(landingId: string): Promise<LandingAnalytics>;
 }
 
 export interface LandingServiceDeps {
   prisma: PrismaClient;
   landingRepo: LandingRepository;
   serviceLookup: ServiceLookupPort;
+  autoUserCreator: AutoUserCreatorPort;
+  orderCreator: GuestOrderCreatorPort;
+  stripe: GuestOrderStripePort;
   outbox: OutboxPort;
   clock: Clock;
+  appUrl: string;
   logger: Logger;
 }
 
 export function createLandingService(deps: LandingServiceDeps): LandingService {
-  const { prisma, landingRepo, serviceLookup, outbox, clock, logger } = deps;
+  const {
+    prisma,
+    landingRepo,
+    serviceLookup,
+    autoUserCreator,
+    orderCreator,
+    stripe,
+    outbox,
+    clock,
+    appUrl,
+    logger,
+  } = deps;
 
   async function getPublishedBySlug(
     slug: string,
@@ -158,6 +183,27 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     };
   }
 
+  async function checkout(
+    slug: string,
+    input: LandingCheckoutInput,
+  ): Promise<LandingCheckoutResult> {
+    return executeGuestCheckout(
+      {
+        prisma,
+        landingRepo,
+        serviceLookup,
+        autoUserCreator,
+        orderCreator,
+        stripe,
+        outbox,
+        appUrl,
+        logger,
+      },
+      slug,
+      input,
+    );
+  }
+
   async function adminList(query: AdminLandingsQuery): Promise<PaginatedLandings> {
     const { landings, total } = await landingRepo.list({
       status: query.status,
@@ -240,9 +286,16 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     return presentLanding(record);
   }
 
+  async function adminAnalytics(landingId: string): Promise<LandingAnalytics> {
+    const existing = await landingRepo.findById(landingId);
+    if (!existing) throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    return landingRepo.getAnalytics(landingId);
+  }
+
   return {
     getPublishedBySlug,
     calculate,
+    checkout,
     adminList,
     adminGet,
     adminCreate,
@@ -250,5 +303,6 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     adminPublish,
     adminUnpublish,
     adminArchive,
+    adminAnalytics,
   };
 }

@@ -57,6 +57,14 @@ export type LandingUpdateData = Partial<Omit<LandingCreateData, 'tiers'>> & {
   tiers?: WriteTier[];
 };
 
+export interface LandingAnalytics {
+  views: number;
+  calculatorUses: number;
+  checkoutsStarted: number;
+  checkoutsCompleted: number;
+  revenueUsd: number;
+}
+
 export interface LandingRepository {
   findBySlug(slug: string): Promise<LandingRecord | null>;
   findById(id: string): Promise<LandingRecord | null>;
@@ -64,6 +72,7 @@ export interface LandingRepository {
   create(data: LandingCreateData): Promise<LandingRecord>;
   update(id: string, data: LandingUpdateData): Promise<LandingRecord>;
   setStatus(id: string, status: LandingStatus, publishedAt: Date | null): Promise<LandingRecord>;
+  getAnalytics(landingId: string): Promise<LandingAnalytics>;
 }
 
 function toTierWrite(t: WriteTier): Prisma.LandingTierUncheckedCreateWithoutLandingInput {
@@ -212,5 +221,57 @@ export function createLandingRepository(prisma: PrismaClient): LandingRepository
     return mapLanding(row);
   }
 
-  return { findBySlug, findById, list, create, update, setStatus };
+  async function getAnalytics(landingId: string): Promise<LandingAnalytics> {
+    const [eventCounts, orderCounts] = await Promise.all([
+      prisma.outboxEvent.groupBy({
+        by: ['eventType'],
+        where: { aggregateType: 'landing', aggregateId: landingId },
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<
+        Array<{
+          checkouts_started: bigint;
+          checkouts_completed: bigint;
+          revenue_usd: number | null;
+        }>
+      >`
+        SELECT
+          COUNT(*) FILTER (WHERE o.id IN (
+            SELECT (e.payload->>'orderId')::uuid
+            FROM outbox_events e
+            WHERE e.event_type = 'landing.guest_checkout_started'
+              AND e.aggregate_id = ${landingId}::uuid
+          )) AS checkouts_started,
+          COUNT(*) FILTER (WHERE o.status NOT IN ('PENDING_PAYMENT', 'CANCELLED', 'FAILED')
+            AND o.id IN (
+              SELECT (e.payload->>'orderId')::uuid
+              FROM outbox_events e
+              WHERE e.event_type = 'landing.guest_checkout_started'
+                AND e.aggregate_id = ${landingId}::uuid
+            )) AS checkouts_completed,
+          COALESCE(SUM(o.price) FILTER (WHERE o.status NOT IN ('PENDING_PAYMENT', 'CANCELLED', 'FAILED')
+            AND o.id IN (
+              SELECT (e.payload->>'orderId')::uuid
+              FROM outbox_events e
+              WHERE e.event_type = 'landing.guest_checkout_started'
+                AND e.aggregate_id = ${landingId}::uuid
+            )), 0) AS revenue_usd
+        FROM orders o
+      `,
+    ]);
+
+    const byType = new Map<string, number>();
+    for (const row of eventCounts) byType.set(row.eventType, row._count._all);
+    const head = orderCounts[0];
+
+    return {
+      views: byType.get('landing.viewed') ?? 0,
+      calculatorUses: byType.get('landing.calculator_used') ?? 0,
+      checkoutsStarted: Number(head?.checkouts_started ?? 0n),
+      checkoutsCompleted: Number(head?.checkouts_completed ?? 0n),
+      revenueUsd: Number(head?.revenue_usd ?? 0),
+    };
+  }
+
+  return { findBySlug, findById, list, create, update, setStatus, getAnalytics };
 }

@@ -4,3 +4,8 @@ export type { StatusPollWorker, StatusPollWorkerDeps } from './status-poll.worke
 export { createStatusPollWorker } from './status-poll.worker';
 export type { DripFeedWorker, DripFeedWorkerDeps } from './drip-feed.worker';
 export { createDripFeedWorker } from './drip-feed.worker';
+export type {
+  PendingPaymentExpiryWorker,
+  PendingPaymentExpiryWorkerDeps,
+} from './pending-payment-expiry.worker';
+export { createPendingPaymentExpiryWorker } from './pending-payment-expiry.worker';

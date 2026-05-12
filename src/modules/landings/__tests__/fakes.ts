@@ -191,7 +191,23 @@ export function createFakeLandingRepository(
     return clone(updated);
   }
 
-  return { findBySlug, findById, list, create, update, setStatus, store, calls };
+  async function getAnalytics(_landingId: string): Promise<{
+    views: number;
+    calculatorUses: number;
+    checkoutsStarted: number;
+    checkoutsCompleted: number;
+    revenueUsd: number;
+  }> {
+    return {
+      views: 0,
+      calculatorUses: 0,
+      checkoutsStarted: 0,
+      checkoutsCompleted: 0,
+      revenueUsd: 0,
+    };
+  }
+
+  return { findBySlug, findById, list, create, update, setStatus, getAnalytics, store, calls };
 }
 
 export const silentLogger = {

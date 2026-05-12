@@ -30,6 +30,11 @@ function makeService(): StripePaymentService {
     stripeClient: makeStripeClient(),
     depositRepo: createFakeDepositRepository(),
     lifecycle: makeLifecycle(),
+    guestOrderProcessor: {
+      async confirmGuestOrderPayment(): Promise<void> {
+        /* noop */
+      },
+    },
     stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
     appUrl: 'http://localhost:3000',
     logger: silentLogger,

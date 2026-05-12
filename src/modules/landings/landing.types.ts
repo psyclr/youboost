@@ -118,6 +118,21 @@ export interface LandingCalculateResult {
   reason: string | null;
 }
 
+export const landingCheckoutSchema = z.object({
+  email: z.email(),
+  tierId: z.uuid(),
+  link: z.string().min(1).max(2048),
+  quantity: z.number().int().positive(),
+});
+
+export type LandingCheckoutInput = z.infer<typeof landingCheckoutSchema>;
+
+export interface LandingCheckoutResult {
+  orderId: string;
+  userId: string;
+  checkoutUrl: string;
+}
+
 export type LandingCreateInput = z.infer<typeof landingCreateSchema>;
 export type LandingUpdateInput = z.infer<typeof landingUpdateSchema>;
 export type LandingTierInput = z.infer<typeof landingTierInputSchema>;

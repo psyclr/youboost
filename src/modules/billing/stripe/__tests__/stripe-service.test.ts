@@ -2,6 +2,13 @@ import type Stripe from 'stripe';
 import { createStripePaymentService } from '../stripe.service';
 import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
+import type { GuestOrderProcessorPort } from '../../ports/guest-order-processor.port';
+
+const noopGuestOrderProcessor: GuestOrderProcessorPort = {
+  async confirmGuestOrderPayment(): Promise<void> {
+    /* noop for deposit-only tests */
+  },
+};
 
 function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
   return {
@@ -31,6 +38,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle,
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -57,6 +65,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle,
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -78,6 +87,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle,
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -98,6 +108,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: null,
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: undefined, webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -111,6 +122,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -126,6 +138,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -136,6 +149,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: null,
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
+      guestOrderProcessor: noopGuestOrderProcessor,
       stripeConfig: { secretKey: undefined, webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,

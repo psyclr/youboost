@@ -5,6 +5,11 @@ import type { LandingCreateInput, LandingUpdateInput } from '../landing.types';
 import { createFakeLandingRepository, fixedClock, silentLogger } from './fakes';
 import type { LandingRepository } from '../landing.repository';
 import type { ServiceLookupPort, ServiceLookupRecord } from '../ports/service-lookup.port';
+import type {
+  AutoUserCreatorPort,
+  GuestOrderCreatorPort,
+  GuestOrderStripePort,
+} from '../ports/guest-checkout.ports';
 
 function createFakeOutbox(): { port: OutboxPort; events: OutboxEvent[] } {
   const events: OutboxEvent[] = [];
@@ -107,12 +112,34 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
   const outbox = createFakeOutbox();
   const prisma = createFakePrisma();
   const serviceLookup = createFakeServiceLookup(serviceLookupSeed);
+  const autoUserCreator: AutoUserCreatorPort = {
+    async createAutoUser(email): Promise<{ userId: string; email: string; fresh: boolean }> {
+      return { userId: `user-${email}`, email, fresh: true };
+    },
+  };
+  const orderCreator: GuestOrderCreatorPort = {
+    async createPendingPaymentOrder(): Promise<{ orderId: string }> {
+      return { orderId: 'order-fake' };
+    },
+    async attachStripeSessionId(): Promise<void> {
+      /* noop */
+    },
+  };
+  const stripe: GuestOrderStripePort = {
+    async createGuestOrderSession(): Promise<{ sessionId: string; url: string }> {
+      return { sessionId: 'cs_fake', url: 'https://stripe.test/cs_fake' };
+    },
+  };
   const service = createLandingService({
     prisma,
     landingRepo: landingRepo as unknown as LandingRepository,
     serviceLookup: serviceLookup.port,
+    autoUserCreator,
+    orderCreator,
+    stripe,
     outbox: outbox.port,
     clock: fixedClock,
+    appUrl: 'http://app.test',
     logger: silentLogger,
   });
   return { service, landingRepo, outbox, serviceLookup };

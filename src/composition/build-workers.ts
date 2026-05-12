@@ -10,11 +10,13 @@ import type {
   OrderTimeoutWorker,
   StatusPollWorker,
   DripFeedWorker,
+  PendingPaymentExpiryWorker,
 } from '../modules/orders';
 import {
   createOrderTimeoutWorker,
   createStatusPollWorker,
   createDripFeedWorker,
+  createPendingPaymentExpiryWorker,
   stubProviderClient,
 } from '../modules/orders';
 import type { ProviderSelector } from '../modules/providers';
@@ -33,6 +35,7 @@ export interface OrderWorkerSet {
   statusPollWorker: StatusPollWorker;
   dripFeedWorker: DripFeedWorker;
   depositExpiryWorker: DepositExpiryWorker;
+  pendingPaymentExpiryWorker: PendingPaymentExpiryWorker;
 }
 
 export interface BuildOrderWorkersDeps {
@@ -89,5 +92,20 @@ export function buildOrderWorkers(deps: BuildOrderWorkersDeps): OrderWorkerSet {
     lifecycle: deps.depositLifecycle,
     logger: createServiceLogger('deposit-expiry'),
   });
-  return { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker };
+  const pendingPaymentExpiryWorker = createPendingPaymentExpiryWorker({
+    prisma: deps.prisma,
+    ordersRepo: deps.ordersRepo,
+    outbox: deps.outbox,
+    config: {
+      pendingPaymentTtlMinutes: deps.config.billing.pendingPaymentTtlMinutes,
+    },
+    logger: createServiceLogger('pending-payment-expiry'),
+  });
+  return {
+    orderTimeoutWorker,
+    statusPollWorker,
+    dripFeedWorker,
+    depositExpiryWorker,
+    pendingPaymentExpiryWorker,
+  };
 }

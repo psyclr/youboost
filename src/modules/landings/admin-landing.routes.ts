@@ -74,5 +74,12 @@ export function createAdminLandingRoutes(deps: AdminLandingRoutesDeps): FastifyP
       const result = await service.adminArchive(params.landingId);
       return reply.status(StatusCodes.OK).send(result);
     });
+
+    app.get('/:landingId/analytics', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(landingIdParamSchema, request.params);
+      const result = await service.adminAnalytics(params.landingId);
+      return reply.status(StatusCodes.OK).send(result);
+    });
   };
 }

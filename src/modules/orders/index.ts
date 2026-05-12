@@ -14,8 +14,15 @@ export type {
   StatusPollWorkerDeps,
   DripFeedWorker,
   DripFeedWorkerDeps,
+  PendingPaymentExpiryWorker,
+  PendingPaymentExpiryWorkerDeps,
 } from './workers';
-export { createOrderTimeoutWorker, createStatusPollWorker, createDripFeedWorker } from './workers';
+export {
+  createOrderTimeoutWorker,
+  createStatusPollWorker,
+  createDripFeedWorker,
+  createPendingPaymentExpiryWorker,
+} from './workers';
 
 export type { FundSettlement, FundSettlementDeps } from './utils/fund-settlement';
 export { createFundSettlement } from './utils/fund-settlement';

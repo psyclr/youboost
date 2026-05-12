@@ -11,6 +11,9 @@ interface OrderFilters {
 export interface OrdersRepository {
   createOrder(data: CreateOrderData): Promise<OrderRecord>;
   findOrderById(orderId: string, userId: string): Promise<OrderRecord | null>;
+  findOrderByStripeSessionId(sessionId: string): Promise<OrderRecord | null>;
+  findPendingPaymentOlderThan(cutoff: Date, batchSize: number): Promise<OrderRecord[]>;
+  attachStripeSession(orderId: string, sessionId: string): Promise<OrderRecord>;
   findOrders(
     userId: string,
     filters: OrderFilters,
@@ -42,6 +45,8 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
         link: data.link,
         quantity: data.quantity,
         price: data.price,
+        ...(data.status ? { status: data.status } : {}),
+        ...(data.stripeSessionId ? { stripeSessionId: data.stripeSessionId } : {}),
         isDripFeed: data.isDripFeed ?? false,
         dripFeedRuns: data.dripFeedRuns ?? null,
         dripFeedInterval: data.dripFeedInterval ?? null,
@@ -49,6 +54,28 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
         ...(data.couponId ? { couponId: data.couponId } : {}),
         ...(data.discount ? { discount: data.discount } : {}),
       },
+    });
+  }
+
+  async function findOrderByStripeSessionId(sessionId: string): Promise<OrderRecord | null> {
+    return prisma.order.findUnique({ where: { stripeSessionId: sessionId } });
+  }
+
+  async function findPendingPaymentOlderThan(
+    cutoff: Date,
+    batchSize: number,
+  ): Promise<OrderRecord[]> {
+    return prisma.order.findMany({
+      where: { status: 'PENDING_PAYMENT', createdAt: { lt: cutoff } },
+      orderBy: { createdAt: 'asc' },
+      take: batchSize,
+    });
+  }
+
+  async function attachStripeSession(orderId: string, sessionId: string): Promise<OrderRecord> {
+    return prisma.order.update({
+      where: { id: orderId },
+      data: { stripeSessionId: sessionId },
     });
   }
 
@@ -214,6 +241,9 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
   return {
     createOrder,
     findOrderById,
+    findOrderByStripeSessionId,
+    findPendingPaymentOlderThan,
+    attachStripeSession,
     findOrders,
     findProcessingOrders,
     updateOrderStatus,

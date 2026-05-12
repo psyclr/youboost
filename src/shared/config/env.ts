@@ -104,6 +104,10 @@ const envSchema = z.object({
     .string()
     .default('3600000')
     .transform((val) => Number.parseInt(val, 10)),
+  BILLING_PENDING_PAYMENT_TTL_MINUTES: z
+    .string()
+    .default('60')
+    .transform((val) => Number.parseInt(val, 10)),
 });
 
 export interface AppConfig {
@@ -163,6 +167,7 @@ export interface AppConfig {
     minDeposit: number;
     maxDeposit: number;
     depositExpiryMs: number;
+    pendingPaymentTtlMinutes: number;
   };
 }
 
@@ -226,6 +231,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       minDeposit: parsed.BILLING_MIN_DEPOSIT,
       maxDeposit: parsed.BILLING_MAX_DEPOSIT,
       depositExpiryMs: parsed.BILLING_DEPOSIT_EXPIRY_MS,
+      pendingPaymentTtlMinutes: parsed.BILLING_PENDING_PAYMENT_TTL_MINUTES,
     },
   };
 
