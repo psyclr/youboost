@@ -42,6 +42,7 @@ import { createCouponsRepository } from './modules/coupons/coupons.repository';
 import { createCouponsService } from './modules/coupons/coupons.service';
 import { createTrackingRepository } from './modules/tracking/tracking.repository';
 import { createTrackingService } from './modules/tracking/tracking.service';
+import { createLandingRepository, createLandingService } from './modules/landings';
 import { createHealthCheck } from './shared/health/health';
 
 const log = createServiceLogger('http');
@@ -89,6 +90,8 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const catalogRepo = createCatalogRepository(prisma);
   // prettier-ignore
   const catalogService = createCatalogService({ catalogRepo, cache, logger: createServiceLogger('catalog') });
+
+  const landingRepo = createLandingRepository(prisma);
 
   const trackingRepo = createTrackingRepository(prisma);
   // prettier-ignore
@@ -161,6 +164,9 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
   // prettier-ignore
   const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
+
+  // prettier-ignore
+  const landingService = createLandingService({ prisma, landingRepo, outbox, clock: createSystemClock(), logger: createServiceLogger('landings') });
 
   const referralsRepo = createReferralsRepository(prisma);
   // Port uses `string` for ledger type; billing expects LedgerType enum. Service
@@ -258,6 +264,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     referralsService,
     couponsService,
     trackingService,
+    landingService,
     adminServices,
   });
 

@@ -95,6 +95,47 @@ export type OutboxEvent =
       aggregateId: string;
       userId: string;
       payload: { couponId: string; orderId: string };
+    }
+  // Landings (funnel events — some are pre-auth, so userId may be null)
+  | {
+      type: 'landing.viewed';
+      aggregateType: 'landing';
+      aggregateId: string;
+      userId: string | null;
+      payload: { landingId: string; slug: string; userAgent?: string; referrer?: string };
+    }
+  | {
+      type: 'landing.calculator_used';
+      aggregateType: 'landing';
+      aggregateId: string;
+      userId: string | null;
+      payload: {
+        landingId: string;
+        slug: string;
+        serviceId: string;
+        quantity: number;
+        computedPrice: number;
+      };
+    }
+  | {
+      type: 'landing.guest_checkout_started';
+      aggregateType: 'landing';
+      aggregateId: string;
+      userId: string;
+      payload: {
+        landingId: string;
+        tierId: string;
+        orderId: string;
+        userId: string;
+        email: string;
+      };
+    }
+  | {
+      type: 'landing.guest_account_activated';
+      aggregateType: 'user';
+      aggregateId: string;
+      userId: string;
+      payload: { userId: string };
     };
 
 export type OutboxEventType = OutboxEvent['type'];

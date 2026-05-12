@@ -29,6 +29,8 @@ import { createCouponRoutes, createAdminCouponRoutes } from '../modules/coupons/
 import type { CouponsService } from '../modules/coupons';
 import { createAdminTrackingRoutes } from '../modules/tracking/tracking.routes';
 import type { TrackingService } from '../modules/tracking/tracking.service';
+import { createLandingRoutes, createAdminLandingRoutes } from '../modules/landings';
+import type { LandingService } from '../modules/landings';
 
 export interface RouteRegistrationDeps {
   app: FastifyInstance;
@@ -49,6 +51,7 @@ export interface RouteRegistrationDeps {
   referralsService: ReferralsService;
   couponsService: CouponsService;
   trackingService: TrackingService;
+  landingService: LandingService;
   adminServices: AdminServices;
 }
 
@@ -118,5 +121,12 @@ export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void>
   await app.register(
     createAdminTrackingRoutes({ service: deps.trackingService, authenticate, requireAdmin }),
     { prefix: '/admin/tracking-links' },
+  );
+  await app.register(createLandingRoutes({ service: deps.landingService }), {
+    prefix: '/landing',
+  });
+  await app.register(
+    createAdminLandingRoutes({ service: deps.landingService, authenticate, requireAdmin }),
+    { prefix: '/admin/landings' },
   );
 }
