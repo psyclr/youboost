@@ -47,7 +47,7 @@ import {
   createLandingServiceLookup,
   createAutoUserCreatorPort,
   createGuestOrderCreatorPort,
-  createGuestOrderStripePort,
+  createGuestOrderPaymentPort,
   createLateBoundGuestProcessor,
 } from './composition/landings-adapters';
 import { createHealthCheck } from './shared/health/health';
@@ -168,7 +168,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   // prettier-ignore
   const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, guestOrderProcessor: guestOrderProcessor.port, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
   // prettier-ignore
-  const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
+  const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, guestOrderProcessor: guestOrderProcessor.port, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
   // prettier-ignore
   const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
 
@@ -205,7 +205,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   guestOrderProcessor.bind({ confirmGuestOrderPayment: ordersService.confirmGuestOrderPayment });
 
   // prettier-ignore
-  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(ordersService), stripe: createGuestOrderStripePort(stripePayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
+  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(ordersService), payments: createGuestOrderPaymentPort(stripePayment, cryptomusPayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
 
   // Admin module — fan-in consumer of every other module.
   const adminServices = buildAdminServices({

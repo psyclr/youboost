@@ -10,7 +10,9 @@ interface ServiceTiersProps {
   defaultMinAmount: number;
 }
 
-function pillClassName(kind: LandingTierResponse['pillKind']): string {
+type DisplayPillKind = LandingTierResponse['pillKind'] | 'REGULAR';
+
+function pillClassName(kind: DisplayPillKind): string {
   switch (kind) {
     case 'SALE':
       return 'bg-brand-lime text-brand-lime-fg';
@@ -18,12 +20,14 @@ function pillClassName(kind: LandingTierResponse['pillKind']): string {
       return 'text-white';
     case 'PREMIUM':
       return 'border border-white/20 bg-white/10 text-white';
+    case 'REGULAR':
+      return 'border border-white/15 bg-white/5 text-white/70';
     default:
       return '';
   }
 }
 
-function pillStyle(kind: LandingTierResponse['pillKind']): React.CSSProperties {
+function pillStyle(kind: DisplayPillKind): React.CSSProperties {
   if (kind === 'MEGA_FAST') {
     return { background: 'var(--grad-cosmic)' };
   }
@@ -33,7 +37,7 @@ function pillStyle(kind: LandingTierResponse['pillKind']): React.CSSProperties {
   return {};
 }
 
-function pillLabel(kind: LandingTierResponse['pillKind']): string | null {
+function pillLabel(kind: DisplayPillKind): string {
   switch (kind) {
     case 'SALE':
       return 'SALE';
@@ -41,8 +45,10 @@ function pillLabel(kind: LandingTierResponse['pillKind']): string | null {
       return 'MEGA FAST';
     case 'PREMIUM':
       return 'PREMIUM';
+    case 'REGULAR':
+      return 'REGULAR';
     default:
-      return null;
+      return 'REGULAR';
   }
 }
 
@@ -85,30 +91,31 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
       </div>
       <div className="mx-auto grid max-w-[1280px] gap-4 px-6 md:grid-cols-2 md:px-8 lg:grid-cols-4">
         {tiers.map((tier) => {
-          const pill = pillLabel(tier.pillKind);
+          const pillKind: DisplayPillKind = tier.pillKind ?? 'REGULAR';
+          const pill = pillLabel(pillKind);
           const title = tier.titleOverride ?? tier.service.name;
           const desc = tier.descOverride ?? tier.service.description ?? '';
           return (
             <article
               key={tier.id}
-              className="relative overflow-hidden rounded-xl border border-white/10 p-6 text-white"
+              className="relative flex h-full flex-col overflow-hidden rounded-xl border border-white/10 p-6 text-white"
               style={{ background: tierBackground(tier.glowKind) }}
             >
-              {pill ? (
+              <div className="mb-4 h-6">
                 <span
-                  className={`mb-4 inline-block rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wider ${pillClassName(tier.pillKind)}`}
-                  style={pillStyle(tier.pillKind)}
+                  className={`inline-block rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wider ${pillClassName(pillKind)}`}
+                  style={pillStyle(pillKind)}
                 >
                   {pill}
                 </span>
-              ) : null}
+              </div>
               <h3 className="text-xl font-bold">{title}</h3>
               {desc ? (
-                <p className="mb-4 mt-1.5 text-[13px] text-white/65">{desc}</p>
+                <p className="mb-4 mt-1.5 min-h-10 text-[13px] text-white/65">{desc}</p>
               ) : (
-                <div className="mb-4" />
+                <div className="mb-4 min-h-10" />
               )}
-              <div className="mb-5 flex items-baseline gap-1">
+              <div className="mb-5 mt-auto flex items-baseline gap-1">
                 <span className="text-base text-white/55">$</span>
                 <span className="text-[36px] font-bold leading-none">{displayPrice(tier)}</span>
                 <span className="ml-1 text-xs text-white/55">/ {tier.unit}</span>

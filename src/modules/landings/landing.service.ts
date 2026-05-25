@@ -10,7 +10,7 @@ import type { ServiceLookupPort } from './ports/service-lookup.port';
 import type {
   AutoUserCreatorPort,
   GuestOrderCreatorPort,
-  GuestOrderStripePort,
+  GuestOrderPaymentPort,
 } from './ports/guest-checkout.ports';
 import { executeGuestCheckout } from './guest-checkout.flow';
 import type {
@@ -32,6 +32,7 @@ export interface LandingViewContext {
 }
 
 export interface LandingService {
+  getDefaultPublished(context: LandingViewContext): Promise<LandingResponse>;
   getPublishedBySlug(slug: string, context: LandingViewContext): Promise<LandingResponse>;
   calculate(slug: string, input: LandingCalculateInput): Promise<LandingCalculateResult>;
   checkout(slug: string, input: LandingCheckoutInput): Promise<LandingCheckoutResult>;
@@ -51,7 +52,7 @@ export interface LandingServiceDeps {
   serviceLookup: ServiceLookupPort;
   autoUserCreator: AutoUserCreatorPort;
   orderCreator: GuestOrderCreatorPort;
-  stripe: GuestOrderStripePort;
+  payments: GuestOrderPaymentPort;
   outbox: OutboxPort;
   clock: Clock;
   appUrl: string;
@@ -65,7 +66,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     serviceLookup,
     autoUserCreator,
     orderCreator,
-    stripe,
+    payments,
     outbox,
     clock,
     appUrl,
@@ -101,6 +102,14 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     });
     logger.debug({ landingId: record.id, slug: record.slug }, 'landing viewed');
     return response;
+  }
+
+  async function getDefaultPublished(context: LandingViewContext): Promise<LandingResponse> {
+    const record = await landingRepo.findDefaultPublished();
+    if (!record) {
+      throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    }
+    return getPublishedBySlug(record.slug, context);
   }
 
   async function calculate(
@@ -151,7 +160,9 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
         reason: `QUANTITY_ABOVE_MAX:${service.maxQuantity}`,
       };
     }
-    const price = Math.round(((service.pricePer1000 * input.quantity) / 1000) * 100) / 100;
+    const pricePer1000 =
+      tier.priceOverride !== null ? Number(tier.priceOverride) : service.pricePer1000;
+    const price = Math.round(((pricePer1000 * input.quantity) / 1000) * 100) / 100;
     await prisma.$transaction(async (tx) => {
       await outbox.emit(
         {
@@ -194,7 +205,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
         serviceLookup,
         autoUserCreator,
         orderCreator,
-        stripe,
+        payments,
         outbox,
         appUrl,
         logger,
@@ -293,6 +304,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
   }
 
   return {
+    getDefaultPublished,
     getPublishedBySlug,
     calculate,
     checkout,

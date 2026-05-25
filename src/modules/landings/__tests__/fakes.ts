@@ -18,6 +18,7 @@ export function createFakeLandingRepository(
   const calls: Record<string, unknown[]> = {
     findBySlug: [],
     findById: [],
+    findDefaultPublished: [],
     list: [],
     create: [],
     update: [],
@@ -40,6 +41,18 @@ export function createFakeLandingRepository(
     calls.findById?.push(id);
     const row = store.get(id);
     return row ? clone(row) : null;
+  }
+
+  async function findDefaultPublished(): Promise<LandingRecord | null> {
+    calls.findDefaultPublished?.push({});
+    const rows = [...store.values()]
+      .filter((record) => record.status === 'PUBLISHED')
+      .sort((a, b) => {
+        const aTime = (a.publishedAt ?? a.createdAt).getTime();
+        const bTime = (b.publishedAt ?? b.createdAt).getTime();
+        return bTime - aTime;
+      });
+    return rows[0] ? clone(rows[0]) : null;
   }
 
   async function list(
@@ -207,7 +220,18 @@ export function createFakeLandingRepository(
     };
   }
 
-  return { findBySlug, findById, list, create, update, setStatus, getAnalytics, store, calls };
+  return {
+    findBySlug,
+    findById,
+    findDefaultPublished,
+    list,
+    create,
+    update,
+    setStatus,
+    getAnalytics,
+    store,
+    calls,
+  };
 }
 
 export const silentLogger = {

@@ -17,7 +17,7 @@ export interface ConfirmGuestOrderDeps {
 
 export interface ConfirmGuestOrderInput {
   orderId: string;
-  userId: string;
+  userId?: string;
   stripeSessionId: string;
 }
 
@@ -36,7 +36,7 @@ export async function confirmGuestOrderPayment(
   if (!existing) {
     throw new NotFoundError('Order not found for Stripe session', 'ORDER_NOT_FOUND');
   }
-  if (existing.id !== input.orderId || existing.userId !== input.userId) {
+  if (existing.id !== input.orderId || (input.userId && existing.userId !== input.userId)) {
     throw new ValidationError('Order metadata mismatch', 'ORDER_METADATA_MISMATCH');
   }
   if (existing.status !== 'PENDING_PAYMENT') {

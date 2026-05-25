@@ -153,7 +153,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <Form {...usernameForm}>
-            <form onSubmit={usernameForm.handleSubmit(onUpdateUsername)} className="space-y-4">
+            <form noValidate onSubmit={usernameForm.handleSubmit(onUpdateUsername)} className="space-y-4">
               {usernameError && (
                 <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                   {usernameError}
@@ -187,7 +187,7 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <Form {...passwordForm}>
-            <form onSubmit={passwordForm.handleSubmit(onChangePassword)} className="space-y-4">
+            <form noValidate onSubmit={passwordForm.handleSubmit(onChangePassword)} className="space-y-4">
               {passwordError && (
                 <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                   {passwordError}

@@ -3,6 +3,7 @@ import { ValidationError } from '../../../shared/errors';
 import type { DepositRepository } from '../deposit.repository';
 import type { DepositLifecycleService } from '../deposit-lifecycle.service';
 import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
+import type { GuestOrderProcessorPort } from '../ports/guest-order-processor.port';
 import { signRequestBody, verifyWebhookSignature, extractSignFromBody } from './cryptomus.crypto';
 
 const CRYPTOMUS_API = 'https://api.cryptomus.com/v1/payment';
@@ -12,6 +13,20 @@ export interface CheckoutSessionResponse {
   orderId: string;
   url: string;
   depositId: string;
+}
+
+export interface GuestOrderSessionResponse {
+  sessionId: string;
+  url: string;
+}
+
+export interface GuestOrderSessionInput {
+  userId: string;
+  orderId: string;
+  amount: number;
+  productName: string;
+  successUrl: string;
+  cancelUrl: string;
 }
 
 interface CryptomusCreatePaymentResult {
@@ -45,12 +60,14 @@ export interface CryptomusPaymentService {
     userId: string,
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
+  createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(rawBody: string): Promise<void>;
 }
 
 export interface CryptomusPaymentServiceDeps {
   depositRepo: DepositRepository;
   lifecycle: DepositLifecycleService;
+  guestOrderProcessor?: GuestOrderProcessorPort;
   cryptomusConfig: {
     merchantId: string | undefined;
     paymentKey: string | undefined;
@@ -63,11 +80,14 @@ export interface CryptomusPaymentServiceDeps {
 export function createCryptomusPaymentService(
   deps: CryptomusPaymentServiceDeps,
 ): CryptomusPaymentService {
-  const { depositRepo, lifecycle, cryptomusConfig, appUrl, logger } = deps;
+  const { depositRepo, lifecycle, guestOrderProcessor, cryptomusConfig, appUrl, logger } = deps;
 
   function getCreds(): { merchantId: string; paymentKey: string } {
     if (!cryptomusConfig.merchantId || !cryptomusConfig.paymentKey) {
-      throw new ValidationError('Cryptomus is not configured', 'CRYPTOMUS_NOT_CONFIGURED');
+      throw new ValidationError(
+        'Crypto payments are temporarily unavailable. Please try another payment method or contact support.',
+        'CRYPTOMUS_NOT_CONFIGURED',
+      );
     }
     return {
       merchantId: cryptomusConfig.merchantId,
@@ -151,6 +171,65 @@ export function createCryptomusPaymentService(
     };
   }
 
+  async function createGuestOrderSession(
+    input: GuestOrderSessionInput,
+  ): Promise<GuestOrderSessionResponse> {
+    const { merchantId, paymentKey } = getCreds();
+    const callbackUrl = cryptomusConfig.callbackUrl;
+    if (!callbackUrl) {
+      throw new ValidationError(
+        'Crypto payments are temporarily unavailable. Please try another payment method or contact support.',
+        'CRYPTOMUS_CALLBACK_URL_MISSING',
+      );
+    }
+
+    const cryptomusOrderId = `guest:${input.orderId}`;
+    const body = {
+      amount: input.amount.toFixed(2),
+      currency: 'USD',
+      order_id: cryptomusOrderId,
+      url_callback: `${callbackUrl.replace(/\/$/, '')}/billing/cryptomus/webhook`,
+      url_return: input.cancelUrl,
+      url_success: input.successUrl,
+    };
+    const bodyJson = JSON.stringify(body);
+    const sign = signRequestBody(bodyJson, paymentKey);
+
+    const response = await fetch(CRYPTOMUS_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        merchant: merchantId,
+        sign,
+      },
+      body: bodyJson,
+    });
+
+    const raw = await response.text();
+    let parsed: CryptomusApiResponse<CryptomusCreatePaymentResult>;
+    try {
+      parsed = JSON.parse(raw) as CryptomusApiResponse<CryptomusCreatePaymentResult>;
+    } catch {
+      logger.error({ status: response.status, raw }, 'Cryptomus returned non-JSON response');
+      throw new ValidationError('Crypto checkout failed', 'CRYPTOMUS_API_INVALID_RESPONSE');
+    }
+
+    if (!response.ok || !parsed.result?.url || !parsed.result.order_id) {
+      logger.error(
+        { status: response.status, message: parsed.message, errors: parsed.errors },
+        'Cryptomus guest-order create payment failed',
+      );
+      throw new ValidationError('Crypto checkout failed', 'CRYPTOMUS_API_ERROR');
+    }
+
+    logger.info(
+      { orderId: input.orderId, userId: input.userId, cryptomusUuid: parsed.result.uuid },
+      'Cryptomus guest-order checkout session created',
+    );
+
+    return { sessionId: parsed.result.order_id, url: parsed.result.url };
+  }
+
   async function handleWebhookEvent(rawBody: string): Promise<void> {
     const { paymentKey } = getCreds();
 
@@ -172,6 +251,22 @@ export function createCryptomusPaymentService(
     }
 
     const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
+    if (!deposit && orderId.startsWith('guest:')) {
+      if (!CONFIRMED_STATUSES.has(status)) {
+        logger.debug({ orderId, status }, 'Cryptomus guest-order webhook non-confirmed status');
+        return;
+      }
+      const guestOrderId = orderId.slice('guest:'.length);
+      if (!guestOrderProcessor) {
+        logger.warn({ orderId }, 'Cryptomus guest-order processor is not wired');
+        return;
+      }
+      await guestOrderProcessor.confirmGuestOrderPayment({
+        orderId: guestOrderId,
+        stripeSessionId: orderId,
+      });
+      return;
+    }
     if (!deposit) {
       logger.warn({ orderId }, 'Cryptomus webhook for unknown deposit');
       return;
@@ -220,5 +315,5 @@ export function createCryptomusPaymentService(
     },
   };
 
-  return { provider, createCheckoutSession, handleWebhookEvent };
+  return { provider, createCheckoutSession, createGuestOrderSession, handleWebhookEvent };
 }

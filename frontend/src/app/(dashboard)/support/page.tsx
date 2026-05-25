@@ -222,6 +222,7 @@ export default function SupportPage() {
             </DialogDescription>
           </DialogHeader>
           <form
+            noValidate
             onSubmit={handleSubmit((data) => createMutation.mutate(data))}
             className="space-y-4"
           >

@@ -7,11 +7,11 @@ import type {
 import type {
   AutoUserCreatorPort,
   GuestOrderCreatorPort,
-  GuestOrderStripePort,
+  GuestOrderPaymentPort,
 } from '../modules/landings/ports/guest-checkout.ports';
 import type { AuthAutoUserService, AutoUserTicket } from '../modules/auth';
 import type { OrdersService } from '../modules/orders';
-import type { StripePaymentService } from '../modules/billing';
+import type { CryptomusPaymentService, StripePaymentService } from '../modules/billing';
 
 export function createLandingServiceLookup(catalog: CatalogService): ServiceLookupPort {
   return {
@@ -44,9 +44,15 @@ export function createGuestOrderCreatorPort(orders: OrdersService): GuestOrderCr
   };
 }
 
-export function createGuestOrderStripePort(stripe: StripePaymentService): GuestOrderStripePort {
+export function createGuestOrderPaymentPort(
+  stripe: StripePaymentService,
+  cryptomus: CryptomusPaymentService,
+): GuestOrderPaymentPort {
   return {
-    createGuestOrderSession: (i) => stripe.createGuestOrderSession(i),
+    createGuestOrderSession: (i) => {
+      if (i.provider === 'cryptomus') return cryptomus.createGuestOrderSession(i);
+      return stripe.createGuestOrderSession(i);
+    },
   };
 }
 

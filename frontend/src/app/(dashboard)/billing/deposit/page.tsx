@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { createStripeCheckout, createCryptomusCheckout } from '@/lib/api/billing';
-import { ApiError } from '@/lib/api/client';
+import { publicApiErrorMessage } from '@/lib/api/error-messages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,8 +54,7 @@ export default function DepositPage() {
       }
     },
     onError: (err) => {
-      if (err instanceof ApiError) toast.error(err.message);
-      else toast.error('Failed to create checkout session');
+      toast.error(publicApiErrorMessage(err, 'Failed to create checkout session'));
     },
   });
 
@@ -74,8 +73,7 @@ export default function DepositPage() {
       }
     },
     onError: (err) => {
-      if (err instanceof ApiError) toast.error(err.message);
-      else toast.error('Failed to create crypto checkout');
+      toast.error(publicApiErrorMessage(err, 'Failed to create crypto checkout'));
     },
   });
 
@@ -102,6 +100,7 @@ export default function DepositPage() {
           <CardContent>
             <Form {...stripeForm}>
               <form
+                noValidate
                 onSubmit={stripeForm.handleSubmit((data) => stripeMutation.mutate(data))}
                 className="space-y-4"
               >
@@ -167,6 +166,7 @@ export default function DepositPage() {
           <CardContent>
             <Form {...cryptoForm}>
               <form
+                noValidate
                 onSubmit={cryptoForm.handleSubmit((data) => cryptoMutation.mutate(data))}
                 className="space-y-4"
               >

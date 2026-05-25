@@ -245,7 +245,7 @@ export function createOrdersService(deps: OrdersServiceDeps): OrdersService {
 
   async function confirmGuest(params: {
     orderId: string;
-    userId: string;
+    userId?: string;
     stripeSessionId: string;
   }): Promise<void> {
     await confirmGuestOrderPayment(

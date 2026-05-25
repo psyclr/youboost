@@ -71,32 +71,50 @@ export type LandingFormValues = z.infer<typeof landingFormSchema>;
 
 export const defaultLandingFormValues: LandingFormValues = {
   slug: '',
-  seoTitle: '',
-  seoDescription: '',
+  seoTitle: 'YouBoost - YouTube promotion without registration',
+  seoDescription:
+    'Buy YouTube views, likes, subscribers and engagement in minutes. Paste a link, choose a service and checkout without creating an account.',
   seoOgImageUrl: '',
-  heroEyebrow: '',
-  heroTitle: '',
-  heroAccent: '',
-  heroLead: '',
-  heroPlaceholder: 'Paste a link',
-  heroCtaLabel: 'GO!',
-  heroFineprint: '',
+  heroEyebrow: 'No account needed',
+  heroTitle: 'Promote your YouTube video',
+  heroAccent: 'in one minute',
+  heroLead:
+    'Use the instant calculator, pick a quantity and launch a guest checkout without opening a dashboard first.',
+  heroPlaceholder: 'Paste a YouTube video or channel link',
+  heroCtaLabel: 'Calculate',
+  heroFineprint: 'Guest checkout creates an account automatically after payment.',
   heroMinAmount: 4,
   defaultServiceId: '',
   stats: [
-    { value: '', label: '' },
-    { value: '', label: '' },
-    { value: '', label: '' },
-    { value: '', label: '' },
+    { value: '1 min', label: 'guest checkout' },
+    { value: '$4+', label: 'starter orders' },
+    { value: '24/7', label: 'order tracking' },
+    { value: 'Auto', label: 'account setup' },
   ],
   steps: [
-    { n: 1, title: '', description: '' },
-    { n: 2, title: '', description: '' },
-    { n: 3, title: '', description: '' },
+    { n: 1, title: 'Paste link', description: 'Add the YouTube video or channel URL.' },
+    { n: 2, title: 'Calculate price', description: 'Choose a service and quantity instantly.' },
+    { n: 3, title: 'Pay securely', description: 'Checkout as a guest and receive email access.' },
   ],
-  faq: [{ question: '', answer: '' }],
-  footerCtaEnabled: false,
-  footerCta: { title: '', lead: '', label: '', href: '' },
+  faq: [
+    {
+      question: 'Do customers need to register first?',
+      answer:
+        'No. Guest checkout collects an email, creates the account automatically and sends order access after payment.',
+    },
+    {
+      question: 'What does the calculator show?',
+      answer:
+        'It uses the landing service, quantity limits and optional landing price override to show the checkout price.',
+    },
+  ],
+  footerCtaEnabled: true,
+  footerCta: {
+    title: 'Ready to launch another order?',
+    lead: 'Open the calculator, choose a package and start checkout without leaving the landing page.',
+    label: 'Start now',
+    href: '#services',
+  },
 };
 
 export function landingToFormValues(landing: LandingResponse): LandingFormValues {
@@ -163,36 +181,11 @@ export function LandingForm({
   const defaultServiceId = watch('defaultServiceId');
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+    <form noValidate onSubmit={handleSubmit(onSubmit)} className="space-y-8">
       <Section title="Slug & SEO">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Slug" error={errors.slug?.message} required>
-            <Input placeholder="youtube-views" disabled={mode === 'edit'} {...register('slug')} />
-          </Field>
-          <Field label="Default Service (optional)">
-            <Select
-              value={defaultServiceId || EMPTY_SERVICE_VALUE}
-              onValueChange={(v) =>
-                setValue('defaultServiceId', v === EMPTY_SERVICE_VALUE ? '' : v, {
-                  shouldDirty: true,
-                })
-              }
-              disabled={servicesLoading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={EMPTY_SERVICE_VALUE}>None</SelectItem>
-                {services.map((svc) => (
-                  <SelectItem key={svc.id} value={svc.id}>
-                    {svc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
+        <Field label="Slug" error={errors.slug?.message} required>
+          <Input placeholder="youtube-views" disabled={mode === 'edit'} {...register('slug')} />
+        </Field>
         <Field label="SEO Title" error={errors.seoTitle?.message} required>
           <Input {...register('seoTitle')} />
         </Field>
@@ -219,24 +212,58 @@ export function LandingForm({
         <Field label="Lead" error={errors.heroLead?.message} required>
           <Textarea rows={3} {...register('heroLead')} />
         </Field>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Field label="Placeholder" error={errors.heroPlaceholder?.message} required>
             <Input {...register('heroPlaceholder')} />
           </Field>
           <Field label="CTA Label" error={errors.heroCtaLabel?.message} required>
             <Input {...register('heroCtaLabel')} />
           </Field>
-          <Field label="Min Amount" error={errors.heroMinAmount?.message} required>
+        </div>
+        <Field label="Fineprint" error={errors.heroFineprint?.message}>
+          <Input {...register('heroFineprint')} />
+        </Field>
+      </Section>
+
+      <Section title="Calculator">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Minimum checkout amount" error={errors.heroMinAmount?.message} required>
             <Input
               type="number"
               step="0.01"
               {...register('heroMinAmount', { valueAsNumber: true })}
             />
+            <p className="text-xs text-muted-foreground">
+              Prefills quantity so the first visible price is not below this amount.
+            </p>
+          </Field>
+          <Field label="Default service">
+            <Select
+              value={defaultServiceId || EMPTY_SERVICE_VALUE}
+              onValueChange={(v) =>
+                setValue('defaultServiceId', v === EMPTY_SERVICE_VALUE ? '' : v, {
+                  shouldDirty: true,
+                })
+              }
+              disabled={servicesLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Auto from tiers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_SERVICE_VALUE}>Auto from tiers</SelectItem>
+                {services.map((svc) => (
+                  <SelectItem key={svc.id} value={svc.id}>
+                    {svc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Keep this aligned with one of the rows on the Tiers tab.
+            </p>
           </Field>
         </div>
-        <Field label="Fineprint" error={errors.heroFineprint?.message}>
-          <Input {...register('heroFineprint')} />
-        </Field>
       </Section>
 
       <Section title="Stats (4 items)">

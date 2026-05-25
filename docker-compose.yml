@@ -58,6 +58,16 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       PROVIDER_ENCRYPTION_KEY: ${PROVIDER_ENCRYPTION_KEY}
       PROVIDER_MODE: ${PROVIDER_MODE:-stub}
+      # Email via self-hosted Postal (SMTP on host port 25, reached via host-gateway)
+      # Host is fixed to host-gateway here; .env's SMTP_HOST (127.0.0.1) is for local dev only.
+      SMTP_HOST: host.docker.internal
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM:-YouBoost <noreply@tx.youboost.store>}
+      APP_URL: ${APP_URL:-https://www.youboost.store}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       postgres:
         condition: service_healthy

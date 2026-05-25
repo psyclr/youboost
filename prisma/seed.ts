@@ -78,6 +78,7 @@ async function seed(): Promise<void> {
     },
   ];
 
+  const seededServices = [];
   for (const svc of services) {
     const existing = await prisma.service.findFirst({
       where: { name: svc.name, platform: svc.platform },
@@ -85,10 +86,145 @@ async function seed(): Promise<void> {
 
     if (!existing) {
       const created = await prisma.service.create({ data: svc });
+      seededServices.push(created);
       console.log(`Service created: ${created.name} (${created.id})`);
     } else {
+      seededServices.push(existing);
       console.log(`Service exists: ${existing.name}`);
     }
+  }
+
+  if (seededServices.length > 0) {
+    const defaultLanding = await prisma.landing.upsert({
+      where: { slug: 'youtube-growth' },
+      update: {
+        status: 'PUBLISHED',
+        seoTitle: 'YouBoost - YouTube promotion without registration',
+        seoDescription:
+          'Buy YouTube views, likes and subscribers in minutes. Paste a link, calculate the price and checkout as a guest.',
+        seoOgImageUrl: null,
+        heroEyebrow: 'No account needed',
+        heroTitle: 'Promote your YouTube video',
+        heroAccent: 'in one minute',
+        heroLead:
+          'Use the instant calculator, pick a quantity and launch a guest checkout without opening a dashboard first.',
+        heroPlaceholder: 'Paste a YouTube video or channel link',
+        heroCtaLabel: 'Calculate',
+        heroFineprint: 'Guest checkout creates an account automatically after payment.',
+        heroMinAmount: 4,
+        defaultServiceId: seededServices[0]!.id,
+        stats: [
+          { value: '1 min', label: 'guest checkout' },
+          { value: '$4+', label: 'starter orders' },
+          { value: '24/7', label: 'order tracking' },
+          { value: 'Auto', label: 'account setup' },
+        ],
+        steps: [
+          { n: 1, title: 'Paste link', description: 'Add the YouTube video or channel URL.' },
+          {
+            n: 2,
+            title: 'Calculate price',
+            description: 'Choose a service and quantity instantly.',
+          },
+          {
+            n: 3,
+            title: 'Pay securely',
+            description: 'Checkout as a guest and receive email access.',
+          },
+        ],
+        faq: [
+          {
+            question: 'Do customers need to register first?',
+            answer:
+              'No. Guest checkout collects an email, creates the account automatically and sends order access after payment.',
+          },
+          {
+            question: 'What does the calculator show?',
+            answer:
+              'It uses the landing service, quantity limits and optional landing price override to show the checkout price.',
+          },
+        ],
+        footerCta: {
+          title: 'Ready to launch another order?',
+          lead: 'Open the calculator, choose a package and start checkout without leaving the landing page.',
+          label: 'Start now',
+          href: '#services',
+        },
+        publishedAt: new Date(),
+      },
+      create: {
+        slug: 'youtube-growth',
+        status: 'PUBLISHED',
+        seoTitle: 'YouBoost - YouTube promotion without registration',
+        seoDescription:
+          'Buy YouTube views, likes and subscribers in minutes. Paste a link, calculate the price and checkout as a guest.',
+        seoOgImageUrl: null,
+        heroEyebrow: 'No account needed',
+        heroTitle: 'Promote your YouTube video',
+        heroAccent: 'in one minute',
+        heroLead:
+          'Use the instant calculator, pick a quantity and launch a guest checkout without opening a dashboard first.',
+        heroPlaceholder: 'Paste a YouTube video or channel link',
+        heroCtaLabel: 'Calculate',
+        heroFineprint: 'Guest checkout creates an account automatically after payment.',
+        heroMinAmount: 4,
+        defaultServiceId: seededServices[0]!.id,
+        stats: [
+          { value: '1 min', label: 'guest checkout' },
+          { value: '$4+', label: 'starter orders' },
+          { value: '24/7', label: 'order tracking' },
+          { value: 'Auto', label: 'account setup' },
+        ],
+        steps: [
+          { n: 1, title: 'Paste link', description: 'Add the YouTube video or channel URL.' },
+          {
+            n: 2,
+            title: 'Calculate price',
+            description: 'Choose a service and quantity instantly.',
+          },
+          {
+            n: 3,
+            title: 'Pay securely',
+            description: 'Checkout as a guest and receive email access.',
+          },
+        ],
+        faq: [
+          {
+            question: 'Do customers need to register first?',
+            answer:
+              'No. Guest checkout collects an email, creates the account automatically and sends order access after payment.',
+          },
+          {
+            question: 'What does the calculator show?',
+            answer:
+              'It uses the landing service, quantity limits and optional landing price override to show the checkout price.',
+          },
+        ],
+        footerCta: {
+          title: 'Ready to launch another order?',
+          lead: 'Open the calculator, choose a package and start checkout without leaving the landing page.',
+          label: 'Start now',
+          href: '#services',
+        },
+        publishedAt: new Date(),
+      },
+    });
+
+    await prisma.landingTier.deleteMany({ where: { landingId: defaultLanding.id } });
+    await prisma.landingTier.createMany({
+      data: seededServices.slice(0, 4).map((service, index) => ({
+        landingId: defaultLanding.id,
+        serviceId: service.id,
+        order: index,
+        pillKind: index === 0 ? 'SALE' : index === 2 ? 'PREMIUM' : null,
+        glowKind: index === 0 ? 'ORANGE' : index === 1 ? 'COSMIC' : index === 2 ? 'PURPLE' : null,
+        titleOverride: null,
+        descOverride: null,
+        priceOverride: null,
+        unit: '1k',
+      })),
+    });
+    console.log(`Published landing: ${defaultLanding.slug} (${defaultLanding.id})`);
   }
   console.log('Seeding complete!');
 }

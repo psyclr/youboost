@@ -8,7 +8,7 @@ import type { ServiceLookupPort, ServiceLookupRecord } from '../ports/service-lo
 import type {
   AutoUserCreatorPort,
   GuestOrderCreatorPort,
-  GuestOrderStripePort,
+  GuestOrderPaymentPort,
 } from '../ports/guest-checkout.ports';
 
 function createFakeOutbox(): { port: OutboxPort; events: OutboxEvent[] } {
@@ -125,7 +125,7 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
       /* noop */
     },
   };
-  const stripe: GuestOrderStripePort = {
+  const payments: GuestOrderPaymentPort = {
     async createGuestOrderSession(): Promise<{ sessionId: string; url: string }> {
       return { sessionId: 'cs_fake', url: 'https://stripe.test/cs_fake' };
     },
@@ -136,7 +136,7 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
     serviceLookup: serviceLookup.port,
     autoUserCreator,
     orderCreator,
-    stripe,
+    payments,
     outbox: outbox.port,
     clock: fixedClock,
     appUrl: 'http://app.test',
@@ -414,6 +414,27 @@ describe('Landing Service', () => {
       });
 
       expect(result.price).toBeCloseTo(0.78, 2);
+    });
+
+    it('uses tier price override when present', async () => {
+      const ctx = setup({ pricePer1000: 2 });
+      const landing = await ctx.service.adminCreate({
+        ...baseInput,
+        tiers: [
+          {
+            ...baseInput.tiers[0]!,
+            priceOverride: 3.5,
+          },
+        ],
+      });
+      await ctx.service.adminPublish(landing.id);
+
+      const result = await ctx.service.calculate('home', {
+        serviceId: '00000000-0000-0000-0000-000000000001',
+        quantity: 2000,
+      });
+
+      expect(result.price).toBe(7);
     });
 
     it('rejects service not on landing without outbox emit', async () => {

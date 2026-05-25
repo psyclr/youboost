@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,11 +23,25 @@ import {
 } from '@/components/admin/landing-tiers-editor';
 import type { LandingCreateInput } from '@/lib/api/types';
 
+function buildDefaultTiers(services: Array<{ id: string }>): TierDraft[] {
+  return services.slice(0, 4).map((svc, index) => ({
+    serviceId: svc.id,
+    order: index,
+    pillKind: index === 0 ? 'SALE' : index === 2 ? 'PREMIUM' : null,
+    glowKind: index === 0 ? 'ORANGE' : index === 1 ? 'COSMIC' : index === 2 ? 'PURPLE' : null,
+    titleOverride: '',
+    descOverride: '',
+    priceOverride: '',
+    unit: '1k',
+  }));
+}
+
 export default function NewLandingPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [tiers, setTiers] = useState<TierDraft[]>([]);
   const [pendingContent, setPendingContent] = useState<LandingFormValues | null>(null);
+  const defaultsApplied = useRef(false);
 
   const { data: catalog, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog', 'services', 'all'],
@@ -35,6 +49,13 @@ export default function NewLandingPage() {
   });
 
   const services = catalog?.services ?? [];
+
+  useEffect(() => {
+    if (!defaultsApplied.current && services.length > 0) {
+      setTiers(buildDefaultTiers(services));
+      defaultsApplied.current = true;
+    }
+  }, [services]);
 
   const createMutation = useMutation({
     mutationFn: (payload: LandingCreateInput) => createAdminLanding(payload),

@@ -25,9 +25,7 @@ test.describe.serial('Login Page', () => {
   });
 
   test('should show validation error for invalid email', async () => {
-    // Disable native HTML5 validation so Zod schema validates instead
-    await page.locator('form').evaluate((f) => f.setAttribute('novalidate', ''));
-
+    // Form has noValidate, so Zod owns validation (native HTML5 bubble does not shadow it).
     await page.getByPlaceholder('you@example.com').fill('not-an-email');
     await page.getByPlaceholder('Enter your password').fill('something');
     await page.getByRole('button', { name: 'Sign In' }).click();

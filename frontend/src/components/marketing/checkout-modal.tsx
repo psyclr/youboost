@@ -12,8 +12,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { calculateLanding, checkoutLanding } from '@/lib/api/landings';
-import { ApiError } from '@/lib/api/client';
+import { publicApiErrorMessage } from '@/lib/api/error-messages';
+import { defaultQtyForTier, formatUsd } from '@/lib/landings/calculator';
 import type { LandingCalculateResult, LandingTierResponse } from '@/lib/api/types';
+
+type GuestPaymentProvider = 'stripe' | 'cryptomus';
 
 interface CheckoutModalProps {
   slug: string;
@@ -23,24 +26,6 @@ interface CheckoutModalProps {
   initialTier: LandingTierResponse;
   initialLink: string;
   defaultMinAmount: number;
-}
-
-function defaultQtyForTier(tier: LandingTierResponse, defaultMinAmount: number): number {
-  const minByService = tier.service.minQuantity;
-  const fallback = 1000;
-  const preferred = Math.max(minByService, fallback);
-  const unitPrice = tier.priceOverride ?? tier.service.pricePer1000;
-  if (unitPrice <= 0) return preferred;
-  const qtyForMinAmount = Math.ceil((defaultMinAmount / unitPrice) * 1000);
-  return Math.max(preferred, qtyForMinAmount);
-}
-
-function formatUsd(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-  }).format(amount);
 }
 
 export function CheckoutModal(props: CheckoutModalProps) {
@@ -67,6 +52,7 @@ function CheckoutModalBody({
   const [quantity, setQuantity] = useState<number>(
     defaultQtyForTier(initialTier, defaultMinAmount),
   );
+  const [paymentProvider, setPaymentProvider] = useState<GuestPaymentProvider>('stripe');
   const [calcResult, setCalcResult] = useState<LandingCalculateResult | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -92,11 +78,7 @@ function CheckoutModalBody({
     },
     onError: (err: unknown) => {
       setCalcResult(null);
-      if (err instanceof ApiError) {
-        setFormError(err.message);
-      } else {
-        setFormError('Unable to calculate price. Try again.');
-      }
+      setFormError(publicApiErrorMessage(err, 'Unable to calculate price. Try again.'));
     },
   });
 
@@ -107,16 +89,13 @@ function CheckoutModalBody({
         tierId: selectedTier.id,
         link: link.trim(),
         quantity,
+        paymentProvider,
       }),
     onSuccess: (result) => {
       window.location.href = result.checkoutUrl;
     },
     onError: (err: unknown) => {
-      if (err instanceof ApiError) {
-        setFormError(err.message);
-      } else {
-        setFormError('Unable to start checkout. Try again.');
-      }
+      setFormError(publicApiErrorMessage(err, 'Unable to start checkout. Try again.'));
     },
   });
 
@@ -242,6 +221,28 @@ function CheckoutModalBody({
               Min {selectedTier.service.minQuantity.toLocaleString()} · Max{' '}
               {selectedTier.service.maxQuantity.toLocaleString()}
             </p>
+          </div>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium">Payment</span>
+            <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/40 p-1">
+              {[
+                ['stripe', 'Card'],
+                ['cryptomus', 'Crypto'],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPaymentProvider(value as GuestPaymentProvider)}
+                  className={`rounded-sm px-3 py-2 text-sm font-semibold transition ${
+                    paymentProvider === value
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {priceDisplay ? (
             <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm">

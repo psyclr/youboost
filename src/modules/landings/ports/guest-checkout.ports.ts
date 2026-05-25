@@ -25,8 +25,11 @@ export interface GuestOrderCreatorPort {
   attachStripeSessionId(orderId: string, sessionId: string): Promise<void>;
 }
 
-export interface GuestOrderStripePort {
+export type GuestPaymentProvider = 'stripe' | 'cryptomus';
+
+export interface GuestOrderPaymentPort {
   createGuestOrderSession(input: {
+    provider: GuestPaymentProvider;
     userId: string;
     orderId: string;
     amount: number;

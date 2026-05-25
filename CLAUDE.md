@@ -71,6 +71,14 @@ Monorepo with modular services under `src/modules/`:
 - **Banned**: `any` type, `console.log` (use Pino), `eval()`, committing `.env`
 - **Language**: Code and comments in English, user-facing strings as needed
 
+## Always verify, never guess
+
+Any factual claim — about anything: code behavior, library APIs, provider policies, configs, file contents, defaults, ports, env vars, what was committed, what tests pass, etc. — must be **verified** before stating it. Read the file, run the command, search the docs, test empirically.
+
+- Never extrapolate from "this is how it usually works" or "I think this is how X behaves" and present it as fact.
+- If verification isn't possible right now, say so explicitly: "I haven't verified, but typically..." — never present a guess as a statement of fact.
+- This applies universally — codebase questions, infra/providers, libraries, APIs, package behavior, what was already done in this session, everything.
+
 ## Reference
 
 - Architecture plan: `План архитектуры платформы youboost для SMM-маркетплейса (1).pdf`

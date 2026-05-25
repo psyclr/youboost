@@ -7,7 +7,7 @@ import type { ServiceLookupPort } from './ports/service-lookup.port';
 import type {
   AutoUserCreatorPort,
   GuestOrderCreatorPort,
-  GuestOrderStripePort,
+  GuestOrderPaymentPort,
 } from './ports/guest-checkout.ports';
 import type { LandingCheckoutInput, LandingCheckoutResult } from './landing.types';
 
@@ -17,7 +17,7 @@ export interface GuestCheckoutFlowDeps {
   serviceLookup: ServiceLookupPort;
   autoUserCreator: AutoUserCreatorPort;
   orderCreator: GuestOrderCreatorPort;
-  stripe: GuestOrderStripePort;
+  payments: GuestOrderPaymentPort;
   outbox: OutboxPort;
   appUrl: string;
   logger: Logger;
@@ -34,7 +34,7 @@ export async function executeGuestCheckout(
     serviceLookup,
     autoUserCreator,
     orderCreator,
-    stripe,
+    payments,
     outbox,
     appUrl,
     logger,
@@ -57,7 +57,9 @@ export async function executeGuestCheckout(
     throw new ValidationError(`Quantity above max ${service.maxQuantity}`, 'QUANTITY_ABOVE_MAX');
   }
 
-  const price = Math.round(((service.pricePer1000 * input.quantity) / 1000) * 100) / 100;
+  const pricePer1000 =
+    tier.priceOverride !== null ? Number(tier.priceOverride) : service.pricePer1000;
+  const price = Math.round(((pricePer1000 * input.quantity) / 1000) * 100) / 100;
 
   const ticket = await autoUserCreator.createAutoUser(input.email);
   const { orderId } = await orderCreator.createPendingPaymentOrder({
@@ -68,7 +70,8 @@ export async function executeGuestCheckout(
     price,
   });
 
-  const session = await stripe.createGuestOrderSession({
+  const session = await payments.createGuestOrderSession({
+    provider: input.paymentProvider,
     userId: ticket.userId,
     orderId,
     amount: price,
@@ -88,6 +91,7 @@ export async function executeGuestCheckout(
         payload: {
           landingId: landing.id,
           tierId: tier.id,
+          paymentProvider: input.paymentProvider,
           orderId,
           userId: ticket.userId,
           email: ticket.email,

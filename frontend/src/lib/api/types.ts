@@ -562,6 +562,7 @@ export interface LandingCheckoutBody {
   tierId: string;
   link: string;
   quantity: number;
+  paymentProvider?: 'stripe' | 'cryptomus';
 }
 
 export interface LandingCheckoutResult {

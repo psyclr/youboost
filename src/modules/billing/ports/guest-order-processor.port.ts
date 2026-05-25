@@ -1,7 +1,7 @@
 /**
- * Consumer-side port used by the Stripe webhook handler to notify the
+ * Consumer-side port used by payment webhook handlers to notify the
  * owner of a guest-order flow (currently the landings module) that a
- * Stripe Checkout Session completed successfully.
+ * checkout session completed successfully.
  *
  * The implementation must:
  *   - Guard idempotency (confirm invoked may fire more than once)
@@ -14,7 +14,7 @@
 export interface GuestOrderProcessorPort {
   confirmGuestOrderPayment(params: {
     orderId: string;
-    userId: string;
+    userId?: string;
     stripeSessionId: string;
   }): Promise<void>;
 }

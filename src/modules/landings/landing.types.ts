@@ -123,6 +123,7 @@ export const landingCheckoutSchema = z.object({
   tierId: z.uuid(),
   link: z.string().min(1).max(2048),
   quantity: z.number().int().positive(),
+  paymentProvider: z.enum(['stripe', 'cryptomus']).default('stripe'),
 });
 
 export type LandingCheckoutInput = z.infer<typeof landingCheckoutSchema>;

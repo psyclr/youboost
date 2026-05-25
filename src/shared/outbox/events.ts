@@ -125,6 +125,7 @@ export type OutboxEvent =
       payload: {
         landingId: string;
         tierId: string;
+        paymentProvider?: 'stripe' | 'cryptomus';
         orderId: string;
         userId: string;
         email: string;

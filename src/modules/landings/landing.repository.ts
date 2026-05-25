@@ -68,6 +68,7 @@ export interface LandingAnalytics {
 export interface LandingRepository {
   findBySlug(slug: string): Promise<LandingRecord | null>;
   findById(id: string): Promise<LandingRecord | null>;
+  findDefaultPublished(): Promise<LandingRecord | null>;
   list(filters: LandingListFilters): Promise<{ landings: LandingListRow[]; total: number }>;
   create(data: LandingCreateData): Promise<LandingRecord>;
   update(id: string, data: LandingUpdateData): Promise<LandingRecord>;
@@ -131,6 +132,15 @@ export function createLandingRepository(prisma: PrismaClient): LandingRepository
 
   async function findById(id: string): Promise<LandingRecord | null> {
     const row = await prisma.landing.findUnique({ where: { id }, include: includeTiers });
+    return row ? mapLanding(row) : null;
+  }
+
+  async function findDefaultPublished(): Promise<LandingRecord | null> {
+    const row = await prisma.landing.findFirst({
+      where: { status: 'PUBLISHED' },
+      orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+      include: includeTiers,
+    });
     return row ? mapLanding(row) : null;
   }
 
@@ -273,5 +283,14 @@ export function createLandingRepository(prisma: PrismaClient): LandingRepository
     };
   }
 
-  return { findBySlug, findById, list, create, update, setStatus, getAnalytics };
+  return {
+    findBySlug,
+    findById,
+    findDefaultPublished,
+    list,
+    create,
+    update,
+    setStatus,
+    getAnalytics,
+  };
 }

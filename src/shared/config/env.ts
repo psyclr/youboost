@@ -23,7 +23,7 @@ const envSchema = z.object({
 
   // Cryptomus (optional)
   CRYPTOMUS_MERCHANT_ID: z.string().optional(),
-  CRYPTOMUS_PAYMENT_KEY: z.string().optional(),
+  CRYPTOMUS_PAYMENT_API_KEY: z.string().optional(),
   // Public URL for Cryptomus webhook callback (required in prod, ngrok URL in dev)
   CRYPTOMUS_CALLBACK_URL: z.string().optional(),
   PORT: z
@@ -208,7 +208,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     },
     cryptomus: {
       merchantId: parsed.CRYPTOMUS_MERCHANT_ID,
-      paymentKey: parsed.CRYPTOMUS_PAYMENT_KEY,
+      paymentKey: parsed.CRYPTOMUS_PAYMENT_API_KEY,
       callbackUrl: parsed.CRYPTOMUS_CALLBACK_URL,
     },
     provider: {

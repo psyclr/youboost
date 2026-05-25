@@ -184,6 +184,7 @@ export default function TicketDetailPage({
             <>
               <Separator className="my-4" />
               <form
+                noValidate
                 onSubmit={handleSubmit((data) => sendMutation.mutate(data.body))}
                 className="flex gap-2"
               >

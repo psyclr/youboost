@@ -103,7 +103,7 @@ describe('Stripe payment service - webhook handling', () => {
     expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
   });
 
-  it('throws when stripe is not configured (null client)', async () => {
+  it('throws a public-safe error when card payments are not configured', async () => {
     const service = createStripePaymentService({
       stripeClient: null,
       depositRepo: createFakeDepositRepository(),
@@ -114,7 +114,11 @@ describe('Stripe payment service - webhook handling', () => {
       logger: silentLogger,
     });
 
-    await expect(service.handleWebhookEvent('{}', 'sig')).rejects.toThrow(/not configured/);
+    await expect(service.handleWebhookEvent('{}', 'sig')).rejects.toMatchObject({
+      code: 'STRIPE_NOT_CONFIGURED',
+      message:
+        'Card payments are temporarily unavailable. Please try another payment method or contact support.',
+    });
   });
 
   it('throws when webhook secret is missing', async () => {

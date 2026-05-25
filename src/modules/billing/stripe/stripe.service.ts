@@ -59,7 +59,10 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
 
   function getStripe(): Stripe {
     if (!stripeClient) {
-      throw new ValidationError('Stripe is not configured', 'STRIPE_NOT_CONFIGURED');
+      throw new ValidationError(
+        'Card payments are temporarily unavailable. Please try another payment method or contact support.',
+        'STRIPE_NOT_CONFIGURED',
+      );
     }
     return stripeClient;
   }
