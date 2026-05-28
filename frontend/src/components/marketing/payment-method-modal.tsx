@@ -90,11 +90,11 @@ function PaymentMethodModalBody({
           No registration needed. You&apos;ll get an order confirmation by email.
         </DialogDescription>
       </DialogHeader>
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">{serviceName}</span>
-            <span className="font-medium">{quantity.toLocaleString()}</span>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="truncate text-muted-foreground">{serviceName}</span>
+            <span className="shrink-0 font-medium">{quantity.toLocaleString()}</span>
           </div>
           <div className="mt-1.5 truncate text-xs text-muted-foreground" title={link}>
             {cleanLink}

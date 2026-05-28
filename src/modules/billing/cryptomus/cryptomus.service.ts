@@ -183,7 +183,7 @@ export function createCryptomusPaymentService(
       );
     }
 
-    const cryptomusOrderId = `guest:${input.orderId}`;
+    const cryptomusOrderId = `guest-${input.orderId}`;
     const body = {
       amount: input.amount.toFixed(2),
       currency: 'USD',
@@ -251,12 +251,12 @@ export function createCryptomusPaymentService(
     }
 
     const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
-    if (!deposit && orderId.startsWith('guest:')) {
+    if (!deposit && orderId.startsWith('guest-')) {
       if (!CONFIRMED_STATUSES.has(status)) {
         logger.debug({ orderId, status }, 'Cryptomus guest-order webhook non-confirmed status');
         return;
       }
-      const guestOrderId = orderId.slice('guest:'.length);
+      const guestOrderId = orderId.slice('guest-'.length);
       if (!guestOrderProcessor) {
         logger.warn({ orderId }, 'Cryptomus guest-order processor is not wired');
         return;

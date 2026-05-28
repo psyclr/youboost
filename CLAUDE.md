@@ -79,6 +79,15 @@ Any factual claim — about anything: code behavior, library APIs, provider poli
 - If verification isn't possible right now, say so explicitly: "I haven't verified, but typically..." — never present a guess as a statement of fact.
 - This applies universally — codebase questions, infra/providers, libraries, APIs, package behavior, what was already done in this session, everything.
 
+### Verify completion by every available method
+
+Before claiming work is "done", "verified", "working", or "passing", run **every** verification method that applies — not just one. A single check (a screenshot, a 200 response, "looks right") is not verification.
+
+- For code changes: `tsc --noEmit`, ESLint, the relevant existing tests (e2e/unit), AND a runtime/browser check.
+- For UI work: typecheck + relevant e2e + screenshot/visual diff. A screenshot alone does not catch type errors, regressions, or broken handlers.
+- For infra/config: read the config back, hit the endpoint, tail the logs, test from a clean process.
+- Only call it "verified" when every applicable method passed. If you skipped a method, say which and why.
+
 ## Reference
 
 - Architecture plan: `План архитектуры платформы youboost для SMM-маркетплейса (1).pdf`

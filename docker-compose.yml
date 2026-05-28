@@ -58,6 +58,13 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       PROVIDER_ENCRYPTION_KEY: ${PROVIDER_ENCRYPTION_KEY}
       PROVIDER_MODE: ${PROVIDER_MODE:-stub}
+      # Payment providers — read by src/shared/config/env.ts. Without these the API
+      # returns CRYPTOMUS_NOT_CONFIGURED / STRIPE_NOT_CONFIGURED on checkout.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      CRYPTOMUS_MERCHANT_ID: ${CRYPTOMUS_MERCHANT_ID:-}
+      CRYPTOMUS_PAYMENT_API_KEY: ${CRYPTOMUS_PAYMENT_API_KEY:-}
+      CRYPTOMUS_CALLBACK_URL: ${CRYPTOMUS_CALLBACK_URL:-}
       # Email via self-hosted Postal (SMTP on host port 25, reached via host-gateway)
       # Host is fixed to host-gateway here; .env's SMTP_HOST (127.0.0.1) is for local dev only.
       SMTP_HOST: host.docker.internal
