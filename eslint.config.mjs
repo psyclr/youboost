@@ -1,11 +1,11 @@
-const tseslint = require('@typescript-eslint/eslint-plugin');
-const tsparser = require('@typescript-eslint/parser');
-const security = require('eslint-plugin-security');
-const sonarjs = require('eslint-plugin-sonarjs');
-const unicorn = require('eslint-plugin-unicorn');
-const boundaries = require('eslint-plugin-boundaries');
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsparser from '@typescript-eslint/parser';
+import security from 'eslint-plugin-security';
+import sonarjs from 'eslint-plugin-sonarjs';
+import unicorn from 'eslint-plugin-unicorn';
+import boundaries from 'eslint-plugin-boundaries';
 
-module.exports = [
+export default [
   {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {

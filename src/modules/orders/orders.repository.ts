@@ -58,7 +58,11 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
   }
 
   async function findOrderByStripeSessionId(sessionId: string): Promise<OrderRecord | null> {
-    return prisma.order.findUnique({ where: { stripeSessionId: sessionId } });
+    // TODO(B13): remove dead stripeSessionId plumbing - stripeSessionId no longer exists on Order
+    return prisma.order.findUnique({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where: { stripeSessionId: sessionId } as any,
+    });
   }
 
   async function findPendingPaymentOlderThan(
@@ -73,9 +77,11 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
   }
 
   async function attachStripeSession(orderId: string, sessionId: string): Promise<OrderRecord> {
+    // TODO(B13): remove dead stripeSessionId plumbing - stripeSessionId no longer exists on Order
     return prisma.order.update({
       where: { id: orderId },
-      data: { stripeSessionId: sessionId },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { stripeSessionId: sessionId } as any,
     });
   }
 

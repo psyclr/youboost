@@ -33,6 +33,7 @@ model User {
   wallets                 Wallet[]
   ledger                  Ledger[]
   orders                  Order[]
+  payments                Payment[]
   apiKeys                 ApiKey[]
   webhooks                Webhook[]
   refreshTokens           RefreshToken[]
@@ -220,8 +221,8 @@ model Order {
   startCount Int?        @map("start_count")
   remains    Int?
 
-  // Guest checkout (one-shot Stripe for auto-created users)
-  stripeSessionId String? @unique @map("stripe_session_id") @db.VarChar(255)
+  // Payment link
+  paymentId String?  @map("payment_id") @db.Uuid
 
   // Timestamps
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -233,6 +234,7 @@ model Order {
   service  Service   @relation(fields: [serviceId], references: [id])
   provider Provider? @relation(fields: [providerId], references: [id])
   coupon   Coupon?   @relation(fields: [couponId], references: [id])
+  payment  Payment?  @relation(fields: [paymentId], references: [id])
 
   @@index([userId])
   @@index([serviceId])
@@ -241,6 +243,7 @@ model Order {
   @@index([createdAt(sort: Desc)])
   @@index([isDripFeed])
   @@index([isDripFeed, status])
+  @@index([paymentId])
   @@map("orders")
 }
 
@@ -253,6 +256,29 @@ enum OrderStatus {
   CANCELLED
   FAILED
   REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model Payment {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @map("user_id") @db.Uuid
+  amount            Decimal       @db.Decimal(12, 2)
+  provider          String        @db.VarChar(32)
+  providerSessionId String?       @unique @map("provider_session_id") @db.VarChar(255)
+  status            PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  paidAt            DateTime?     @map("paid_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
+
+  @@index([userId])
+  @@map("payments")
 }
 
 // ============================================
