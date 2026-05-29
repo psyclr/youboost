@@ -1,0 +1,79 @@
+import { test, expect, type Page, type BrowserContext, type Route } from '@playwright/test';
+
+const CART_CHECKOUT = /\/api\/landing\/[^/]+\/checkout\/cart$/;
+let context: BrowserContext;
+let page: Page;
+
+test.describe.serial('Landing cart', () => {
+  test.beforeAll(async ({ browser }) => {
+    context = await browser.newContext();
+    page = await context.newPage();
+  });
+  test.afterAll(async () => {
+    await context.close();
+  });
+  test.beforeEach(async () => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => undefined);
+    await page.goto('/');
+    await expect(page.getByTestId('order-panel')).toBeVisible({ timeout: 10_000 });
+  });
+
+  const cards = () => page.locator('[data-tier-card]');
+  const panel = () => page.getByTestId('order-panel');
+
+  test('empty cart shows the empty state', async () => {
+    await expect(panel()).toContainText(/pick a service/i);
+  });
+
+  test('adding two services shows two items and a summed Pay total', async () => {
+    await cards().nth(0).getByRole('button', { name: /^pay$/i }).click();
+    await cards().nth(1).getByRole('button', { name: /^pay$/i }).click();
+    await expect(panel().getByLabel(/add a link/i)).toHaveCount(2);
+    await expect(panel().getByRole('button', { name: /pay \$\d/i })).toBeVisible();
+  });
+
+  test('removing an item drops it; emptying returns to empty state', async () => {
+    await cards().nth(0).getByRole('button', { name: /^pay$/i }).click();
+    await panel()
+      .getByRole('button', { name: /remove item/i })
+      .first()
+      .click();
+    await expect(panel()).toContainText(/pick a service/i);
+  });
+
+  test('invalid email blocks checkout; valid cart posts items and redirects', async () => {
+    const captured: { body: unknown } = { body: null };
+    await page.route(CART_CHECKOUT, async (route: Route) => {
+      captured.body = JSON.parse(route.request().postData() ?? '{}');
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userId: 'u',
+          paymentId: 'p',
+          orderIds: ['o1', 'o2'],
+          checkoutUrl: 'https://checkout.stripe.com/x',
+        }),
+      });
+    });
+    await cards().nth(0).getByRole('button', { name: /^pay$/i }).click();
+    await cards().nth(1).getByRole('button', { name: /^pay$/i }).click();
+    for (const inp of await panel()
+      .getByLabel(/add a link/i)
+      .all()) {
+      await inp.fill('https://youtube.com/watch?v=abc');
+    }
+    await panel()
+      .getByRole('button', { name: /pay \$/i })
+      .click(); // no email yet
+    await expect(panel().getByRole('alert')).toContainText(/valid email/i);
+    await panel()
+      .getByPlaceholder(/you@example/i)
+      .fill('a@b.com');
+    await panel()
+      .getByRole('button', { name: /pay \$/i })
+      .click();
+    await expect.poll(() => captured.body).not.toBeNull();
+    expect((captured.body as { items: unknown[] }).items).toHaveLength(2);
+  });
+});
