@@ -3,9 +3,8 @@ import { ValidationError } from '../../../shared/errors';
 import type { DepositRepository } from '../deposit.repository';
 import type { DepositLifecycleService } from '../deposit-lifecycle.service';
 import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
-import type { GuestOrderProcessorPort } from '../ports/guest-order-processor.port';
 import type { PaymentReference } from '../payment-reference';
-import { encodeRef } from '../payment-reference';
+import { encodeRef, decodeRef } from '../payment-reference';
 import { verifyWebhookSignature, extractSignFromBody } from './cryptomus.crypto';
 import { createCryptomusPayment } from './cryptomus.client';
 
@@ -64,7 +63,12 @@ export interface CryptomusPaymentService {
 export interface CryptomusPaymentServiceDeps {
   depositRepo: DepositRepository;
   lifecycle: DepositLifecycleService;
-  guestOrderProcessor?: GuestOrderProcessorPort;
+  /**
+   * Called when a completed Cryptomus webhook carries an order-payment reference.
+   * Optional to keep existing test harnesses that exercise only the deposit path
+   * constructing the service unchanged.
+   */
+  confirmOrderPayment?: (paymentId: string) => Promise<void>;
   cryptomusConfig: {
     merchantId: string | undefined;
     paymentKey: string | undefined;
@@ -77,7 +81,7 @@ export interface CryptomusPaymentServiceDeps {
 export function createCryptomusPaymentService(
   deps: CryptomusPaymentServiceDeps,
 ): CryptomusPaymentService {
-  const { depositRepo, lifecycle, guestOrderProcessor, cryptomusConfig, appUrl, logger } = deps;
+  const { depositRepo, lifecycle, confirmOrderPayment, cryptomusConfig, appUrl, logger } = deps;
 
   function getCreds(): { merchantId: string; paymentKey: string } {
     if (!cryptomusConfig.merchantId || !cryptomusConfig.paymentKey) {
@@ -187,21 +191,6 @@ export function createCryptomusPaymentService(
     return { sessionId: result.order_id, url: result.url };
   }
 
-  async function handleGuestOrderWebhook(orderId: string, status: string): Promise<void> {
-    if (!CONFIRMED_STATUSES.has(status)) {
-      logger.debug({ orderId, status }, 'Cryptomus guest-order webhook non-confirmed status');
-      return;
-    }
-    if (!guestOrderProcessor) {
-      logger.warn({ orderId }, 'Cryptomus guest-order processor is not wired');
-      return;
-    }
-    await guestOrderProcessor.confirmGuestOrderPayment({
-      orderId: orderId.slice('guest-'.length),
-      stripeSessionId: orderId,
-    });
-  }
-
   async function handleWebhookEvent(rawBody: string): Promise<void> {
     const { paymentKey } = getCreds();
 
@@ -222,11 +211,23 @@ export function createCryptomusPaymentService(
       return;
     }
 
-    const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
-    if (!deposit && orderId.startsWith('guest-')) {
-      await handleGuestOrderWebhook(orderId, status);
+    // order-payment path: order_id is an encoded PaymentReference (pay:<id>:<user>)
+    const ref = decodeRef(orderId);
+    if (ref && ref.kind === 'order-payment') {
+      if (!CONFIRMED_STATUSES.has(status)) {
+        logger.debug({ orderId, status }, 'Cryptomus order-payment webhook non-confirmed status');
+        return;
+      }
+      if (!confirmOrderPayment) {
+        logger.warn({ orderId }, 'Cryptomus confirmOrderPayment handler is not wired');
+        return;
+      }
+      await confirmOrderPayment(ref.paymentId);
       return;
     }
+
+    // deposit path: fall through to the existing deposit-by-order-id logic
+    const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
     if (!deposit) {
       logger.warn({ orderId }, 'Cryptomus webhook for unknown deposit');
       return;

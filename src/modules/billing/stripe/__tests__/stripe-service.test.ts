@@ -2,13 +2,7 @@ import type Stripe from 'stripe';
 import { createStripePaymentService } from '../stripe.service';
 import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
-import type { GuestOrderProcessorPort } from '../../ports/guest-order-processor.port';
-
-const noopGuestOrderProcessor: GuestOrderProcessorPort = {
-  async confirmGuestOrderPayment(): Promise<void> {
-    /* noop for deposit-only tests */
-  },
-};
+import { createPaymentCompletionRouter } from '../../payment-completion.router';
 
 function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
   return {
@@ -31,18 +25,30 @@ function makeStripeClient(): Stripe {
   } as unknown as Stripe;
 }
 
+function makeService(
+  lifecycle: jest.Mocked<DepositLifecycleService>,
+  confirmOrderPayment?: jest.Mock,
+) {
+  const completionRouter = createPaymentCompletionRouter({
+    confirmDeposit: (depositId, userId) =>
+      lifecycle.confirmDepositTransaction(depositId, userId, 'Stripe'),
+    confirmOrderPayment: confirmOrderPayment ?? jest.fn(),
+  });
+  return createStripePaymentService({
+    stripeClient: makeStripeClient(),
+    depositRepo: createFakeDepositRepository(),
+    lifecycle,
+    completionRouter,
+    stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
+    appUrl: 'http://localhost:3000',
+    logger: silentLogger,
+  });
+}
+
 describe('Stripe payment service - webhook handling', () => {
   it('dispatches checkout.session.completed to lifecycle.confirmDepositTransaction', async () => {
     const lifecycle = makeLifecycle();
-    const service = createStripePaymentService({
-      stripeClient: makeStripeClient(),
-      depositRepo: createFakeDepositRepository(),
-      lifecycle,
-      guestOrderProcessor: noopGuestOrderProcessor,
-      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
-      appUrl: 'http://localhost:3000',
-      logger: silentLogger,
-    });
+    const service = makeService(lifecycle);
 
     const event = {
       type: 'checkout.session.completed',
@@ -59,17 +65,30 @@ describe('Stripe payment service - webhook handling', () => {
     expect(lifecycle.confirmDepositTransaction).toHaveBeenCalledWith('dep-1', 'user-1', 'Stripe');
   });
 
+  it('routes order-payment session to confirmOrderPayment', async () => {
+    const lifecycle = makeLifecycle();
+    const confirmOrderPayment = jest.fn().mockResolvedValue(undefined);
+    const service = makeService(lifecycle, confirmOrderPayment);
+
+    const event = {
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_pay_1',
+          metadata: { kind: 'order-payment', paymentId: 'pay-1', userId: 'user-1' },
+        },
+      },
+    };
+
+    await service.handleWebhookEvent(JSON.stringify(event), 'sig_fake');
+
+    expect(confirmOrderPayment).toHaveBeenCalledWith('pay-1');
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+  });
+
   it('ignores webhook if metadata is missing', async () => {
     const lifecycle = makeLifecycle();
-    const service = createStripePaymentService({
-      stripeClient: makeStripeClient(),
-      depositRepo: createFakeDepositRepository(),
-      lifecycle,
-      guestOrderProcessor: noopGuestOrderProcessor,
-      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
-      appUrl: 'http://localhost:3000',
-      logger: silentLogger,
-    });
+    const service = makeService(lifecycle);
 
     const event = {
       type: 'checkout.session.completed',
@@ -83,15 +102,7 @@ describe('Stripe payment service - webhook handling', () => {
 
   it('ignores non-checkout-completed events', async () => {
     const lifecycle = makeLifecycle();
-    const service = createStripePaymentService({
-      stripeClient: makeStripeClient(),
-      depositRepo: createFakeDepositRepository(),
-      lifecycle,
-      guestOrderProcessor: noopGuestOrderProcessor,
-      stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
-      appUrl: 'http://localhost:3000',
-      logger: silentLogger,
-    });
+    const service = makeService(lifecycle);
 
     const event = {
       type: 'payment_intent.succeeded',
@@ -104,11 +115,15 @@ describe('Stripe payment service - webhook handling', () => {
   });
 
   it('throws a public-safe error when card payments are not configured', async () => {
+    const completionRouter = createPaymentCompletionRouter({
+      confirmDeposit: jest.fn(),
+      confirmOrderPayment: jest.fn(),
+    });
     const service = createStripePaymentService({
       stripeClient: null,
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
-      guestOrderProcessor: noopGuestOrderProcessor,
+      completionRouter,
       stripeConfig: { secretKey: undefined, webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -122,11 +137,15 @@ describe('Stripe payment service - webhook handling', () => {
   });
 
   it('throws when webhook secret is missing', async () => {
+    const completionRouter = createPaymentCompletionRouter({
+      confirmDeposit: jest.fn(),
+      confirmOrderPayment: jest.fn(),
+    });
     const service = createStripePaymentService({
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
-      guestOrderProcessor: noopGuestOrderProcessor,
+      completionRouter,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -138,11 +157,16 @@ describe('Stripe payment service - webhook handling', () => {
   });
 
   it('provider.isConfigured reflects config presence', () => {
+    const completionRouter = createPaymentCompletionRouter({
+      confirmDeposit: jest.fn(),
+      confirmOrderPayment: jest.fn(),
+    });
+
     const configured = createStripePaymentService({
       stripeClient: makeStripeClient(),
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
-      guestOrderProcessor: noopGuestOrderProcessor,
+      completionRouter,
       stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,
@@ -153,7 +177,7 @@ describe('Stripe payment service - webhook handling', () => {
       stripeClient: null,
       depositRepo: createFakeDepositRepository(),
       lifecycle: makeLifecycle(),
-      guestOrderProcessor: noopGuestOrderProcessor,
+      completionRouter,
       stripeConfig: { secretKey: undefined, webhookSecret: undefined },
       appUrl: 'http://localhost:3000',
       logger: silentLogger,

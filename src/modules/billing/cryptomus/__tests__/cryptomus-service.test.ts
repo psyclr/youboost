@@ -2,6 +2,7 @@ import { signRequestBody } from '../cryptomus.crypto';
 import { createCryptomusPaymentService } from '../cryptomus.service';
 import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
 import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
+import { encodeRef } from '../../payment-reference';
 
 const paymentKey = 'payment-key-xyz';
 
@@ -193,5 +194,44 @@ describe('Cryptomus payment service - webhook handling', () => {
 
     expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
     expect(lifecycle.failDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('routes order-payment reference to confirmOrderPayment on paid status', async () => {
+    const lifecycle = makeLifecycle();
+    const confirmOrderPayment = jest.fn().mockResolvedValue(undefined);
+    const orderId = encodeRef({ kind: 'order-payment', paymentId: 'pay-1', userId: 'user-1' });
+    const service = createCryptomusPaymentService({
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      confirmOrderPayment,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    const webhookBody = buildWebhook({ order_id: orderId, status: 'paid' });
+    await service.handleWebhookEvent(webhookBody);
+
+    expect(confirmOrderPayment).toHaveBeenCalledWith('pay-1');
+    expect(lifecycle.confirmDepositTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ignores non-confirmed status for order-payment reference', async () => {
+    const lifecycle = makeLifecycle();
+    const confirmOrderPayment = jest.fn().mockResolvedValue(undefined);
+    const orderId = encodeRef({ kind: 'order-payment', paymentId: 'pay-1', userId: 'user-1' });
+    const service = createCryptomusPaymentService({
+      depositRepo: createFakeDepositRepository(),
+      lifecycle,
+      confirmOrderPayment,
+      cryptomusConfig: { merchantId: 'm', paymentKey, callbackUrl: 'https://cb' },
+      appUrl: 'http://localhost:3000',
+      logger: silentLogger,
+    });
+
+    const webhookBody = buildWebhook({ order_id: orderId, status: 'process' });
+    await service.handleWebhookEvent(webhookBody);
+
+    expect(confirmOrderPayment).not.toHaveBeenCalled();
   });
 });
