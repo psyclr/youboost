@@ -12,6 +12,7 @@ import { registerRoutes } from './composition/register-routes';
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService } from './modules/auth';
 // prettier-ignore
 import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createPaymentRepository } from './modules/billing';
+import { createPaymentCompletionRouter } from './modules/billing/payment-completion.router';
 // prettier-ignore
 import { createOutboxRepository, createOutboxService, createOutboxWorker, createHandlerRegistry } from './shared/outbox';
 import { createSystemClock } from './shared/utils/clock';
@@ -168,9 +169,11 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const guestOrderProcessor = createLateBoundGuestProcessor();
   const orderPaymentProcessor = createLateBoundOrderPaymentProcessor();
   // prettier-ignore
-  const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, guestOrderProcessor: guestOrderProcessor.port, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
+  const completionRouter = createPaymentCompletionRouter({ confirmDeposit: (depositId, userId) => depositLifecycle.confirmDepositTransaction(depositId, userId, 'Stripe'), confirmOrderPayment: (paymentId) => orderPaymentProcessor.port.confirmOrderPayment(paymentId) });
   // prettier-ignore
-  const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, guestOrderProcessor: guestOrderProcessor.port, cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
+  const stripePayment = createStripePaymentService({ stripeClient: config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : null, depositRepo, lifecycle: depositLifecycle, completionRouter, stripeConfig: config.stripe, appUrl: config.app.url, logger: createServiceLogger('stripe') });
+  // prettier-ignore
+  const cryptomusPayment = createCryptomusPaymentService({ depositRepo, lifecycle: depositLifecycle, confirmOrderPayment: (paymentId) => orderPaymentProcessor.port.confirmOrderPayment(paymentId), cryptomusConfig: config.cryptomus, appUrl: config.app.url, logger: createServiceLogger('cryptomus') });
   // prettier-ignore
   const paymentProviderRegistry = createPaymentProviderRegistry([stripePayment.provider, cryptomusPayment.provider]);
 
