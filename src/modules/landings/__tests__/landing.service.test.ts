@@ -516,4 +516,26 @@ describe('Landing Service', () => {
       expect(result).toMatchObject({ valid: false, reason: 'SERVICE_NOT_FOUND' });
     });
   });
+
+  describe('checkoutCart', () => {
+    it('delegates to the cart flow and returns paymentId + orderIds', async () => {
+      const ctx = setup({ pricePer1000: 2 });
+      const landing = await ctx.service.adminCreate(baseInput);
+      await ctx.service.adminPublish(landing.id);
+      const tierId = landing.tiers[0]!.id;
+
+      const result = await ctx.service.checkoutCart('home', {
+        email: 'cart@example.com',
+        items: [{ tierId, link: 'https://youtube.com/watch?v=abc', quantity: 1000 }],
+        paymentProvider: 'stripe',
+      });
+
+      expect(result).toEqual({
+        userId: 'user-cart@example.com',
+        paymentId: 'pay-fake',
+        orderIds: ['order-fake'],
+        checkoutUrl: 'https://stripe.test/cs_fake',
+      });
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { validateBody, validateParams } from '../../shared/middleware/validation
 import type { LandingService } from './landing.service';
 import {
   landingCalculateSchema,
+  landingCartCheckoutSchema,
   landingCheckoutSchema,
   landingSlugParamSchema,
 } from './landing.types';
@@ -60,6 +61,19 @@ export function createLandingRoutes(deps: LandingRoutesDeps): FastifyPluginAsync
         const params = validateParams(landingSlugParamSchema, request.params);
         const body = validateBody(landingCheckoutSchema, request.body);
         const result = await service.checkout(params.slug, body);
+        return reply.status(StatusCodes.CREATED).send(result);
+      },
+    );
+
+    app.post(
+      '/:slug/checkout/cart',
+      {
+        config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const params = validateParams(landingSlugParamSchema, request.params);
+        const body = validateBody(landingCartCheckoutSchema, request.body);
+        const result = await service.checkoutCart(params.slug, body);
         return reply.status(StatusCodes.CREATED).send(result);
       },
     );
