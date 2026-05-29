@@ -1,6 +1,4 @@
-import { test, expect, type Page, type BrowserContext, type Route, type Locator } from '@playwright/test';
-
-const CALCULATE_PATTERN = /\/api\/landing\/[^/]+\/calculate$/;
+import { test, expect, type Page, type BrowserContext, type Locator } from '@playwright/test';
 
 // A pathological link with no break opportunities — the kind that blows out
 // flex/grid layouts when an ancestor still has the default min-width:auto.
@@ -26,23 +24,6 @@ test.describe.serial('Mobile landing layout', () => {
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext();
     page = await context.newPage();
-    await page.route(CALCULATE_PATTERN, async (route: Route) => {
-      const body = JSON.parse((route.request().postData() ?? '{}') as string) as {
-        serviceId: string;
-        quantity: number;
-      };
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          valid: true,
-          price: 12.5,
-          serviceId: body.serviceId,
-          quantity: body.quantity,
-          reason: null,
-        }),
-      });
-    });
     await page.goto('/');
     await expect(panel()).toBeVisible({ timeout: 15_000 });
   });
@@ -71,32 +52,35 @@ test.describe.serial('Mobile landing layout', () => {
   });
 
   test('2. A long link in the order panel does not cause page overflow', async () => {
-    await panel().getByLabel(/add a link/i).fill(LONG_LINK);
+    // Add a service so the link input appears
+    const cards = page.locator('[data-tier-card]');
+    await cards.first().getByRole('button', { name: /^pay$/i }).click();
+    await panel()
+      .getByLabel(/add a link/i)
+      .first()
+      .fill(LONG_LINK);
     expect(await docOverflow(page)).toBeLessThanOrEqual(1);
   });
 
-  test('3. Payment modal stays within viewport with a long link', async () => {
-    await panel().getByLabel(/add a link/i).fill(LONG_LINK);
-    await panel().getByRole('button', { name: /pay \$/i }).click();
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
+  test('3. Order panel Pay button stays within viewport with a long link', async () => {
+    await panel()
+      .getByLabel(/add a link/i)
+      .first()
+      .fill(LONG_LINK);
+    const payBtn = panel().getByRole('button', { name: /pay \$/i });
+    await expect(payBtn).toBeVisible();
 
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
     const vw = viewport!.width;
 
-    // Both payment buttons must be fully within the viewport (not pushed right).
-    for (const name of [/pay with card/i, /pay with crypto/i]) {
-      const btn = dialog.getByRole('button', { name });
-      await expect(btn).toBeVisible();
-      const box = await btn.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.x).toBeGreaterThanOrEqual(-1);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(vw + 1);
-    }
+    // Pay button must be fully within the viewport.
+    const box = await payBtn.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(-1);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(vw + 1);
 
-    // The dialog itself must not introduce horizontal page overflow.
+    // The panel must not introduce horizontal page overflow.
     expect(await docOverflow(page)).toBeLessThanOrEqual(1);
   });
 });

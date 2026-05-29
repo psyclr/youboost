@@ -53,7 +53,10 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
         </div>
       </div>
       {item.collapsed ? null : (
-        <div className="flex flex-col gap-3 border-t px-3 py-3" style={{ borderColor: '#363636' }}>
+        <div
+          className="flex min-w-0 flex-col gap-3 overflow-hidden border-t px-3 py-3"
+          style={{ borderColor: '#363636' }}
+        >
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-white">Add a link</span>
             <input

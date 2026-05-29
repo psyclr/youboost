@@ -1,18 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Eye, MessageSquare, ThumbsUp, Users, Music2, Twitter, Facebook, Instagram, Youtube, Trash2, ChevronUp } from 'lucide-react';
-import { PaymentMethodModal } from './payment-method-modal';
-import { calculateLanding } from '@/lib/api/landings';
-import { publicApiErrorMessage } from '@/lib/api/error-messages';
 import {
-  defaultQtyForTier,
-  estimatePrice,
-  formatUsd,
-  pickDefaultTier,
-} from '@/lib/landings/calculator';
-import type { LandingCalculateResult, LandingResponse, LandingTierResponse } from '@/lib/api/types';
+  Eye,
+  MessageSquare,
+  ThumbsUp,
+  Users,
+  Music2,
+  Twitter,
+  Facebook,
+  Instagram,
+  Youtube,
+} from 'lucide-react';
+import { useCart } from '@/lib/landings/use-cart';
+import { OrderCart } from './order-cart';
+import type { LandingResponse, LandingTierResponse } from '@/lib/api/types';
 
 interface ServiceTiersProps {
   slug: string;
@@ -54,34 +56,39 @@ function displayPrice(tier: LandingTierResponse): number {
 }
 
 export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProps) {
-  const initialTier = pickDefaultTier(tiers, null) ?? tiers[0] ?? null;
   const [platform, setPlatform] = useState<PlatformId>('ALL');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [link, setLink] = useState('');
-  const [selectedTierId, setSelectedTierId] = useState<string | null>(
-    initialTier ? initialTier.id : null,
-  );
-  const [quantity, setQuantity] = useState<number>(
-    initialTier ? defaultQtyForTier(initialTier, defaultMinAmount) : 0,
-  );
-  const [payOpen, setPayOpen] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [calcResult, setCalcResult] = useState<LandingCalculateResult | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Pending hero link to apply to the first cart item that has an empty link
+  const pendingHeroLink = useRef<string | null>(null);
+
+  const cart = useCart({ defaultMinAmount });
+  // Keep a stable ref to cart.setLink to use inside the hero-link effect
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
 
   // Pre-fill link from hero (sessionStorage on mount + custom event)
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(HERO_LINK_STORAGE_KEY);
-      if (stored) setLink(stored);
+      if (stored) pendingHeroLink.current = stored;
     } catch {
       // ignore
     }
     const onHeroLink = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
       if (typeof detail === 'string') {
-        setLink(detail);
+        // Apply immediately if cart has an item with an empty link
+        const currentItems = cartRef.current.items;
+        const emptyItem = currentItems.find((i) => !i.link.trim());
+        if (emptyItem) {
+          cartRef.current.setLink(emptyItem.id, detail);
+        } else {
+          // Cart is empty or all items have links — store as pending
+          pendingHeroLink.current = detail;
+        }
         if (panelRef.current) {
           panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -90,11 +97,6 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
     window.addEventListener('youboost:hero-link', onHeroLink);
     return () => window.removeEventListener('youboost:hero-link', onHeroLink);
   }, []);
-
-  const selectedTier = useMemo(
-    () => tiers.find((t) => t.id === selectedTierId) ?? initialTier,
-    [tiers, selectedTierId, initialTier],
-  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -116,62 +118,24 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const localPrice = selectedTier ? estimatePrice(selectedTier, quantity) : 0;
-  const modalPrice =
-    calcResult?.valid && calcResult.price !== null ? calcResult.price : localPrice;
-  const price = localPrice;
-
-  const calcMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedTier) throw new Error('No tier selected');
-      return calculateLanding(slug, {
-        serviceId: selectedTier.serviceId,
-        quantity,
-        link: link.trim(),
-      });
-    },
-    onSuccess: (result) => {
-      setCalcResult(result);
-      if (!result.valid) {
-        setFormError(result.reason ?? 'Invalid quantity or link.');
-        setPayOpen(false);
-      } else {
-        setFormError(null);
-        setPayOpen(true);
-      }
-    },
-    onError: (err: unknown) => {
-      setCalcResult(null);
-      setFormError(publicApiErrorMessage(err, 'Unable to calculate price. Try again.'));
-    },
-  });
-
   const handleAddToOrder = (tier: LandingTierResponse) => {
-    setSelectedTierId(tier.id);
-    setQuantity(defaultQtyForTier(tier, defaultMinAmount));
-    setCalcResult(null);
-    setFormError(null);
+    cart.addItem(tier);
+    // After adding, apply any pending hero link to the first item with an empty link
+    // We schedule this via a micro-task so the state update has applied
+    if (pendingHeroLink.current) {
+      const link = pendingHeroLink.current;
+      pendingHeroLink.current = null;
+      // The newly added item will be last in the list, and it has an empty link.
+      // We call setLink via a setTimeout(0) so the state update from addItem settles.
+      setTimeout(() => {
+        const items = cartRef.current.items;
+        const emptyItem = items.find((i) => !i.link.trim());
+        if (emptyItem) cartRef.current.setLink(emptyItem.id, link);
+      }, 0);
+    }
     if (panelRef.current) {
       panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  };
-
-  const handlePay = () => {
-    if (!selectedTier) return;
-    if (!link.trim()) {
-      setFormError('Paste a link to your video or channel.');
-      return;
-    }
-    if (!Number.isFinite(quantity) || quantity < selectedTier.service.minQuantity) {
-      setFormError(`Minimum is ${selectedTier.service.minQuantity.toLocaleString()}.`);
-      return;
-    }
-    if (quantity > selectedTier.service.maxQuantity) {
-      setFormError(`Maximum is ${selectedTier.service.maxQuantity.toLocaleString()}.`);
-      return;
-    }
-    setFormError(null);
-    calcMutation.mutate();
   };
 
   return (
@@ -251,7 +215,6 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
                 const Icon = iconFor(tier.service.platform, tier.service.type);
                 const title = tier.titleOverride ?? tier.service.name;
                 const desc = tier.descOverride ?? tier.service.description ?? '';
-                const isSelected = selectedTier?.id === tier.id;
                 return (
                   <article
                     key={tier.id}
@@ -259,7 +222,7 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
                     className="overflow-hidden rounded-[5px] border transition-colors"
                     style={{
                       background: '#141414',
-                      borderColor: isSelected ? '#FE2721' : '#262626',
+                      borderColor: '#262626',
                     }}
                   >
                     <div className="flex items-center gap-3 p-3">
@@ -334,145 +297,10 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
         </div>
 
         {/* RIGHT: order panel */}
-        <div
-          ref={panelRef}
-          className="flex h-fit min-w-0 flex-col gap-5 rounded-[5px] border p-5"
-          style={{ background: '#141414', borderColor: '#363636' }}
-          aria-label="Order panel"
-          data-testid="order-panel"
-        >
-          {selectedTier ? (
-            <>
-              <div
-                className="overflow-hidden rounded-[3px] border"
-                style={{ borderColor: '#363636' }}
-              >
-                <div className="flex items-start justify-between gap-2 p-3">
-                  <div className="min-w-0">
-                    <h4 className="truncate text-[15px] font-semibold text-white">
-                      {selectedTier.titleOverride ?? selectedTier.service.name}
-                    </h4>
-                    {selectedTier.service.description ? (
-                      <p className="truncate text-[12px] text-[#a2a2a2]">
-                        {selectedTier.service.description}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-[18px] font-bold text-white">{formatUsd(price)}</span>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        aria-label="Remove item"
-                        disabled
-                        className="rounded-[3px] border p-1.5 text-[#676767]"
-                        style={{ borderColor: '#363636' }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Collapse item"
-                        className="rounded-[3px] border p-1.5 text-[#676767]"
-                        style={{ borderColor: '#363636' }}
-                      >
-                        <ChevronUp className="size-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="flex flex-col gap-3 border-t px-3 py-3"
-                  style={{ borderColor: '#363636' }}
-                >
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-white">Add a link</span>
-                    <input
-                      type="text"
-                      value={link}
-                      onChange={(e) => {
-                        setLink(e.target.value);
-                        if (formError) setFormError(null);
-                      }}
-                      placeholder="https://www.youtube.com/watch?v=…"
-                      aria-label="Add a link"
-                      className="w-full rounded-[3px] border px-3 py-2.5 text-[13px] text-white placeholder:text-[#676767] focus:outline-none"
-                      style={{ background: '#0a0a0a', borderColor: '#363636' }}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] font-medium text-white">Quantity</span>
-                    <input
-                      type="number"
-                      min={selectedTier.service.minQuantity}
-                      max={selectedTier.service.maxQuantity}
-                      value={quantity}
-                      onChange={(e) => {
-                        const next = Number(e.target.value);
-                        setQuantity(Number.isFinite(next) ? next : 0);
-                        setCalcResult(null);
-                      }}
-                      aria-label="Quantity"
-                      className="w-full rounded-[3px] border px-3 py-2.5 text-[13px] text-white focus:outline-none"
-                      style={{ background: '#0a0a0a', borderColor: '#363636' }}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {formError ? (
-                <p className="text-[13px] text-red-300" role="alert">
-                  {formError}
-                </p>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={handlePay}
-                disabled={calcMutation.isPending}
-                aria-label={`Pay ${formatUsd(price)}`}
-                className="relative w-full overflow-hidden rounded-[5px] py-3.5 text-[15px] font-semibold text-white shadow-[0_0_22px_rgba(255,96,26,0.32)] transition-transform hover:scale-[1.01] active:scale-100 disabled:opacity-70"
-                style={{
-                  background:
-                    'linear-gradient(90deg, #FF0077 0%, #FF2B1B 50%, #FF691A 100%)',
-                }}
-              >
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    background:
-                      'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.29) 100%)',
-                    mixBlendMode: 'overlay',
-                  }}
-                />
-                <span className="relative">
-                  {calcMutation.isPending ? 'Calculating…' : `Pay ${formatUsd(price)}`}
-                </span>
-              </button>
-              <p className="text-center text-[11px] leading-relaxed text-[#676767]">
-                Guest checkout creates an account automatically after payment.
-                <br />
-                After clicking and paying, you automatically agree to the rules of our service.
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Pick a service on the left to start.</p>
-          )}
+        <div ref={panelRef} aria-label="Order panel" className="min-w-0 overflow-hidden">
+          <OrderCart slug={slug} cart={cart} />
         </div>
       </div>
-
-      {selectedTier ? (
-        <PaymentMethodModal
-          slug={slug}
-          open={payOpen}
-          onOpenChange={setPayOpen}
-          tier={selectedTier}
-          link={link.trim()}
-          quantity={quantity}
-          price={modalPrice}
-        />
-      ) : null}
     </section>
   );
 }

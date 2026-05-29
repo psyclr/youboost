@@ -16,9 +16,7 @@
     "frontend/src/components/ui/**",
     "frontend/src/components/marketing/checkout-modal.tsx",
     "frontend/src/components/marketing/hero-calculator.tsx",
-    "frontend/src/components/marketing/cart-item.tsx",
-    "frontend/src/components/marketing/order-cart.tsx",
-    "frontend/src/lib/landings/use-cart.ts"
+    "frontend/src/components/marketing/payment-method-modal.tsx"
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
@@ -27,7 +25,8 @@
     "src/shared/queue/queue.ts": ["exports"],
     "src/modules/notifications/utils/email-templates.ts": ["exports"],
     "src/modules/notifications/utils/email-provider-factory.ts": ["exports"],
-    "frontend/src/lib/api/**": ["exports", "types"]
+    "frontend/src/lib/api/**": ["exports", "types"],
+    "frontend/src/lib/landings/calculator.ts": ["exports"]
   },
   "rules": {
     "unlisted": "off"
