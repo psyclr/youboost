@@ -18,7 +18,14 @@ export interface PaymentWithOrders {
   id: string;
   userId: string;
   status: 'PENDING' | 'PAID' | 'FAILED';
-  orders: { id: string; status: string; serviceId: string; link: string; quantity: number }[];
+  orders: {
+    id: string;
+    status: string;
+    serviceId: string;
+    link: string;
+    quantity: number;
+    price?: number;
+  }[];
 }
 
 export interface PaymentRepository {

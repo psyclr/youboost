@@ -1,5 +1,6 @@
 import type { CatalogService } from '../modules/catalog/catalog.service';
-import type { GuestOrderProcessorPort } from '../modules/billing';
+import type { GuestOrderProcessorPort, OrderPaymentProcessorPort } from '../modules/billing';
+import type { PaymentRepository } from '../modules/billing';
 import type {
   ServiceLookupPort,
   ServiceLookupRecord,
@@ -37,10 +38,16 @@ export function createAutoUserCreatorPort(autoUser: AuthAutoUserService): AutoUs
   };
 }
 
-export function createGuestOrderCreatorPort(orders: OrdersService): GuestOrderCreatorPort {
+export function createGuestOrderCreatorPort(
+  orders: OrdersService,
+  payments: PaymentRepository,
+): GuestOrderCreatorPort {
   return {
     createPendingPaymentOrder: (i) => orders.createPendingPaymentOrder(i),
     attachStripeSessionId: (orderId, sessionId) => orders.attachStripeSessionId(orderId, sessionId),
+    createPaymentWithOrders: (i) => payments.createPaymentWithOrders(i),
+    attachPaymentSession: (paymentId, providerSessionId) =>
+      payments.attachSession(paymentId, providerSessionId),
   };
 }
 
@@ -49,9 +56,13 @@ export function createGuestOrderPaymentPort(
   cryptomus: CryptomusPaymentService,
 ): GuestOrderPaymentPort {
   return {
-    createGuestOrderSession: (i) => {
+    createGuestOrderSession: (i): Promise<{ sessionId: string; url: string }> => {
       if (i.provider === 'cryptomus') return cryptomus.createGuestOrderSession(i);
       return stripe.createGuestOrderSession(i);
+    },
+    createPaymentSession: (i): Promise<{ sessionId: string; url: string }> => {
+      if (i.provider === 'cryptomus') return cryptomus.createPaymentSession(i);
+      return stripe.createPaymentSession(i);
     },
   };
 }
@@ -74,6 +85,32 @@ export function createLateBoundGuestProcessor(): LateBoundGuestProcessor {
       async confirmGuestOrderPayment(p): Promise<void> {
         if (!ref) throw new Error('guestOrderProcessor not bound yet');
         await ref.confirmGuestOrderPayment(p);
+      },
+    },
+    bind(impl): void {
+      ref = impl;
+    },
+  };
+}
+
+/**
+ * Late-binding settlement port for the new multi-service Payment path —
+ * `ordersService.confirmOrderPayment` is created after the billing services,
+ * so the composition root binds it once available. Used by the
+ * PaymentCompletionRouter cutover (additive; not yet routed by webhooks).
+ */
+export interface LateBoundOrderPaymentProcessor {
+  port: OrderPaymentProcessorPort;
+  bind(impl: OrderPaymentProcessorPort): void;
+}
+
+export function createLateBoundOrderPaymentProcessor(): LateBoundOrderPaymentProcessor {
+  let ref: OrderPaymentProcessorPort | null = null;
+  return {
+    port: {
+      async confirmOrderPayment(paymentId): Promise<void> {
+        if (!ref) throw new Error('orderPaymentProcessor not bound yet');
+        await ref.confirmOrderPayment(paymentId);
       },
     },
     bind(impl): void {

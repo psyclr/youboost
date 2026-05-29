@@ -4,6 +4,8 @@
  * — landings never imports those modules directly.
  */
 
+import type { PaymentReference } from '../../billing/payment-reference';
+
 export interface AutoUserTicketLite {
   userId: string;
   email: string;
@@ -23,6 +25,18 @@ export interface GuestOrderCreatorPort {
     price: number;
   }): Promise<{ orderId: string }>;
   attachStripeSessionId(orderId: string, sessionId: string): Promise<void>;
+  /**
+   * New (multi-service cart) path: create one Payment and N PENDING_PAYMENT
+   * orders linked to it, in a single transaction.
+   */
+  createPaymentWithOrders(input: {
+    userId: string;
+    provider: 'STRIPE' | 'CRYPTOMUS';
+    amount: number;
+    items: { serviceId: string; link: string; quantity: number; price: number }[];
+  }): Promise<{ paymentId: string; orderIds: string[] }>;
+  /** Attach the provider session id to the Payment (multi-service cart path). */
+  attachPaymentSession(paymentId: string, providerSessionId: string): Promise<void>;
 }
 
 export type GuestPaymentProvider = 'stripe' | 'cryptomus';
@@ -34,6 +48,19 @@ export interface GuestOrderPaymentPort {
     orderId: string;
     amount: number;
     productName: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<{ sessionId: string; url: string }>;
+  /**
+   * New (multi-service cart) path: create a provider checkout session for a
+   * Payment, encoding a PaymentReference so the completion webhook can route
+   * back to `confirmOrderPayment`.
+   */
+  createPaymentSession(input: {
+    provider: GuestPaymentProvider;
+    amount: number;
+    productName: string;
+    reference: PaymentReference;
     successUrl: string;
     cancelUrl: string;
   }): Promise<{ sessionId: string; url: string }>;

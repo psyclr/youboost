@@ -5,6 +5,8 @@ import type { DepositRepository } from '../deposit.repository';
 import type { DepositLifecycleService } from '../deposit-lifecycle.service';
 import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
 import type { GuestOrderProcessorPort } from '../ports/guest-order-processor.port';
+import type { PaymentReference } from '../payment-reference';
+import { stripeEncodeMetadata } from './stripe.reference';
 
 export interface CheckoutSessionResponse {
   sessionId: string;
@@ -26,6 +28,14 @@ export interface GuestOrderSessionInput {
   cancelUrl: string;
 }
 
+export interface PaymentSessionInput {
+  amount: number;
+  productName: string;
+  reference: PaymentReference;
+  successUrl: string;
+  cancelUrl: string;
+}
+
 export interface StripePaymentService {
   readonly provider: PaymentProvider;
   createCheckoutSession(
@@ -33,6 +43,7 @@ export interface StripePaymentService {
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
   createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
+  createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(payload: string, signature: string): Promise<void>;
 }
 
@@ -161,6 +172,43 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     return { sessionId: session.id, url: session.url };
   }
 
+  async function createPaymentSession(
+    input: PaymentSessionInput,
+  ): Promise<GuestOrderSessionResponse> {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: { name: input.productName },
+            unit_amount: Math.round(input.amount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      metadata: stripeEncodeMetadata(input.reference),
+    });
+
+    if (!session.url) {
+      throw new ValidationError(
+        'Failed to create checkout session URL',
+        'STRIPE_SESSION_URL_ERROR',
+      );
+    }
+
+    logger.info(
+      { reference: input.reference.kind, sessionId: session.id },
+      'Stripe payment session created',
+    );
+
+    return { sessionId: session.id, url: session.url };
+  }
+
   async function routeCompletedSession(session: {
     id: string;
     metadata?: Stripe.Metadata | null;
@@ -222,5 +270,11 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     },
   };
 
-  return { provider, createCheckoutSession, createGuestOrderSession, handleWebhookEvent };
+  return {
+    provider,
+    createCheckoutSession,
+    createGuestOrderSession,
+    createPaymentSession,
+    handleWebhookEvent,
+  };
 }
