@@ -571,6 +571,23 @@ export interface LandingCheckoutResult {
   checkoutUrl: string;
 }
 
+export interface LandingCartCheckoutItem {
+  tierId: string;
+  link: string;
+  quantity: number;
+}
+export interface LandingCartCheckoutBody {
+  email: string;
+  items: LandingCartCheckoutItem[];
+  paymentProvider?: 'stripe' | 'cryptomus';
+}
+export interface LandingCartCheckoutResult {
+  userId: string;
+  paymentId: string;
+  orderIds: string[];
+  checkoutUrl: string;
+}
+
 // ============================================
 // Error
 // ============================================

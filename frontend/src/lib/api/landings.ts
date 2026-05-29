@@ -2,6 +2,8 @@ import { apiRequest } from './client';
 import type {
   LandingCalculateBody,
   LandingCalculateResult,
+  LandingCartCheckoutBody,
+  LandingCartCheckoutResult,
   LandingCheckoutBody,
   LandingCheckoutResult,
   LandingResponse,
@@ -18,6 +20,12 @@ export const calculateLanding = (slug: string, body: LandingCalculateBody) =>
 
 export const checkoutLanding = (slug: string, body: LandingCheckoutBody) =>
   apiRequest<LandingCheckoutResult>(`/landing/${encodeURIComponent(slug)}/checkout`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+export const checkoutLandingCart = (slug: string, body: LandingCartCheckoutBody) =>
+  apiRequest<LandingCartCheckoutResult>(`/landing/${encodeURIComponent(slug)}/checkout/cart`, {
     method: 'POST',
     body: JSON.stringify(body),
   });
