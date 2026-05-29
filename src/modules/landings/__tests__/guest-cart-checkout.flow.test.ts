@@ -118,8 +118,6 @@ function makeCartDeps(landing: LandingRecord = makeLanding()): CartDeps {
   }));
   const attachPaymentSession = jest.fn(async () => undefined);
   const orderCreator = {
-    createPendingPaymentOrder: jest.fn(),
-    attachStripeSessionId: jest.fn(),
     createPaymentWithOrders,
     attachPaymentSession,
   } as unknown as CartDeps['orderCreator'];
@@ -129,7 +127,6 @@ function makeCartDeps(landing: LandingRecord = makeLanding()): CartDeps {
     url: 'https://pay.test/sess_1',
   }));
   const payments = {
-    createGuestOrderSession: jest.fn(),
     createPaymentSession,
   } as unknown as CartDeps['payments'];
 

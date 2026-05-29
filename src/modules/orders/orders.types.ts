@@ -158,7 +158,6 @@ export interface CreateOrderData {
   quantity: number;
   price: number;
   status?: 'PENDING' | 'PENDING_PAYMENT' | undefined;
-  stripeSessionId?: string | null;
   comments?: string | undefined;
   isDripFeed?: boolean | undefined;
   dripFeedRuns?: number | undefined;

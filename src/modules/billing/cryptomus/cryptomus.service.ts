@@ -21,15 +21,6 @@ export interface GuestOrderSessionResponse {
   url: string;
 }
 
-export interface GuestOrderSessionInput {
-  userId: string;
-  orderId: string;
-  amount: number;
-  productName: string;
-  successUrl: string;
-  cancelUrl: string;
-}
-
 interface CryptomusWebhookBody {
   order_id?: string;
   status?: string;
@@ -55,7 +46,6 @@ export interface CryptomusPaymentService {
     userId: string,
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
-  createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
   createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(rawBody: string): Promise<void>;
 }
@@ -139,31 +129,6 @@ export function createCryptomusPaymentService(
     );
 
     return { orderId: result.order_id, url: result.url, depositId: deposit.id };
-  }
-
-  async function createGuestOrderSession(
-    input: GuestOrderSessionInput,
-  ): Promise<GuestOrderSessionResponse> {
-    const creds = getCreds();
-    const result = await createCryptomusPayment(
-      creds,
-      {
-        amount: input.amount.toFixed(2),
-        currency: 'USD',
-        order_id: `guest-${input.orderId}`,
-        url_callback: getCallbackBase(),
-        url_return: input.cancelUrl,
-        url_success: input.successUrl,
-      },
-      { logger, errorMessage: 'Crypto checkout failed' },
-    );
-
-    logger.info(
-      { orderId: input.orderId, userId: input.userId, cryptomusUuid: result.uuid },
-      'Cryptomus guest-order checkout session created',
-    );
-
-    return { sessionId: result.order_id, url: result.url };
   }
 
   async function createPaymentSession(
@@ -287,7 +252,6 @@ export function createCryptomusPaymentService(
   return {
     provider,
     createCheckoutSession,
-    createGuestOrderSession,
     createPaymentSession,
     handleWebhookEvent,
   };

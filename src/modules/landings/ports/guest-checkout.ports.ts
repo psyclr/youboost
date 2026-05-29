@@ -17,17 +17,8 @@ export interface AutoUserCreatorPort {
 }
 
 export interface GuestOrderCreatorPort {
-  createPendingPaymentOrder(input: {
-    userId: string;
-    serviceId: string;
-    link: string;
-    quantity: number;
-    price: number;
-  }): Promise<{ orderId: string }>;
-  attachStripeSessionId(orderId: string, sessionId: string): Promise<void>;
   /**
-   * New (multi-service cart) path: create one Payment and N PENDING_PAYMENT
-   * orders linked to it, in a single transaction.
+   * Create one Payment and N PENDING_PAYMENT orders linked to it, in a single transaction.
    */
   createPaymentWithOrders(input: {
     userId: string;
@@ -35,26 +26,16 @@ export interface GuestOrderCreatorPort {
     amount: number;
     items: { serviceId: string; link: string; quantity: number; price: number }[];
   }): Promise<{ paymentId: string; orderIds: string[] }>;
-  /** Attach the provider session id to the Payment (multi-service cart path). */
+  /** Attach the provider session id to the Payment. */
   attachPaymentSession(paymentId: string, providerSessionId: string): Promise<void>;
 }
 
 export type GuestPaymentProvider = 'stripe' | 'cryptomus';
 
 export interface GuestOrderPaymentPort {
-  createGuestOrderSession(input: {
-    provider: GuestPaymentProvider;
-    userId: string;
-    orderId: string;
-    amount: number;
-    productName: string;
-    successUrl: string;
-    cancelUrl: string;
-  }): Promise<{ sessionId: string; url: string }>;
   /**
-   * New (multi-service cart) path: create a provider checkout session for a
-   * Payment, encoding a PaymentReference so the completion webhook can route
-   * back to `confirmOrderPayment`.
+   * Create a provider checkout session for a Payment, encoding a PaymentReference
+   * so the completion webhook can route back to `confirmOrderPayment`.
    */
   createPaymentSession(input: {
     provider: GuestPaymentProvider;

@@ -1,5 +1,5 @@
 import type { CatalogService } from '../modules/catalog/catalog.service';
-import type { GuestOrderProcessorPort, OrderPaymentProcessorPort } from '../modules/billing';
+import type { OrderPaymentProcessorPort } from '../modules/billing';
 import type { PaymentRepository } from '../modules/billing';
 import type {
   ServiceLookupPort,
@@ -11,7 +11,6 @@ import type {
   GuestOrderPaymentPort,
 } from '../modules/landings/ports/guest-checkout.ports';
 import type { AuthAutoUserService, AutoUserTicket } from '../modules/auth';
-import type { OrdersService } from '../modules/orders';
 import type { CryptomusPaymentService, StripePaymentService } from '../modules/billing';
 
 export function createLandingServiceLookup(catalog: CatalogService): ServiceLookupPort {
@@ -38,13 +37,8 @@ export function createAutoUserCreatorPort(autoUser: AuthAutoUserService): AutoUs
   };
 }
 
-export function createGuestOrderCreatorPort(
-  orders: OrdersService,
-  payments: PaymentRepository,
-): GuestOrderCreatorPort {
+export function createGuestOrderCreatorPort(payments: PaymentRepository): GuestOrderCreatorPort {
   return {
-    createPendingPaymentOrder: (i) => orders.createPendingPaymentOrder(i),
-    attachStripeSessionId: (orderId, sessionId) => orders.attachStripeSessionId(orderId, sessionId),
     createPaymentWithOrders: (i) => payments.createPaymentWithOrders(i),
     attachPaymentSession: (paymentId, providerSessionId) =>
       payments.attachSession(paymentId, providerSessionId),
@@ -56,39 +50,9 @@ export function createGuestOrderPaymentPort(
   cryptomus: CryptomusPaymentService,
 ): GuestOrderPaymentPort {
   return {
-    createGuestOrderSession: (i): Promise<{ sessionId: string; url: string }> => {
-      if (i.provider === 'cryptomus') return cryptomus.createGuestOrderSession(i);
-      return stripe.createGuestOrderSession(i);
-    },
     createPaymentSession: (i): Promise<{ sessionId: string; url: string }> => {
       if (i.provider === 'cryptomus') return cryptomus.createPaymentSession(i);
       return stripe.createPaymentSession(i);
-    },
-  };
-}
-
-/**
- * Late-binding processor — stripePayment is created before ordersService,
- * so we expose a mutable ref that the composition root assigns once
- * ordersService exists. Throws if a Stripe webhook fires before wiring
- * completes (impossible in practice; server hasn't started yet).
- */
-export interface LateBoundGuestProcessor {
-  port: GuestOrderProcessorPort;
-  bind(impl: GuestOrderProcessorPort): void;
-}
-
-export function createLateBoundGuestProcessor(): LateBoundGuestProcessor {
-  let ref: GuestOrderProcessorPort | null = null;
-  return {
-    port: {
-      async confirmGuestOrderPayment(p): Promise<void> {
-        if (!ref) throw new Error('guestOrderProcessor not bound yet');
-        await ref.confirmGuestOrderPayment(p);
-      },
-    },
-    bind(impl): void {
-      ref = impl;
     },
   };
 }

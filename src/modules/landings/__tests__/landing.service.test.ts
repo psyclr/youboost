@@ -118,12 +118,6 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
     },
   };
   const orderCreator: GuestOrderCreatorPort = {
-    async createPendingPaymentOrder(): Promise<{ orderId: string }> {
-      return { orderId: 'order-fake' };
-    },
-    async attachStripeSessionId(): Promise<void> {
-      /* noop */
-    },
     async createPaymentWithOrders(): Promise<{ paymentId: string; orderIds: string[] }> {
       return { paymentId: 'pay-fake', orderIds: ['order-fake'] };
     },
@@ -132,9 +126,6 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
     },
   };
   const payments: GuestOrderPaymentPort = {
-    async createGuestOrderSession(): Promise<{ sessionId: string; url: string }> {
-      return { sessionId: 'cs_fake', url: 'https://stripe.test/cs_fake' };
-    },
     async createPaymentSession(): Promise<{ sessionId: string; url: string }> {
       return { sessionId: 'cs_fake', url: 'https://stripe.test/cs_fake' };
     },

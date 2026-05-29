@@ -19,15 +19,6 @@ export interface GuestOrderSessionResponse {
   url: string;
 }
 
-export interface GuestOrderSessionInput {
-  userId: string;
-  orderId: string;
-  amount: number;
-  productName: string;
-  successUrl: string;
-  cancelUrl: string;
-}
-
 export interface PaymentSessionInput {
   amount: number;
   productName: string;
@@ -42,7 +33,6 @@ export interface StripePaymentService {
     userId: string,
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
-  createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
   createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(payload: string, signature: string): Promise<void>;
 }
@@ -122,47 +112,6 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
       url: session.url,
       depositId: deposit.id,
     };
-  }
-
-  async function createGuestOrderSession(
-    input: GuestOrderSessionInput,
-  ): Promise<GuestOrderSessionResponse> {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: { name: input.productName },
-            unit_amount: Math.round(input.amount * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: input.successUrl,
-      cancel_url: input.cancelUrl,
-      metadata: {
-        kind: 'guest-order',
-        userId: input.userId,
-        orderId: input.orderId,
-      },
-    });
-
-    if (!session.url) {
-      throw new ValidationError(
-        'Failed to create checkout session URL',
-        'STRIPE_SESSION_URL_ERROR',
-      );
-    }
-
-    logger.info(
-      { orderId: input.orderId, userId: input.userId, sessionId: session.id },
-      'Stripe guest-order session created',
-    );
-
-    return { sessionId: session.id, url: session.url };
   }
 
   async function createPaymentSession(
@@ -251,7 +200,6 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
   return {
     provider,
     createCheckoutSession,
-    createGuestOrderSession,
     createPaymentSession,
     handleWebhookEvent,
   };
