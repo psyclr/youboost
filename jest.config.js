@@ -35,6 +35,9 @@ module.exports = {
   // Обязательные тесты
   testMatch: ['**/?(*.)+(spec|test).ts'],
 
+  // Frontend has its own Jest config — exclude it from the root runner
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/frontend/'],
+
   // Paths mapping (соответствует tsconfig.json)
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
