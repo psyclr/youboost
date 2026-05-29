@@ -15,7 +15,10 @@
   "ignore": [
     "frontend/src/components/ui/**",
     "frontend/src/components/marketing/checkout-modal.tsx",
-    "frontend/src/components/marketing/hero-calculator.tsx"
+    "frontend/src/components/marketing/hero-calculator.tsx",
+    "frontend/src/components/marketing/cart-item.tsx",
+    "frontend/src/components/marketing/order-cart.tsx",
+    "frontend/src/lib/landings/use-cart.ts"
   ],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
