@@ -134,6 +134,30 @@ export interface LandingCheckoutResult {
   checkoutUrl: string;
 }
 
+export const landingCartCheckoutSchema = z.object({
+  email: z.email(),
+  items: z
+    .array(
+      z.object({
+        tierId: z.uuid(),
+        link: z.string().min(1).max(2048),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1)
+    .max(20),
+  paymentProvider: z.enum(['stripe', 'cryptomus']).default('stripe'),
+});
+
+export type LandingCartCheckoutInput = z.infer<typeof landingCartCheckoutSchema>;
+
+export interface LandingCartCheckoutResult {
+  userId: string;
+  paymentId: string;
+  orderIds: string[];
+  checkoutUrl: string;
+}
+
 export type LandingCreateInput = z.infer<typeof landingCreateSchema>;
 export type LandingUpdateInput = z.infer<typeof landingUpdateSchema>;
 export type LandingTierInput = z.infer<typeof landingTierInputSchema>;
