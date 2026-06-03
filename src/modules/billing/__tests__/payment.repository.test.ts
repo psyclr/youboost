@@ -1,14 +1,19 @@
 import { createPaymentRepository } from '../payment.repository';
 
 interface FakePrisma {
-  payment: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+  payment: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
   order: { create: jest.Mock };
   $transaction: jest.Mock;
 }
 
 function fakePrisma(): FakePrisma {
   const prisma: FakePrisma = {
-    payment: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    payment: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     order: { create: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: FakePrisma) => unknown) => fn(prisma)),
   };
@@ -88,12 +93,23 @@ describe('payment repository', () => {
     );
   });
 
-  it('markPaymentPaid sets status PAID and paidAt', async () => {
+  it('claimPaymentForSettlement returns true when updateMany flips one row', async () => {
+    prisma.payment.updateMany.mockResolvedValue({ count: 1 });
     const repo = createPaymentRepository(prisma as never);
-    await repo.markPaymentPaid('pay1');
-    const call = prisma.payment.update.mock.calls[0][0];
-    expect(call.where).toEqual({ id: 'pay1' });
-    expect(call.data.status).toBe('PAID');
-    expect(call.data.paidAt).toBeInstanceOf(Date);
+    const result = await repo.claimPaymentForSettlement('pay1');
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pay1', status: 'PENDING' },
+        data: expect.objectContaining({ status: 'PAID', paidAt: expect.any(Date) }),
+      }),
+    );
+    expect(result).toBe(true);
+  });
+
+  it('claimPaymentForSettlement returns false when updateMany flips zero rows (already claimed)', async () => {
+    prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+    const repo = createPaymentRepository(prisma as never);
+    const result = await repo.claimPaymentForSettlement('pay1');
+    expect(result).toBe(false);
   });
 });

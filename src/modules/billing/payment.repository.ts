@@ -34,7 +34,14 @@ export interface PaymentRepository {
   ): Promise<{ paymentId: string; orderIds: string[] }>;
   findPaymentWithOrders(paymentId: string): Promise<PaymentWithOrders | null>;
   attachSession(paymentId: string, providerSessionId: string): Promise<void>;
-  markPaymentPaid(paymentId: string): Promise<void>;
+  /**
+   * Atomically claim a PENDING payment for settlement.
+   * Returns true iff THIS call flipped the status from PENDING → PAID.
+   * Returns false if the payment was already PAID or otherwise not PENDING,
+   * meaning another concurrent delivery already claimed it — the caller must
+   * NOT submit orders in that case.
+   */
+  claimPaymentForSettlement(paymentId: string): Promise<boolean>;
 }
 
 export function createPaymentRepository(prisma: PrismaClient): PaymentRepository {
@@ -82,11 +89,12 @@ export function createPaymentRepository(prisma: PrismaClient): PaymentRepository
       });
     },
 
-    async markPaymentPaid(paymentId): Promise<void> {
-      await prisma.payment.update({
-        where: { id: paymentId },
+    async claimPaymentForSettlement(paymentId): Promise<boolean> {
+      const res = await prisma.payment.updateMany({
+        where: { id: paymentId, status: 'PENDING' },
         data: { status: 'PAID', paidAt: new Date() },
       });
+      return res.count === 1;
     },
   };
 }

@@ -13,13 +13,16 @@ import {
 
 interface MakeDepsOptions {
   payment: PaymentWithOrders | null;
+  /** Return value for claimPaymentForSettlement — defaults to true (winner) */
+  claimResult?: boolean;
 }
 
 function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   submitted: string[];
+  warnSpy: jest.SpyInstance;
   paymentRepo: {
     findPaymentWithOrders: jest.Mock;
-    markPaymentPaid: jest.Mock;
+    claimPaymentForSettlement: jest.Mock;
     createPaymentWithOrders: jest.Mock;
     attachSession: jest.Mock;
   };
@@ -51,15 +54,20 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   const prisma = createFakePrisma();
   const outbox = createFakeOutbox();
 
+  const claimResult = opts.claimResult !== undefined ? opts.claimResult : true;
   const paymentRepo = {
     findPaymentWithOrders: jest.fn(async () => opts.payment),
-    markPaymentPaid: jest.fn(async () => undefined),
+    claimPaymentForSettlement: jest.fn(async () => claimResult),
     createPaymentWithOrders: jest.fn(),
     attachSession: jest.fn(),
   };
 
+  // Spy on warn to verify FIX 2 alert
+  const warnSpy = jest.spyOn(silentLogger, 'warn');
+
   return {
     submitted,
+    warnSpy,
     paymentRepo,
     prisma: prisma.client,
     ordersRepo,
@@ -71,7 +79,11 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
 }
 
 describe('confirmOrderPayment', () => {
-  it('marks payment PAID and submits every PENDING_PAYMENT order', async () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('claims payment via CAS and submits every PENDING_PAYMENT order', async () => {
     const deps = makeDeps({
       payment: {
         id: 'pay1',
@@ -84,16 +96,37 @@ describe('confirmOrderPayment', () => {
       },
     });
     await confirmOrderPayment(deps, 'pay1');
-    expect(deps.paymentRepo.markPaymentPaid).toHaveBeenCalledWith('pay1');
+    expect(deps.paymentRepo.claimPaymentForSettlement).toHaveBeenCalledWith('pay1');
     expect(deps.submitted).toEqual(['o1', 'o2']);
   });
 
-  it('is idempotent: already-PAID payment is a no-op', async () => {
+  it('is idempotent: already-PAID payment is a no-op (fast path)', async () => {
     const deps = makeDeps({
       payment: { id: 'pay1', userId: 'u1', status: 'PAID', orders: [] },
     });
     await confirmOrderPayment(deps, 'pay1');
-    expect(deps.paymentRepo.markPaymentPaid).not.toHaveBeenCalled();
+    expect(deps.paymentRepo.claimPaymentForSettlement).not.toHaveBeenCalled();
+    expect(deps.submitted).toEqual([]);
+  });
+
+  it('concurrent duplicate delivery: claimPaymentForSettlement returns false → no orders submitted', async () => {
+    // Simulates the loser in a concurrent double-delivery race: the CAS flip
+    // returns false (another process already claimed it), so this delivery
+    // must NOT submit any orders.
+    const deps = makeDeps({
+      claimResult: false,
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+          { id: 'o2', status: 'PENDING_PAYMENT', serviceId: 's2', link: 'l2', quantity: 200 },
+        ],
+      },
+    });
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.paymentRepo.claimPaymentForSettlement).toHaveBeenCalledWith('pay1');
     expect(deps.submitted).toEqual([]);
   });
 
@@ -116,5 +149,25 @@ describe('confirmOrderPayment', () => {
   it('throws when the payment does not exist', async () => {
     const deps = makeDeps({ payment: null });
     await expect(confirmOrderPayment(deps, 'missing')).rejects.toThrow(/Payment not found/);
+  });
+
+  it('warns when payment settles but zero orders are PENDING_PAYMENT (all cancelled before late webhook)', async () => {
+    const deps = makeDeps({
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'CANCELLED', serviceId: 's1', link: 'l1', quantity: 100 },
+          { id: 'o2', status: 'CANCELLED', serviceId: 's2', link: 'l2', quantity: 200 },
+        ],
+      },
+    });
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: 'pay1', submittedCount: 0 }),
+      expect.stringContaining('no pending orders to submit'),
+    );
+    expect(deps.submitted).toEqual([]);
   });
 });

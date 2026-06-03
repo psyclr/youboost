@@ -74,11 +74,15 @@ export async function submitGuestOrder(
 }
 
 /**
- * Invoked when a Payment session completes successfully. Marks the Payment PAID
- * and submits every order that is still PENDING_PAYMENT.
+ * Invoked when a Payment session completes successfully. Atomically claims the
+ * Payment for settlement (PENDING→PAID via compare-and-set) and submits every
+ * order that is still PENDING_PAYMENT.
  *
- * Idempotent:
- *   - already-PAID payment → no-op
+ * Idempotent / concurrency-safe:
+ *   - already-PAID payment (fast path) → no-op before any DB write
+ *   - claimPaymentForSettlement returns false (another concurrent delivery
+ *     already won the CAS race, or payment is not PENDING) → no-op, no orders
+ *     submitted; prevents double-fulfilment on duplicate webhook delivery
  *   - orders already past PENDING_PAYMENT (partial-failure re-run) → skipped
  */
 export async function confirmOrderPayment(
@@ -91,15 +95,31 @@ export async function confirmOrderPayment(
   if (!payment) {
     throw new NotFoundError('Payment not found', 'PAYMENT_NOT_FOUND');
   }
+
+  // Fast idempotent path: already settled by a previous delivery.
   if (payment.status === 'PAID') {
     logger.info({ paymentId }, 'Payment already settled — skipping');
     return;
   }
 
-  await paymentRepo.markPaymentPaid(paymentId);
+  // Atomic CAS: only the first concurrent delivery wins and proceeds.
+  const claimed = await paymentRepo.claimPaymentForSettlement(paymentId);
+  if (!claimed) {
+    logger.info({ paymentId }, 'Payment settlement claimed by concurrent delivery — skipping');
+    return;
+  }
 
-  for (const order of payment.orders) {
-    if (order.status !== 'PENDING_PAYMENT') continue;
+  const pendingOrders = payment.orders.filter((o) => o.status === 'PENDING_PAYMENT');
+
+  if (pendingOrders.length === 0) {
+    logger.warn(
+      { paymentId, orderCount: payment.orders.length, submittedCount: 0 },
+      'payment settled but no pending orders to submit — possible late webhook after TTL expiry',
+    );
+    return;
+  }
+
+  for (const order of pendingOrders) {
     await submitGuestOrder(deps, payment.userId, order);
   }
 
