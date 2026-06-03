@@ -31,7 +31,11 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
     onSuccess: (data) => {
       try {
         const url = new URL(data.checkoutUrl);
-        const ok = url.hostname.endsWith('stripe.com') || url.hostname.endsWith('cryptomus.com');
+        const ok =
+          url.hostname === 'checkout.stripe.com' ||
+          url.hostname.endsWith('.stripe.com') ||
+          url.hostname === 'cryptomus.com' ||
+          url.hostname.endsWith('.cryptomus.com');
         if (ok) globalThis.location.href = data.checkoutUrl;
         else setError('Invalid payment URL received. Please try again.');
       } catch {
