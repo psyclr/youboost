@@ -165,6 +165,14 @@ export function createFakeOrdersRepository(
         .filter((o) => o.status === 'PROCESSING' && o.externalOrderId != null)
         .slice(0, batchSize);
     },
+    async claimOrderForSubmission(orderId): Promise<boolean> {
+      const idx = orders.findIndex((o) => o.id === orderId);
+      if (idx === -1) return false;
+      const prev = orders[idx] as OrderRecord;
+      if (prev.status !== 'PENDING_PAYMENT') return false;
+      orders[idx] = { ...prev, status: 'PROCESSING', updatedAt: new Date() };
+      return true;
+    },
     async updateOrderStatus(orderId, data): Promise<OrderRecord> {
       calls.updateOrderStatus.push({ orderId, data });
       const idx = orders.findIndex((o) => o.id === orderId);

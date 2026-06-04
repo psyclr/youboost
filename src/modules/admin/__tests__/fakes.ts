@@ -543,6 +543,14 @@ export function createFakeOrdersRepo(seed: { orders?: OrderRecord[] } = {}): Fak
         .filter((o) => o.status === 'PROCESSING' && o.externalOrderId != null)
         .slice(0, batchSize);
     },
+    async claimOrderForSubmission(orderId): Promise<boolean> {
+      const idx = orders.findIndex((o) => o.id === orderId);
+      if (idx === -1) return false;
+      const prev = orders[idx]!;
+      if (prev.status !== 'PENDING_PAYMENT') return false;
+      orders[idx] = { ...prev, status: 'PROCESSING', updatedAt: new Date() };
+      return true;
+    },
     async updateOrderStatus(orderId, data): Promise<OrderRecord> {
       const idx = orders.findIndex((o) => o.id === orderId);
       if (idx === -1) throw new Error(`Order ${orderId} not found`);

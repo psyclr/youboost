@@ -17,6 +17,16 @@ export interface OrdersRepository {
     filters: OrderFilters,
   ): Promise<{ orders: OrderRecord[]; total: number }>;
   findProcessingOrders(batchSize: number): Promise<OrderRecord[]>;
+  /**
+   * Atomically claim a PENDING_PAYMENT order for submission by flipping it to
+   * PROCESSING. Returns true iff THIS call won the transition (the row was still
+   * PENDING_PAYMENT). Returns false if another concurrent settlement already
+   * claimed it — the caller must NOT submit the order to the provider.
+   *
+   * The externalOrderId is left null until the provider accepts the order, so
+   * the status poller (which requires externalOrderId) ignores in-flight rows.
+   */
+  claimOrderForSubmission(orderId: string): Promise<boolean>;
   updateOrderStatus(orderId: string, data: UpdateOrderData): Promise<OrderRecord>;
   findDripFeedOrdersDue(): Promise<OrderRecord[]>;
   incrementDripFeedRun(orderId: string): Promise<OrderRecord>;
@@ -102,6 +112,14 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
       orderBy: { createdAt: 'asc' },
       take: batchSize,
     });
+  }
+
+  async function claimOrderForSubmission(orderId: string): Promise<boolean> {
+    const res = await prisma.order.updateMany({
+      where: { id: orderId, status: 'PENDING_PAYMENT' as OrderStatus },
+      data: { status: 'PROCESSING' as OrderStatus },
+    });
+    return res.count === 1;
   }
 
   async function updateOrderStatus(orderId: string, data: UpdateOrderData): Promise<OrderRecord> {
@@ -230,6 +248,7 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
     findPendingPaymentOlderThan,
     findOrders,
     findProcessingOrders,
+    claimOrderForSubmission,
     updateOrderStatus,
     findDripFeedOrdersDue,
     incrementDripFeedRun,

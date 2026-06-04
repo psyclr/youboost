@@ -7,6 +7,7 @@ const mockFindUnique = jest.fn();
 const mockFindMany = jest.fn();
 const mockCount = jest.fn();
 const mockUpdate = jest.fn();
+const mockUpdateMany = jest.fn();
 
 const fakePrisma = {
   order: {
@@ -16,6 +17,7 @@ const fakePrisma = {
     findMany: (...args: unknown[]): unknown => mockFindMany(...args),
     count: (...args: unknown[]): unknown => mockCount(...args),
     update: (...args: unknown[]): unknown => mockUpdate(...args),
+    updateMany: (...args: unknown[]): unknown => mockUpdateMany(...args),
   },
 } as unknown as PrismaClient;
 
@@ -215,6 +217,30 @@ describe('Orders Repository (factory)', () => {
         where: { id: 'order-1' },
         data: expect.objectContaining({ status: 'COMPLETED', completedAt }),
       });
+    });
+  });
+
+  describe('claimOrderForSubmission', () => {
+    it('flips PENDING_PAYMENT → PROCESSING and returns true when one row matches', async () => {
+      mockUpdateMany.mockResolvedValue({ count: 1 });
+      const repo = createOrdersRepository(fakePrisma);
+
+      const claimed = await repo.claimOrderForSubmission('order-1');
+
+      expect(claimed).toBe(true);
+      expect(mockUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PENDING_PAYMENT' },
+        data: { status: 'PROCESSING' },
+      });
+    });
+
+    it('returns false when no row matches (already claimed / not PENDING_PAYMENT)', async () => {
+      mockUpdateMany.mockResolvedValue({ count: 0 });
+      const repo = createOrdersRepository(fakePrisma);
+
+      const claimed = await repo.claimOrderForSubmission('order-1');
+
+      expect(claimed).toBe(false);
     });
   });
 

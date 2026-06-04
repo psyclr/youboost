@@ -1,5 +1,6 @@
 import { confirmOrderPayment, type ConfirmOrderPaymentDeps } from '../confirm-order-payment.flow';
 import type { PaymentWithOrders } from '../../billing/payment.repository';
+import type { OrderRecord } from '../orders.types';
 import {
   createFakeOrdersRepository,
   createFakeServicesRepository,
@@ -8,18 +9,27 @@ import {
   createFakeOutbox,
   createFakePrisma,
   makeServiceRecord,
+  makeOrderRecord,
   silentLogger,
 } from './fakes';
 
 interface MakeDepsOptions {
   payment: PaymentWithOrders | null;
-  /** Return value for claimPaymentForSettlement — defaults to true (winner) */
-  claimResult?: boolean;
+  /**
+   * Override the status an order has in the DB (repo), keyed by order id —
+   * defaults to the status in the payment snapshot. Use to simulate an order
+   * already claimed by a concurrent delivery (DB=PROCESSING) while this
+   * delivery's snapshot is still stale (PENDING_PAYMENT).
+   */
+  repoStatusById?: Record<string, OrderRecord['status']>;
+  /** Force the provider submit to reject, to exercise the revert path. */
+  submitOrderError?: Error;
 }
 
 function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   submitted: string[];
   warnSpy: jest.SpyInstance;
+  ordersRepo: ReturnType<typeof createFakeOrdersRepository>;
   paymentRepo: {
     findPaymentWithOrders: jest.Mock;
     claimPaymentForSettlement: jest.Mock;
@@ -27,24 +37,36 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     attachSession: jest.Mock;
   };
 } {
-  const submitted: string[] = [];
-  const client = createFakeProviderClient({
-    submitOrder: jest.fn(async () => ({ externalOrderId: 'ext-1', status: 'processing' })),
-  });
+  const submitOrder = opts.submitOrderError
+    ? jest.fn(async () => {
+        throw opts.submitOrderError;
+      })
+    : jest.fn(async () => ({ externalOrderId: 'ext-1', status: 'processing' }));
+  const client = createFakeProviderClient({ submitOrder });
   const providerSelector = createFakeProviderSelector({ client });
-  // Record which orders are submitted by wrapping updateOrderStatus to PROCESSING.
-  const ordersRepo = createFakeOrdersRepository();
+
+  // Seed the repo with the payment's orders as they exist in the DB.
+  const ordersRepo = createFakeOrdersRepository({
+    orders: (opts.payment?.orders ?? []).map((o) =>
+      makeOrderRecord({
+        id: o.id,
+        userId: opts.payment?.userId ?? 'u1',
+        serviceId: o.serviceId,
+        link: o.link,
+        quantity: o.quantity,
+        status: opts.repoStatusById?.[o.id] ?? o.status,
+      }),
+    ),
+  });
+
+  // Record orders that get submitted (flipped to PROCESSING via updateOrderStatus).
+  const submitted: string[] = [];
   const originalUpdate = ordersRepo.updateOrderStatus.bind(ordersRepo);
   ordersRepo.updateOrderStatus = async (orderId, data) => {
     if (data.status === 'PROCESSING') submitted.push(orderId);
-    // Seed a record so the fake doesn't throw on missing order.
-    ordersRepo.orders.push({ id: orderId } as never);
-    try {
-      return await originalUpdate(orderId, data);
-    } catch {
-      return { id: orderId } as never;
-    }
+    return originalUpdate(orderId, data);
   };
+
   const servicesRepo = createFakeServicesRepository({
     services: [
       makeServiceRecord({ id: 's1', providerId: 'prov-1', externalServiceId: '101' }),
@@ -54,23 +76,21 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   const prisma = createFakePrisma();
   const outbox = createFakeOutbox();
 
-  const claimResult = opts.claimResult !== undefined ? opts.claimResult : true;
   const paymentRepo = {
     findPaymentWithOrders: jest.fn(async () => opts.payment),
-    claimPaymentForSettlement: jest.fn(async () => claimResult),
+    claimPaymentForSettlement: jest.fn(async () => true),
     createPaymentWithOrders: jest.fn(),
     attachSession: jest.fn(),
   };
 
-  // Spy on warn to verify FIX 2 alert
   const warnSpy = jest.spyOn(silentLogger, 'warn');
 
   return {
     submitted,
     warnSpy,
+    ordersRepo,
     paymentRepo,
     prisma: prisma.client,
-    ordersRepo,
     servicesRepo,
     providerSelector,
     outbox: outbox.port,
@@ -83,7 +103,7 @@ describe('confirmOrderPayment', () => {
     jest.restoreAllMocks();
   });
 
-  it('claims payment via CAS and submits every PENDING_PAYMENT order', async () => {
+  it('settles the payment and submits every PENDING_PAYMENT order', async () => {
     const deps = makeDeps({
       payment: {
         id: 'pay1',
@@ -100,37 +120,55 @@ describe('confirmOrderPayment', () => {
     expect(deps.submitted).toEqual(['o1', 'o2']);
   });
 
-  it('is idempotent: already-PAID payment is a no-op (fast path)', async () => {
+  it('already-PAID payment with no pending orders is a no-op', async () => {
     const deps = makeDeps({
       payment: { id: 'pay1', userId: 'u1', status: 'PAID', orders: [] },
     });
     await confirmOrderPayment(deps, 'pay1');
+    // Already settled: must not re-run the settlement marker.
     expect(deps.paymentRepo.claimPaymentForSettlement).not.toHaveBeenCalled();
     expect(deps.submitted).toEqual([]);
   });
 
-  it('concurrent duplicate delivery: claimPaymentForSettlement returns false → no orders submitted', async () => {
-    // Simulates the loser in a concurrent double-delivery race: the CAS flip
-    // returns false (another process already claimed it), so this delivery
-    // must NOT submit any orders.
+  it('already-PAID re-delivery submits leftover PENDING_PAYMENT orders (partial-failure recovery)', async () => {
+    // Regression: the old fast-path returned on status==='PAID' and dropped any
+    // order that had not yet been submitted (e.g. the 2nd order failed the first
+    // time). The customer had paid but never received the leftover service.
     const deps = makeDeps({
-      claimResult: false,
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PAID',
+        orders: [
+          { id: 'o1', status: 'PROCESSING', serviceId: 's1', link: 'l1', quantity: 100 },
+          { id: 'o2', status: 'PENDING_PAYMENT', serviceId: 's2', link: 'l2', quantity: 200 },
+        ],
+      },
+    });
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.paymentRepo.claimPaymentForSettlement).not.toHaveBeenCalled();
+    expect(deps.submitted).toEqual(['o2']);
+  });
+
+  it('concurrent duplicate: order already claimed in DB → not re-submitted', async () => {
+    // Stale snapshot says PENDING_PAYMENT, but another delivery already flipped
+    // it to PROCESSING in the DB. The per-order claim must lose and skip submit.
+    const deps = makeDeps({
       payment: {
         id: 'pay1',
         userId: 'u1',
         status: 'PENDING',
         orders: [
           { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
-          { id: 'o2', status: 'PENDING_PAYMENT', serviceId: 's2', link: 'l2', quantity: 200 },
         ],
       },
+      repoStatusById: { o1: 'PROCESSING' },
     });
     await confirmOrderPayment(deps, 'pay1');
-    expect(deps.paymentRepo.claimPaymentForSettlement).toHaveBeenCalledWith('pay1');
     expect(deps.submitted).toEqual([]);
   });
 
-  it('skips orders already past PENDING_PAYMENT (partial-failure re-run)', async () => {
+  it('skips orders already past PENDING_PAYMENT in the snapshot', async () => {
     const deps = makeDeps({
       payment: {
         id: 'pay1',
@@ -144,6 +182,24 @@ describe('confirmOrderPayment', () => {
     });
     await confirmOrderPayment(deps, 'pay1');
     expect(deps.submitted).toEqual(['o2']);
+  });
+
+  it('reverts the order to PENDING_PAYMENT and rethrows when the provider submit fails', async () => {
+    const deps = makeDeps({
+      submitOrderError: new Error('provider 503'),
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+        ],
+      },
+    });
+    await expect(confirmOrderPayment(deps, 'pay1')).rejects.toThrow('provider 503');
+    // Order must be released back to PENDING_PAYMENT so a re-delivery can retry.
+    const reverted = await deps.ordersRepo.findOrderById('o1', 'u1');
+    expect(reverted?.status).toBe('PENDING_PAYMENT');
   });
 
   it('throws when the payment does not exist', async () => {
