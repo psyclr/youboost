@@ -176,6 +176,14 @@ export function createCryptomusPaymentService(
       return;
     }
 
+    // Intentional asymmetry vs Stripe: Stripe encodes BOTH deposit and
+    // order-payment as references, so its webhook collapses to
+    // `completionRouter.handle(ref)`. Cryptomus only encodes order-payment as a
+    // reference; deposits use a bare deposit-id `order_id` resolved by DB lookup
+    // plus replay/expiry protection (handleDepositWebhook), which the generic
+    // router cannot express. So order-payment dispatches directly to
+    // confirmOrderPayment here and deposits fall through to the bespoke path.
+    //
     // order-payment path: order_id is an encoded PaymentReference (pay:<id>:<user>)
     const ref = decodeRef(orderId);
     if (ref && ref.kind === 'order-payment') {
