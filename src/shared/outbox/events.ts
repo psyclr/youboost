@@ -126,7 +126,8 @@ export type OutboxEvent =
         landingId: string;
         tierId: string;
         paymentProvider?: 'stripe' | 'cryptomus';
-        orderId: string;
+        /** Every order in the cart, so analytics counts the whole checkout. */
+        orderIds: string[];
         userId: string;
         email: string;
       };

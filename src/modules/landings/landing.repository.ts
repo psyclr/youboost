@@ -245,27 +245,20 @@ export function createLandingRepository(prisma: PrismaClient): LandingRepository
           revenue_usd: number | null;
         }>
       >`
+        WITH checkout_orders AS (
+          SELECT DISTINCT oid::uuid AS id
+          FROM outbox_events e
+          CROSS JOIN LATERAL jsonb_array_elements_text(e.payload->'orderIds') AS oid
+          WHERE e.event_type = 'landing.guest_checkout_started'
+            AND e.aggregate_id = ${landingId}::uuid
+            AND oid IS NOT NULL AND oid <> ''
+        )
         SELECT
-          COUNT(*) FILTER (WHERE o.id IN (
-            SELECT (e.payload->>'orderId')::uuid
-            FROM outbox_events e
-            WHERE e.event_type = 'landing.guest_checkout_started'
-              AND e.aggregate_id = ${landingId}::uuid
-          )) AS checkouts_started,
+          COUNT(*) FILTER (WHERE o.id IN (SELECT id FROM checkout_orders)) AS checkouts_started,
           COUNT(*) FILTER (WHERE o.status NOT IN ('PENDING_PAYMENT', 'CANCELLED', 'FAILED')
-            AND o.id IN (
-              SELECT (e.payload->>'orderId')::uuid
-              FROM outbox_events e
-              WHERE e.event_type = 'landing.guest_checkout_started'
-                AND e.aggregate_id = ${landingId}::uuid
-            )) AS checkouts_completed,
+            AND o.id IN (SELECT id FROM checkout_orders)) AS checkouts_completed,
           COALESCE(SUM(o.price) FILTER (WHERE o.status NOT IN ('PENDING_PAYMENT', 'CANCELLED', 'FAILED')
-            AND o.id IN (
-              SELECT (e.payload->>'orderId')::uuid
-              FROM outbox_events e
-              WHERE e.event_type = 'landing.guest_checkout_started'
-                AND e.aggregate_id = ${landingId}::uuid
-            )), 0) AS revenue_usd
+            AND o.id IN (SELECT id FROM checkout_orders)), 0) AS revenue_usd
         FROM orders o
       `,
     ]);

@@ -187,7 +187,12 @@ describe('executeGuestCartCheckout', () => {
         checkoutUrl: 'https://pay.test/sess_1',
       }),
     );
-    expect(deps.outboxEvents.some((e) => e.type === 'landing.guest_checkout_started')).toBe(true);
+    const checkoutEvent = deps.outboxEvents.find(
+      (e) => e.type === 'landing.guest_checkout_started',
+    );
+    expect(checkoutEvent).toBeDefined();
+    // Analytics counts every order in the cart, so the full set must be emitted.
+    expect(checkoutEvent?.payload).toEqual(expect.objectContaining({ orderIds: ['o1', 'o2'] }));
   });
 
   it('rejects an item whose tier is not on the landing', async () => {

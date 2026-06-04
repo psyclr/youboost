@@ -130,7 +130,6 @@ export async function executeGuestCartCheckout(
   await orderCreator.attachPaymentSession(paymentId, session.sessionId);
 
   const firstTierId = input.items[0]?.tierId ?? '';
-  const firstOrderId = orderIds[0] ?? '';
   await prisma.$transaction(async (tx) => {
     await outbox.emit(
       {
@@ -142,7 +141,7 @@ export async function executeGuestCartCheckout(
           landingId: landing.id,
           tierId: firstTierId,
           paymentProvider: input.paymentProvider,
-          orderId: firstOrderId,
+          orderIds,
           userId: ticket.userId,
           email: ticket.email,
         },
