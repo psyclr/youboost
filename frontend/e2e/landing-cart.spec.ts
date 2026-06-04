@@ -159,13 +159,13 @@ test.describe.serial('Landing cart', () => {
     const addFirst = cards().nth(0).getByRole('button', { name: /^pay$/i });
     for (let i = 0; i < 6; i++) await addFirst.click();
     await expect(panel().getByLabel(/add a link/i)).toHaveCount(6);
+    // The item list is height-capped and scrolls internally, so its content
+    // overflows its own box rather than growing the panel/page.
     const list = panel().getByTestId('cart-items');
     const { scrollH, clientH } = await list.evaluate((el) => ({
       scrollH: el.scrollHeight,
       clientH: el.clientHeight,
     }));
-    // The item list is height-capped and scrolls internally, so its content
-    // overflows its own box rather than growing the panel/page.
     expect(clientH).toBeGreaterThan(0);
     expect(scrollH).toBeGreaterThan(clientH);
   });

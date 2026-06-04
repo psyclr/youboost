@@ -96,10 +96,11 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
     >
       {/* Items scroll inside the panel so a long cart never stretches the page;
           the email/provider/Pay controls below stay pinned and the panel stays
-          sticky (see ServiceTiers). */}
+          sticky (see ServiceTiers). Block layout (space-y, not flex) so items
+          keep their natural height and overflow instead of squashing. */}
       <div
         data-testid="cart-items"
-        className="-mr-1 flex max-h-[46vh] flex-col gap-3 overflow-y-auto pr-1"
+        className="themed-scroll max-h-[46vh] space-y-3 overflow-y-auto pr-2"
       >
         {cart.items.map((item) => (
           <CartItem
