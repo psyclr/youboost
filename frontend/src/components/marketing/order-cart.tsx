@@ -51,7 +51,7 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
         setError('Paste a link for every service.');
         return false;
       }
-      if (i.quantity < i.tier.service.minQuantity) {
+      if (!Number.isFinite(i.quantity) || i.quantity < i.tier.service.minQuantity) {
         setError(
           `Minimum for ${i.tier.service.name} is ${i.tier.service.minQuantity.toLocaleString()}.`,
         );

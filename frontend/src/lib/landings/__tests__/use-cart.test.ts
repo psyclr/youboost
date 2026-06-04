@@ -53,6 +53,16 @@ it('total is the sum of per-item estimates', () => {
   expect(result.current.total).toBeCloseTo(5, 2);
 });
 
+it('coerces a NaN quantity to 0 so the total never becomes NaN', () => {
+  const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
+  act(() => result.current.addItem(tier('1', 2)));
+  const id = result.current.items[0]!.id;
+  act(() => result.current.setQuantity(id, Number.NaN));
+  expect(result.current.items[0]!.quantity).toBe(0);
+  expect(Number.isNaN(result.current.total)).toBe(false);
+  expect(result.current.total).toBe(0);
+});
+
 it('removes an item; empty cart has total 0 and count 0', () => {
   const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
   act(() => result.current.addItem(tier('1', 1)));

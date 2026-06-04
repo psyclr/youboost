@@ -53,7 +53,13 @@ export function useCart({ defaultMinAmount }: { defaultMinAmount: number }): Use
   );
   const setQuantity = useCallback(
     (id: string, quantity: number) =>
-      setItems((p) => p.map((i) => (i.id === id ? { ...i, quantity } : i))),
+      setItems((p) =>
+        // Guard against NaN from an emptied/invalid number input so the live
+        // total never becomes NaN ("Pay $NaN").
+        p.map((i) =>
+          i.id === id ? { ...i, quantity: Number.isFinite(quantity) ? quantity : 0 } : i,
+        ),
+      ),
     [],
   );
   const toggleCollapse = useCallback(
