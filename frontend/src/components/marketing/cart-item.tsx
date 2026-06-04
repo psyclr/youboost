@@ -72,11 +72,17 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-white">Quantity</span>
             <input
-              type="number"
-              min={tier.service.minQuantity}
-              max={tier.service.maxQuantity}
-              value={item.quantity}
-              onChange={(e) => onQuantity(Number(e.target.value))}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              // Digits only — strip anything else (minus, e, dot, spaces) so the
+              // value is always a non-negative integer and never NaN. Cap at the
+              // service max; the min is enforced on Pay with a clear message.
+              value={item.quantity === 0 ? '' : String(item.quantity)}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                onQuantity(digits === '' ? 0 : Math.min(Number(digits), tier.service.maxQuantity));
+              }}
               aria-label="Quantity"
               className="w-full min-w-0 rounded-[3px] border px-3 py-2.5 text-[13px] text-white focus:outline-none"
               style={{ background: '#0a0a0a', borderColor: '#363636' }}

@@ -41,6 +41,19 @@ test.describe.serial('Landing cart', () => {
     await expect(panel()).toContainText(/pick a service/i);
   });
 
+  test('quantity field accepts digits only and never yields a NaN total', async () => {
+    await cards().nth(0).getByRole('button', { name: /^pay$/i }).click();
+    const qty = panel().getByLabel(/quantity/i);
+    // Type a hostile string: minus, exponent, dot, letters, spaces.
+    await qty.fill('');
+    await qty.pressSequentially('-1e2.5 abc');
+    await expect(qty).toHaveValue('125');
+    // The Pay button must show a real dollar amount, never "Pay $NaN".
+    const pay = panel().getByRole('button', { name: /pay \$/i });
+    await expect(pay).toBeVisible();
+    await expect(pay).not.toContainText(/nan/i);
+  });
+
   test('invalid email blocks checkout; valid cart posts items and redirects', async () => {
     const captured: { body: unknown } = { body: null };
     await page.route(CART_CHECKOUT, async (route: Route) => {
