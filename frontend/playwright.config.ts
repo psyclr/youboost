@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   reporter: 'html',
   use: {
-    baseURL: process.env['E2E_BASE_URL'] ?? 'http://localhost:3001',
+    baseURL: process.env['E2E_BASE_URL'] ?? 'http://localhost:3101',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },

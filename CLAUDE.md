@@ -26,35 +26,39 @@ Monorepo with modular services under `src/modules/`:
 
 ## Development vs Docker
 
-- **Development and tests** — run locally, NOT in Docker
-  - Backend: `npm run start:dev` (port 3000)
-  - Frontend: `cd frontend && npm run dev` (port 3001)
-  - E2E tests: `cd frontend && npx playwright test` (against local dev servers)
-- **Manual testing and deploy** — in Docker
-  - `docker compose up --build -d`
-  - After code changes, rebuild: `docker compose up --build -d frontend` (or `backend`)
+Docker compose is **prod-only**. Dev runs locally on **separate ports** so it coexists with the running prod stack — never run dev servers in Docker, never stop prod to develop.
+
+- **Development and tests** — run locally on dev ports (prod stays up on 3000/3001)
+  - Backend: `PORT=3100 npm run start:dev` (dev port 3100)
+  - Frontend: `cd frontend && API_URL=http://localhost:3100 npx next dev -p 3101` (dev port 3101; its `/api` proxy targets the dev backend)
+  - E2E tests: `cd frontend && npx playwright test` (against the local dev stack on 3101)
+- **Deploy** — push, then rebuild prod containers without cache so they pick up the pushed code
+  - `docker compose build --no-cache backend frontend && docker compose up -d`
+- **No CI:** there are no GitHub Actions and none are wanted — verify locally before pushing.
 
 ## E2E Tests (Playwright)
 
-- Config: `frontend/playwright.config.ts`, base URL: `http://localhost:3001`
+- Config: `frontend/playwright.config.ts`, base URL: `http://localhost:3101` (dev frontend; override with `E2E_BASE_URL`)
 - Test dir: `frontend/e2e/`
 - Rate limiting: login endpoint has 10 req/15min in-memory limit. Total logins across all spec files must stay <= 10. Backend restart clears limits.
 - Use `test.describe.serial` with shared `BrowserContext` + `Page` to minimize logins (1 per spec file)
 - Use `page.route()` to mock API responses where needed (order creation, bulk orders)
 - Selectors: prefer `getByRole('combobox')` over `[data-slot="select-trigger"]` — data-slot causes 30s timeouts
 - **IMPORTANT:** Run `npx playwright test` from `frontend/` dir, NOT from project root — root dir picks up Jest test files from `src/`
-- **IMPORTANT:** Before running tests, stop Docker frontend (`docker compose stop frontend`) and start local dev server (`cd frontend && npx next dev -p 3001`)
-- If rate limited: restart backend (kill + `npm run start:dev`, or `docker compose restart backend` if using Docker) — clears in-memory limits
+- **IMPORTANT:** Run against the local dev stack on dev ports (frontend 3101 → backend 3100). No need to stop the prod Docker stack — dev ports don't clash with it.
+- If rate limited: restart the dev backend (kill + `PORT=3100 npm run start:dev`) — clears the in-memory limits
 - Unicode: use actual `…` character in JSX, NOT `\u2026` — JSX attribute strings and JSX text do NOT interpret JS escape sequences
 
 ## Ports
 
-| Service  | Port |
-| -------- | ---- |
-| Backend  | 3000 |
-| Frontend | 3001 |
-| Postgres | 5432 |
-| Redis    | 6379 |
+| Service  | Prod (Docker) | Dev (local) |
+| -------- | ------------- | ----------- |
+| Backend  | 3000          | 3100        |
+| Frontend | 3001          | 3101        |
+| Postgres | 5432          | 5432        |
+| Redis    | 6379          | 6379        |
+
+Dev backend/frontend use separate ports so they coexist with the prod Docker stack; Postgres/Redis are shared.
 
 ## Linting
 
