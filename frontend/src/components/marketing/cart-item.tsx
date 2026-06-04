@@ -16,7 +16,10 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
   const name = tier.titleOverride ?? tier.service.name;
   const price = estimatePrice(tier, item.quantity);
   return (
-    <div className="overflow-hidden rounded-[3px] border" style={{ borderColor: '#363636' }}>
+    <div
+      className="shrink-0 overflow-hidden rounded-[3px] border"
+      style={{ borderColor: '#363636' }}
+    >
       <div className="flex items-start justify-between gap-2 p-3">
         <div className="min-w-0">
           <h4 className="truncate text-[15px] font-semibold text-white">{name}</h4>

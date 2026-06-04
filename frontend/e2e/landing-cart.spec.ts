@@ -155,6 +155,21 @@ test.describe.serial('Landing cart', () => {
     await page.waitForURL(/pay\.cryptomus\.com/, { timeout: 10_000 });
   });
 
+  test('a long cart scrolls inside the panel instead of stretching the page', async () => {
+    const addFirst = cards().nth(0).getByRole('button', { name: /^pay$/i });
+    for (let i = 0; i < 6; i++) await addFirst.click();
+    await expect(panel().getByLabel(/add a link/i)).toHaveCount(6);
+    const list = panel().getByTestId('cart-items');
+    const { scrollH, clientH } = await list.evaluate((el) => ({
+      scrollH: el.scrollHeight,
+      clientH: el.clientHeight,
+    }));
+    // The item list is height-capped and scrolls internally, so its content
+    // overflows its own box rather than growing the panel/page.
+    expect(clientH).toBeGreaterThan(0);
+    expect(scrollH).toBeGreaterThan(clientH);
+  });
+
   test('invalid email blocks checkout; valid cart posts items and redirects', async () => {
     const captured: { body: unknown } = { body: null };
     await page.route(CART_CHECKOUT, async (route: Route) => {

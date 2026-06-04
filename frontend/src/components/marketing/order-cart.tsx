@@ -94,7 +94,13 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
       style={{ background: '#141414', borderColor: '#363636' }}
       data-testid="order-panel"
     >
-      <div className="flex flex-col gap-3">
+      {/* Items scroll inside the panel so a long cart never stretches the page;
+          the email/provider/Pay controls below stay pinned and the panel stays
+          sticky (see ServiceTiers). */}
+      <div
+        data-testid="cart-items"
+        className="-mr-1 flex max-h-[46vh] flex-col gap-3 overflow-y-auto pr-1"
+      >
         {cart.items.map((item) => (
           <CartItem
             key={item.id}

@@ -296,8 +296,13 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
           ) : null}
         </div>
 
-        {/* RIGHT: order panel */}
-        <div ref={panelRef} aria-label="Order panel" className="min-w-0 overflow-hidden">
+        {/* RIGHT: order panel — pinned on desktop so it stays in view while the
+            left column scrolls; the panel's item list scrolls internally. */}
+        <div
+          ref={panelRef}
+          aria-label="Order panel"
+          className="min-w-0 overflow-hidden lg:sticky lg:top-6 lg:self-start"
+        >
           <OrderCart slug={slug} cart={cart} />
         </div>
       </div>
