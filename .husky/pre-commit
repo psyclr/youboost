@@ -1,3 +1,7 @@
+# Abort the commit if ANY check below fails. Without this, a non-zero exit from
+# a check was masked by the trailing echo and the commit went through anyway.
+set -e
+
 echo "Running pre-commit checks..."
 
 echo "Linting..."
@@ -10,7 +14,7 @@ echo "Checking circular dependencies..."
 npx madge --circular --extensions ts src/
 
 echo "Checking for unused code..."
-npx knip --no-progress
+npm run knip
 
 echo "Checking documentation..."
 ./scripts/update-claude-docs.sh pre-commit

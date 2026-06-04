@@ -5,6 +5,7 @@ import { createStripeRoutes } from '../stripe.routes';
 import { createStripePaymentService, type StripePaymentService } from '../stripe.service';
 import { createFakeDepositRepository, silentLogger } from '../../__tests__/fakes';
 import type { DepositLifecycleService } from '../../deposit-lifecycle.service';
+import { createPaymentCompletionRouter } from '../../payment-completion.router';
 
 function makeLifecycle(): jest.Mocked<DepositLifecycleService> {
   return {
@@ -26,15 +27,15 @@ function makeStripeClient(): Stripe {
 }
 
 function makeService(): StripePaymentService {
+  const completionRouter = createPaymentCompletionRouter({
+    confirmDeposit: jest.fn(),
+    confirmOrderPayment: jest.fn(),
+  });
   return createStripePaymentService({
     stripeClient: makeStripeClient(),
     depositRepo: createFakeDepositRepository(),
     lifecycle: makeLifecycle(),
-    guestOrderProcessor: {
-      async confirmGuestOrderPayment(): Promise<void> {
-        /* noop */
-      },
-    },
+    completionRouter,
     stripeConfig: { secretKey: 'sk_test', webhookSecret: 'whsec' },
     appUrl: 'http://localhost:3000',
     logger: silentLogger,

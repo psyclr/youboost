@@ -46,7 +46,8 @@ export function Footer({ footerCta }: FooterProps) {
               className="h-9 w-auto"
             />
             <p className="mt-4 max-w-[320px] text-sm leading-relaxed text-white/55">
-              The fastest SMM panel on earth. 4M+ orders delivered.
+              The best YouTube views on the market. Buy YouTube views, subscribers, likes and more —
+              a quick start and guaranteed results.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-8 md:grid-cols-3">
@@ -107,9 +108,8 @@ export function Footer({ footerCta }: FooterProps) {
             </div>
           </div>
         </div>
-        <div className="mx-auto flex max-w-[1280px] flex-col items-start justify-between gap-2 border-t border-white/10 px-6 py-6 text-sm text-white/45 md:flex-row md:items-center md:px-8">
+        <div className="mx-auto flex max-w-[1280px] items-center border-t border-white/10 px-6 py-6 text-sm text-white/45 md:px-8">
           <span>&copy; {new Date().getFullYear()} YouBoost. All Rights Reserved.</span>
-          <span>Made for Creators.</span>
         </div>
       </footer>
     </>

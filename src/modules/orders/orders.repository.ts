@@ -11,14 +11,22 @@ interface OrderFilters {
 export interface OrdersRepository {
   createOrder(data: CreateOrderData): Promise<OrderRecord>;
   findOrderById(orderId: string, userId: string): Promise<OrderRecord | null>;
-  findOrderByStripeSessionId(sessionId: string): Promise<OrderRecord | null>;
   findPendingPaymentOlderThan(cutoff: Date, batchSize: number): Promise<OrderRecord[]>;
-  attachStripeSession(orderId: string, sessionId: string): Promise<OrderRecord>;
   findOrders(
     userId: string,
     filters: OrderFilters,
   ): Promise<{ orders: OrderRecord[]; total: number }>;
   findProcessingOrders(batchSize: number): Promise<OrderRecord[]>;
+  /**
+   * Atomically claim a PENDING_PAYMENT order for submission by flipping it to
+   * PROCESSING. Returns true iff THIS call won the transition (the row was still
+   * PENDING_PAYMENT). Returns false if another concurrent settlement already
+   * claimed it — the caller must NOT submit the order to the provider.
+   *
+   * The externalOrderId is left null until the provider accepts the order, so
+   * the status poller (which requires externalOrderId) ignores in-flight rows.
+   */
+  claimOrderForSubmission(orderId: string): Promise<boolean>;
   updateOrderStatus(orderId: string, data: UpdateOrderData): Promise<OrderRecord>;
   findDripFeedOrdersDue(): Promise<OrderRecord[]>;
   incrementDripFeedRun(orderId: string): Promise<OrderRecord>;
@@ -46,7 +54,6 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
         quantity: data.quantity,
         price: data.price,
         ...(data.status ? { status: data.status } : {}),
-        ...(data.stripeSessionId ? { stripeSessionId: data.stripeSessionId } : {}),
         isDripFeed: data.isDripFeed ?? false,
         dripFeedRuns: data.dripFeedRuns ?? null,
         dripFeedInterval: data.dripFeedInterval ?? null,
@@ -57,10 +64,6 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
     });
   }
 
-  async function findOrderByStripeSessionId(sessionId: string): Promise<OrderRecord | null> {
-    return prisma.order.findUnique({ where: { stripeSessionId: sessionId } });
-  }
-
   async function findPendingPaymentOlderThan(
     cutoff: Date,
     batchSize: number,
@@ -69,13 +72,6 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
       where: { status: 'PENDING_PAYMENT', createdAt: { lt: cutoff } },
       orderBy: { createdAt: 'asc' },
       take: batchSize,
-    });
-  }
-
-  async function attachStripeSession(orderId: string, sessionId: string): Promise<OrderRecord> {
-    return prisma.order.update({
-      where: { id: orderId },
-      data: { stripeSessionId: sessionId },
     });
   }
 
@@ -116,6 +112,14 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
       orderBy: { createdAt: 'asc' },
       take: batchSize,
     });
+  }
+
+  async function claimOrderForSubmission(orderId: string): Promise<boolean> {
+    const res = await prisma.order.updateMany({
+      where: { id: orderId, status: 'PENDING_PAYMENT' as OrderStatus },
+      data: { status: 'PROCESSING' as OrderStatus },
+    });
+    return res.count === 1;
   }
 
   async function updateOrderStatus(orderId: string, data: UpdateOrderData): Promise<OrderRecord> {
@@ -241,11 +245,10 @@ export function createOrdersRepository(prisma: PrismaClient): OrdersRepository {
   return {
     createOrder,
     findOrderById,
-    findOrderByStripeSessionId,
     findPendingPaymentOlderThan,
-    attachStripeSession,
     findOrders,
     findProcessingOrders,
+    claimOrderForSubmission,
     updateOrderStatus,
     findDripFeedOrdersDue,
     incrementDripFeedRun,

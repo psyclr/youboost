@@ -118,15 +118,15 @@ function setup(serviceLookupSeed: Partial<ServiceLookupRecord> = {}): {
     },
   };
   const orderCreator: GuestOrderCreatorPort = {
-    async createPendingPaymentOrder(): Promise<{ orderId: string }> {
-      return { orderId: 'order-fake' };
+    async createPaymentWithOrders(): Promise<{ paymentId: string; orderIds: string[] }> {
+      return { paymentId: 'pay-fake', orderIds: ['order-fake'] };
     },
-    async attachStripeSessionId(): Promise<void> {
+    async attachPaymentSession(): Promise<void> {
       /* noop */
     },
   };
   const payments: GuestOrderPaymentPort = {
-    async createGuestOrderSession(): Promise<{ sessionId: string; url: string }> {
+    async createPaymentSession(): Promise<{ sessionId: string; url: string }> {
       return { sessionId: 'cs_fake', url: 'https://stripe.test/cs_fake' };
     },
   };
@@ -505,6 +505,28 @@ describe('Landing Service', () => {
         quantity: 100,
       });
       expect(result).toMatchObject({ valid: false, reason: 'SERVICE_NOT_FOUND' });
+    });
+  });
+
+  describe('checkoutCart', () => {
+    it('delegates to the cart flow and returns paymentId + orderIds', async () => {
+      const ctx = setup({ pricePer1000: 2 });
+      const landing = await ctx.service.adminCreate(baseInput);
+      await ctx.service.adminPublish(landing.id);
+      const tierId = landing.tiers[0]!.id;
+
+      const result = await ctx.service.checkoutCart('home', {
+        email: 'cart@example.com',
+        items: [{ tierId, link: 'https://youtube.com/watch?v=abc', quantity: 1000 }],
+        paymentProvider: 'stripe',
+      });
+
+      expect(result).toEqual({
+        userId: 'user-cart@example.com',
+        paymentId: 'pay-fake',
+        orderIds: ['order-fake'],
+        checkoutUrl: 'https://stripe.test/cs_fake',
+      });
     });
   });
 });

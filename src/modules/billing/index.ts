@@ -35,4 +35,18 @@ export { createBillingRoutes } from './billing.routes';
 export type { DepositExpiryWorker, DepositExpiryWorkerDeps } from './workers/deposit-expiry.worker';
 export { createDepositExpiryWorker } from './workers/deposit-expiry.worker';
 export type { DepositDetailResponse } from './deposit.types';
-export type { GuestOrderProcessorPort } from './ports/guest-order-processor.port';
+export type { OrderPaymentProcessorPort } from './ports/order-payment-processor.port';
+export type { PaymentReference } from './payment-reference';
+export { encodeRef, decodeRef } from './payment-reference';
+export type {
+  PaymentRepository,
+  PaymentWithOrders,
+  CreatePaymentWithOrdersInput,
+  PaymentOrderItemInput,
+} from './payment.repository';
+export { createPaymentRepository } from './payment.repository';
+export type {
+  PaymentCompletionRouter,
+  PaymentCompletionHandlers,
+} from './payment-completion.router';
+export { createPaymentCompletionRouter } from './payment-completion.router';

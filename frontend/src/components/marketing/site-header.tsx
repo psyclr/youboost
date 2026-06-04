@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 
 const navLinks = [
   { label: 'Services', href: '#services' },
@@ -14,15 +13,15 @@ const navLinks = [
 export function SiteHeader() {
   return (
     <header
-      className="sticky top-0 z-50 border-b border-border"
+      className="sticky top-0 z-50 border-b border-white/10"
       style={{
-        background: 'rgba(255,255,255,0.5)',
-        backdropFilter: 'blur(3px)',
-        WebkitBackdropFilter: 'blur(3px)',
+        background: 'rgba(10,10,10,0.6)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
       }}
     >
-      <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between gap-6 px-6 md:px-8">
-        <Link href="/" className="flex items-center gap-2.5 text-brand-ink no-underline">
+      <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between gap-3 px-6 md:gap-6 md:px-8">
+        <Link href="/" className="flex items-center gap-2.5 text-white no-underline">
           <Image
             src="/brand/logo-mark-square-red.svg"
             alt="YouBoost"
@@ -30,26 +29,32 @@ export function SiteHeader() {
             height={34}
             priority
           />
-          <span className="text-lg font-bold tracking-tight">youboost</span>
+          <span className="text-lg font-bold tracking-tight">YouBoost</span>
         </Link>
         <nav className="hidden items-center gap-7 md:flex">
           {navLinks.map((link) => (
             <a
               key={link.label}
               href={link.href}
-              className="text-sm font-medium text-[var(--n-700)] transition-colors hover:text-brand-ink"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-white"
             >
               {link.label}
             </a>
           ))}
         </nav>
         <div className="flex items-center gap-2.5">
-          <Button variant="ghost" asChild>
-            <Link href="/login">Sign In</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/register">Sign Up</Link>
-          </Button>
+          <Link
+            href="/login"
+            className="rounded-md bg-secondary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+          >
+            Sign In
+          </Link>
+          <Link
+            href="/register"
+            className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-white/90"
+          >
+            Sign Up
+          </Link>
         </div>
       </div>
     </header>

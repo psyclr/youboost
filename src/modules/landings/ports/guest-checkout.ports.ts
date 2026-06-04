@@ -4,6 +4,8 @@
  * — landings never imports those modules directly.
  */
 
+import type { PaymentReference } from '../../billing/payment-reference';
+
 export interface AutoUserTicketLite {
   userId: string;
   email: string;
@@ -15,25 +17,31 @@ export interface AutoUserCreatorPort {
 }
 
 export interface GuestOrderCreatorPort {
-  createPendingPaymentOrder(input: {
+  /**
+   * Create one Payment and N PENDING_PAYMENT orders linked to it, in a single transaction.
+   */
+  createPaymentWithOrders(input: {
     userId: string;
-    serviceId: string;
-    link: string;
-    quantity: number;
-    price: number;
-  }): Promise<{ orderId: string }>;
-  attachStripeSessionId(orderId: string, sessionId: string): Promise<void>;
+    provider: 'STRIPE' | 'CRYPTOMUS';
+    amount: number;
+    items: { serviceId: string; link: string; quantity: number; price: number }[];
+  }): Promise<{ paymentId: string; orderIds: string[] }>;
+  /** Attach the provider session id to the Payment. */
+  attachPaymentSession(paymentId: string, providerSessionId: string): Promise<void>;
 }
 
 export type GuestPaymentProvider = 'stripe' | 'cryptomus';
 
 export interface GuestOrderPaymentPort {
-  createGuestOrderSession(input: {
+  /**
+   * Create a provider checkout session for a Payment, encoding a PaymentReference
+   * so the completion webhook can route back to `confirmOrderPayment`.
+   */
+  createPaymentSession(input: {
     provider: GuestPaymentProvider;
-    userId: string;
-    orderId: string;
     amount: number;
     productName: string;
+    reference: PaymentReference;
     successUrl: string;
     cancelUrl: string;
   }): Promise<{ sessionId: string; url: string }>;

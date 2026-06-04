@@ -149,16 +149,8 @@ export function createFakeOrdersRepository(
     async findOrderById(orderId, userId): Promise<OrderRecord | null> {
       return orders.find((o) => o.id === orderId && o.userId === userId) ?? null;
     },
-    async findOrderByStripeSessionId(_sessionId): Promise<OrderRecord | null> {
-      return null;
-    },
     async findPendingPaymentOlderThan(_cutoff, _batchSize): Promise<OrderRecord[]> {
       return [];
-    },
-    async attachStripeSession(orderId, _sessionId): Promise<OrderRecord> {
-      const idx = orders.findIndex((o) => o.id === orderId);
-      if (idx === -1) throw new Error(`Order ${orderId} not found`);
-      return orders[idx]!;
     },
     async findOrders(userId, filters): Promise<{ orders: OrderRecord[]; total: number }> {
       let filtered = orders.filter((o) => o.userId === userId);
@@ -172,6 +164,14 @@ export function createFakeOrdersRepository(
       return orders
         .filter((o) => o.status === 'PROCESSING' && o.externalOrderId != null)
         .slice(0, batchSize);
+    },
+    async claimOrderForSubmission(orderId): Promise<boolean> {
+      const idx = orders.findIndex((o) => o.id === orderId);
+      if (idx === -1) return false;
+      const prev = orders[idx] as OrderRecord;
+      if (prev.status !== 'PENDING_PAYMENT') return false;
+      orders[idx] = { ...prev, status: 'PROCESSING', updatedAt: new Date() };
+      return true;
     },
     async updateOrderStatus(orderId, data): Promise<OrderRecord> {
       calls.updateOrderStatus.push({ orderId, data });

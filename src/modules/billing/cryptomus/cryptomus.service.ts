@@ -3,10 +3,11 @@ import { ValidationError } from '../../../shared/errors';
 import type { DepositRepository } from '../deposit.repository';
 import type { DepositLifecycleService } from '../deposit-lifecycle.service';
 import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
-import type { GuestOrderProcessorPort } from '../ports/guest-order-processor.port';
-import { signRequestBody, verifyWebhookSignature, extractSignFromBody } from './cryptomus.crypto';
+import type { PaymentReference } from '../payment-reference';
+import { encodeRef, decodeRef } from '../payment-reference';
+import { verifyWebhookSignature, extractSignFromBody } from './cryptomus.crypto';
+import { createCryptomusPayment } from './cryptomus.client';
 
-const CRYPTOMUS_API = 'https://api.cryptomus.com/v1/payment';
 const PROVIDER_LABEL = 'Cryptomus';
 
 export interface CheckoutSessionResponse {
@@ -20,29 +21,6 @@ export interface GuestOrderSessionResponse {
   url: string;
 }
 
-export interface GuestOrderSessionInput {
-  userId: string;
-  orderId: string;
-  amount: number;
-  productName: string;
-  successUrl: string;
-  cancelUrl: string;
-}
-
-interface CryptomusCreatePaymentResult {
-  uuid: string;
-  order_id: string;
-  url: string;
-  [key: string]: unknown;
-}
-
-interface CryptomusApiResponse<T> {
-  state?: number;
-  result?: T;
-  message?: string;
-  errors?: unknown;
-}
-
 interface CryptomusWebhookBody {
   order_id?: string;
   status?: string;
@@ -54,20 +32,33 @@ interface CryptomusWebhookBody {
 const CONFIRMED_STATUSES = new Set(['paid', 'paid_over']);
 const FAILED_STATUSES = new Set(['fail', 'cancel', 'wrong_amount', 'system_fail']);
 
+export interface PaymentSessionInput {
+  amount: number;
+  productName: string;
+  reference: PaymentReference;
+  successUrl: string;
+  cancelUrl: string;
+}
+
 export interface CryptomusPaymentService {
   readonly provider: PaymentProvider;
   createCheckoutSession(
     userId: string,
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
-  createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
+  createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(rawBody: string): Promise<void>;
 }
 
 export interface CryptomusPaymentServiceDeps {
   depositRepo: DepositRepository;
   lifecycle: DepositLifecycleService;
-  guestOrderProcessor?: GuestOrderProcessorPort;
+  /**
+   * Called when a completed Cryptomus webhook carries an order-payment reference.
+   * Optional to keep existing test harnesses that exercise only the deposit path
+   * constructing the service unchanged.
+   */
+  confirmOrderPayment?: (paymentId: string) => Promise<void>;
   cryptomusConfig: {
     merchantId: string | undefined;
     paymentKey: string | undefined;
@@ -80,7 +71,7 @@ export interface CryptomusPaymentServiceDeps {
 export function createCryptomusPaymentService(
   deps: CryptomusPaymentServiceDeps,
 ): CryptomusPaymentService {
-  const { depositRepo, lifecycle, guestOrderProcessor, cryptomusConfig, appUrl, logger } = deps;
+  const { depositRepo, lifecycle, confirmOrderPayment, cryptomusConfig, appUrl, logger } = deps;
 
   function getCreds(): { merchantId: string; paymentKey: string } {
     if (!cryptomusConfig.merchantId || !cryptomusConfig.paymentKey) {
@@ -95,11 +86,7 @@ export function createCryptomusPaymentService(
     };
   }
 
-  async function createCheckoutSession(
-    userId: string,
-    input: { amount: number },
-  ): Promise<CheckoutSessionResponse> {
-    const { merchantId, paymentKey } = getCreds();
+  function getCallbackBase(): string {
     const callbackUrl = cryptomusConfig.callbackUrl;
     if (!callbackUrl) {
       throw new ValidationError(
@@ -107,127 +94,66 @@ export function createCryptomusPaymentService(
         'CRYPTOMUS_CALLBACK_URL_MISSING',
       );
     }
+    return `${callbackUrl.replace(/\/$/, '')}/billing/cryptomus/webhook`;
+  }
 
+  async function createCheckoutSession(
+    userId: string,
+    input: { amount: number },
+  ): Promise<CheckoutSessionResponse> {
+    const creds = getCreds();
+    const urlCallback = getCallbackBase();
     const deposit = await lifecycle.prepareDepositCheckout(userId, input.amount);
 
-    const body = {
-      amount: input.amount.toFixed(2),
-      currency: 'USD',
-      order_id: deposit.id,
-      url_callback: `${callbackUrl.replace(/\/$/, '')}/billing/cryptomus/webhook`,
-      url_return: `${appUrl}/billing?deposit=success`,
-      url_success: `${appUrl}/billing?deposit=success`,
-    };
-    const bodyJson = JSON.stringify(body);
-    const sign = signRequestBody(bodyJson, paymentKey);
-
-    const response = await fetch(CRYPTOMUS_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        merchant: merchantId,
-        sign,
+    const result = await createCryptomusPayment(
+      creds,
+      {
+        amount: input.amount.toFixed(2),
+        currency: 'USD',
+        order_id: deposit.id,
+        url_callback: urlCallback,
+        url_return: `${appUrl}/billing?deposit=success`,
+        url_success: `${appUrl}/billing?deposit=success`,
       },
-      body: bodyJson,
-    });
-
-    const raw = await response.text();
-    let parsed: CryptomusApiResponse<CryptomusCreatePaymentResult>;
-    try {
-      parsed = JSON.parse(raw) as CryptomusApiResponse<CryptomusCreatePaymentResult>;
-    } catch {
-      logger.error({ status: response.status, raw }, 'Cryptomus returned non-JSON response');
-      throw new ValidationError(
-        'Cryptomus payment creation failed',
-        'CRYPTOMUS_API_INVALID_RESPONSE',
-      );
-    }
-
-    if (!response.ok || !parsed.result?.url || !parsed.result.order_id) {
-      logger.error(
-        { status: response.status, message: parsed.message, errors: parsed.errors },
-        'Cryptomus create payment failed',
-      );
-      throw new ValidationError(
-        parsed.message ?? 'Cryptomus payment creation failed',
-        'CRYPTOMUS_API_ERROR',
-      );
-    }
+      { logger, errorMessage: 'Cryptomus payment creation failed' },
+    );
 
     await depositRepo.updateDepositCryptomusOrder(deposit.id, {
-      cryptomusOrderId: parsed.result.order_id,
-      cryptomusCheckoutUrl: parsed.result.url,
+      cryptomusOrderId: result.order_id,
+      cryptomusCheckoutUrl: result.url,
     });
 
     logger.info(
-      { userId, depositId: deposit.id, cryptomusUuid: parsed.result.uuid },
+      { userId, depositId: deposit.id, cryptomusUuid: result.uuid },
       'Cryptomus checkout session created',
     );
 
-    return {
-      orderId: parsed.result.order_id,
-      url: parsed.result.url,
-      depositId: deposit.id,
-    };
+    return { orderId: result.order_id, url: result.url, depositId: deposit.id };
   }
 
-  async function createGuestOrderSession(
-    input: GuestOrderSessionInput,
+  async function createPaymentSession(
+    input: PaymentSessionInput,
   ): Promise<GuestOrderSessionResponse> {
-    const { merchantId, paymentKey } = getCreds();
-    const callbackUrl = cryptomusConfig.callbackUrl;
-    if (!callbackUrl) {
-      throw new ValidationError(
-        'Crypto payments are temporarily unavailable. Please try another payment method or contact support.',
-        'CRYPTOMUS_CALLBACK_URL_MISSING',
-      );
-    }
-
-    const cryptomusOrderId = `guest:${input.orderId}`;
-    const body = {
-      amount: input.amount.toFixed(2),
-      currency: 'USD',
-      order_id: cryptomusOrderId,
-      url_callback: `${callbackUrl.replace(/\/$/, '')}/billing/cryptomus/webhook`,
-      url_return: input.cancelUrl,
-      url_success: input.successUrl,
-    };
-    const bodyJson = JSON.stringify(body);
-    const sign = signRequestBody(bodyJson, paymentKey);
-
-    const response = await fetch(CRYPTOMUS_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        merchant: merchantId,
-        sign,
+    const creds = getCreds();
+    const result = await createCryptomusPayment(
+      creds,
+      {
+        amount: input.amount.toFixed(2),
+        currency: 'USD',
+        order_id: encodeRef(input.reference),
+        url_callback: getCallbackBase(),
+        url_return: input.cancelUrl,
+        url_success: input.successUrl,
       },
-      body: bodyJson,
-    });
-
-    const raw = await response.text();
-    let parsed: CryptomusApiResponse<CryptomusCreatePaymentResult>;
-    try {
-      parsed = JSON.parse(raw) as CryptomusApiResponse<CryptomusCreatePaymentResult>;
-    } catch {
-      logger.error({ status: response.status, raw }, 'Cryptomus returned non-JSON response');
-      throw new ValidationError('Crypto checkout failed', 'CRYPTOMUS_API_INVALID_RESPONSE');
-    }
-
-    if (!response.ok || !parsed.result?.url || !parsed.result.order_id) {
-      logger.error(
-        { status: response.status, message: parsed.message, errors: parsed.errors },
-        'Cryptomus guest-order create payment failed',
-      );
-      throw new ValidationError('Crypto checkout failed', 'CRYPTOMUS_API_ERROR');
-    }
-
-    logger.info(
-      { orderId: input.orderId, userId: input.userId, cryptomusUuid: parsed.result.uuid },
-      'Cryptomus guest-order checkout session created',
+      { logger, errorMessage: 'Crypto checkout failed' },
     );
 
-    return { sessionId: parsed.result.order_id, url: parsed.result.url };
+    logger.info(
+      { reference: input.reference.kind, cryptomusUuid: result.uuid },
+      'Cryptomus payment session created',
+    );
+
+    return { sessionId: result.order_id, url: result.url };
   }
 
   async function handleWebhookEvent(rawBody: string): Promise<void> {
@@ -250,28 +176,44 @@ export function createCryptomusPaymentService(
       return;
     }
 
-    const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
-    if (!deposit && orderId.startsWith('guest:')) {
+    // Intentional asymmetry vs Stripe: Stripe encodes BOTH deposit and
+    // order-payment as references, so its webhook collapses to
+    // `completionRouter.handle(ref)`. Cryptomus only encodes order-payment as a
+    // reference; deposits use a bare deposit-id `order_id` resolved by DB lookup
+    // plus replay/expiry protection (handleDepositWebhook), which the generic
+    // router cannot express. So order-payment dispatches directly to
+    // confirmOrderPayment here and deposits fall through to the bespoke path.
+    //
+    // order-payment path: order_id is an encoded PaymentReference (pay:<id>:<user>)
+    const ref = decodeRef(orderId);
+    if (ref && ref.kind === 'order-payment') {
       if (!CONFIRMED_STATUSES.has(status)) {
-        logger.debug({ orderId, status }, 'Cryptomus guest-order webhook non-confirmed status');
+        logger.debug({ orderId, status }, 'Cryptomus order-payment webhook non-confirmed status');
         return;
       }
-      const guestOrderId = orderId.slice('guest:'.length);
-      if (!guestOrderProcessor) {
-        logger.warn({ orderId }, 'Cryptomus guest-order processor is not wired');
+      if (!confirmOrderPayment) {
+        logger.warn({ orderId }, 'Cryptomus confirmOrderPayment handler is not wired');
         return;
       }
-      await guestOrderProcessor.confirmGuestOrderPayment({
-        orderId: guestOrderId,
-        stripeSessionId: orderId,
-      });
+      await confirmOrderPayment(ref.paymentId);
       return;
     }
+
+    // deposit path: fall through to the existing deposit-by-order-id logic
+    const deposit = await depositRepo.findDepositByCryptomusOrderId(orderId);
     if (!deposit) {
       logger.warn({ orderId }, 'Cryptomus webhook for unknown deposit');
       return;
     }
 
+    await handleDepositWebhook(deposit, orderId, status);
+  }
+
+  async function handleDepositWebhook(
+    deposit: NonNullable<Awaited<ReturnType<DepositRepository['findDepositByCryptomusOrderId']>>>,
+    orderId: string,
+    status: string,
+  ): Promise<void> {
     // Replay protection: Cryptomus webhook payload has no timestamp field,
     // so we reject webhooks targeting deposits past their expiry window.
     // Paired with confirmDepositTransaction idempotency (PENDING-only guard),
@@ -315,5 +257,10 @@ export function createCryptomusPaymentService(
     },
   };
 
-  return { provider, createCheckoutSession, createGuestOrderSession, handleWebhookEvent };
+  return {
+    provider,
+    createCheckoutSession,
+    createPaymentSession,
+    handleWebhookEvent,
+  };
 }

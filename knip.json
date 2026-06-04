@@ -20,7 +20,8 @@
     "src/shared/queue/queue.ts": ["exports"],
     "src/modules/notifications/utils/email-templates.ts": ["exports"],
     "src/modules/notifications/utils/email-provider-factory.ts": ["exports"],
-    "frontend/src/lib/api/**": ["exports", "types"]
+    "frontend/src/lib/api/**": ["exports", "types"],
+    "frontend/src/lib/landings/calculator.ts": ["exports"]
   },
   "rules": {
     "unlisted": "off"

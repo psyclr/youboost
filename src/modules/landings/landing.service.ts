@@ -3,7 +3,7 @@ import type { PrismaClient } from '../../generated/prisma';
 import { ConflictError, NotFoundError } from '../../shared/errors';
 import type { Clock } from '../../shared/utils/clock';
 import type { OutboxPort } from '../../shared/outbox/outbox.port';
-import type { LandingAnalytics, LandingRepository } from './landing.repository';
+import type { LandingAnalytics, LandingRecord, LandingRepository } from './landing.repository';
 import { presentLanding, presentListItem } from './landing.presenter';
 import { buildCreateData, buildUpdateData, validateTiersUnique } from './landing.write-helpers';
 import type { ServiceLookupPort } from './ports/service-lookup.port';
@@ -13,10 +13,13 @@ import type {
   GuestOrderPaymentPort,
 } from './ports/guest-checkout.ports';
 import { executeGuestCheckout } from './guest-checkout.flow';
+import { executeGuestCartCheckout } from './guest-cart-checkout.flow';
 import type {
   AdminLandingsQuery,
   LandingCalculateInput,
   LandingCalculateResult,
+  LandingCartCheckoutInput,
+  LandingCartCheckoutResult,
   LandingCheckoutInput,
   LandingCheckoutResult,
   LandingCreateInput,
@@ -36,6 +39,7 @@ export interface LandingService {
   getPublishedBySlug(slug: string, context: LandingViewContext): Promise<LandingResponse>;
   calculate(slug: string, input: LandingCalculateInput): Promise<LandingCalculateResult>;
   checkout(slug: string, input: LandingCheckoutInput): Promise<LandingCheckoutResult>;
+  checkoutCart(slug: string, input: LandingCartCheckoutInput): Promise<LandingCartCheckoutResult>;
   adminList(query: AdminLandingsQuery): Promise<PaginatedLandings>;
   adminGet(landingId: string): Promise<LandingResponse>;
   adminCreate(input: LandingCreateInput): Promise<LandingResponse>;
@@ -60,18 +64,18 @@ export interface LandingServiceDeps {
 }
 
 export function createLandingService(deps: LandingServiceDeps): LandingService {
-  const {
+  const { prisma, landingRepo, serviceLookup, outbox, clock, logger } = deps;
+  const flowDeps = {
     prisma,
     landingRepo,
     serviceLookup,
-    autoUserCreator,
-    orderCreator,
-    payments,
+    autoUserCreator: deps.autoUserCreator,
+    orderCreator: deps.orderCreator,
+    payments: deps.payments,
     outbox,
-    clock,
-    appUrl,
+    appUrl: deps.appUrl,
     logger,
-  } = deps;
+  };
 
   async function getPublishedBySlug(
     slug: string,
@@ -120,45 +124,26 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     if (!landing || landing.status !== 'PUBLISHED') {
       throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
     }
+    const invalid = (reason: string): LandingCalculateResult => ({
+      valid: false,
+      price: null,
+      serviceId: input.serviceId,
+      quantity: input.quantity,
+      reason,
+    });
     const tier = landing.tiers.find((t) => t.serviceId === input.serviceId);
-    if (!tier) {
-      return {
-        valid: false,
-        price: null,
-        serviceId: input.serviceId,
-        quantity: input.quantity,
-        reason: 'SERVICE_NOT_ON_LANDING',
-      };
-    }
+    if (!tier) return invalid('SERVICE_NOT_ON_LANDING');
     let service;
     try {
       service = await serviceLookup.getService(input.serviceId);
     } catch {
-      return {
-        valid: false,
-        price: null,
-        serviceId: input.serviceId,
-        quantity: input.quantity,
-        reason: 'SERVICE_NOT_FOUND',
-      };
+      return invalid('SERVICE_NOT_FOUND');
     }
     if (input.quantity < service.minQuantity) {
-      return {
-        valid: false,
-        price: null,
-        serviceId: input.serviceId,
-        quantity: input.quantity,
-        reason: `QUANTITY_BELOW_MIN:${service.minQuantity}`,
-      };
+      return invalid(`QUANTITY_BELOW_MIN:${service.minQuantity}`);
     }
     if (input.quantity > service.maxQuantity) {
-      return {
-        valid: false,
-        price: null,
-        serviceId: input.serviceId,
-        quantity: input.quantity,
-        reason: `QUANTITY_ABOVE_MAX:${service.maxQuantity}`,
-      };
+      return invalid(`QUANTITY_ABOVE_MAX:${service.maxQuantity}`);
     }
     const pricePer1000 =
       tier.priceOverride !== null ? Number(tier.priceOverride) : service.pricePer1000;
@@ -198,21 +183,14 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     slug: string,
     input: LandingCheckoutInput,
   ): Promise<LandingCheckoutResult> {
-    return executeGuestCheckout(
-      {
-        prisma,
-        landingRepo,
-        serviceLookup,
-        autoUserCreator,
-        orderCreator,
-        payments,
-        outbox,
-        appUrl,
-        logger,
-      },
-      slug,
-      input,
-    );
+    return executeGuestCheckout(flowDeps, slug, input);
+  }
+
+  async function checkoutCart(
+    slug: string,
+    input: LandingCartCheckoutInput,
+  ): Promise<LandingCartCheckoutResult> {
+    return executeGuestCartCheckout(flowDeps, slug, input);
   }
 
   async function adminList(query: AdminLandingsQuery): Promise<PaginatedLandings> {
@@ -232,12 +210,16 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     };
   }
 
-  async function adminGet(landingId: string): Promise<LandingResponse> {
+  async function requireLanding(landingId: string): Promise<LandingRecord> {
     const record = await landingRepo.findById(landingId);
     if (!record) {
       throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
     }
-    return presentLanding(record);
+    return record;
+  }
+
+  async function adminGet(landingId: string): Promise<LandingResponse> {
+    return presentLanding(await requireLanding(landingId));
   }
 
   async function adminCreate(input: LandingCreateInput): Promise<LandingResponse> {
@@ -255,10 +237,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     landingId: string,
     input: LandingUpdateInput,
   ): Promise<LandingResponse> {
-    const existing = await landingRepo.findById(landingId);
-    if (!existing) {
-      throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
-    }
+    const existing = await requireLanding(landingId);
     if (input.slug && input.slug !== existing.slug) {
       const slugClash = await landingRepo.findBySlug(input.slug);
       if (slugClash && slugClash.id !== landingId) {
@@ -274,32 +253,28 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
   }
 
   async function adminPublish(landingId: string): Promise<LandingResponse> {
-    const existing = await landingRepo.findById(landingId);
-    if (!existing) throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    await requireLanding(landingId);
     const record = await landingRepo.setStatus(landingId, 'PUBLISHED', clock.now());
     logger.info({ landingId, slug: record.slug }, 'landing published');
     return presentLanding(record);
   }
 
   async function adminUnpublish(landingId: string): Promise<LandingResponse> {
-    const existing = await landingRepo.findById(landingId);
-    if (!existing) throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    await requireLanding(landingId);
     const record = await landingRepo.setStatus(landingId, 'DRAFT', null);
     logger.info({ landingId }, 'landing unpublished');
     return presentLanding(record);
   }
 
   async function adminArchive(landingId: string): Promise<LandingResponse> {
-    const existing = await landingRepo.findById(landingId);
-    if (!existing) throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    await requireLanding(landingId);
     const record = await landingRepo.setStatus(landingId, 'ARCHIVED', null);
     logger.info({ landingId }, 'landing archived');
     return presentLanding(record);
   }
 
   async function adminAnalytics(landingId: string): Promise<LandingAnalytics> {
-    const existing = await landingRepo.findById(landingId);
-    if (!existing) throw new NotFoundError('Landing not found', 'LANDING_NOT_FOUND');
+    await requireLanding(landingId);
     return landingRepo.getAnalytics(landingId);
   }
 
@@ -308,6 +283,7 @@ export function createLandingService(deps: LandingServiceDeps): LandingService {
     getPublishedBySlug,
     calculate,
     checkout,
+    checkoutCart,
     adminList,
     adminGet,
     adminCreate,

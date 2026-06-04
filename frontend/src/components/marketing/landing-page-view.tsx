@@ -9,10 +9,10 @@ import type { LandingResponse } from '@/lib/api/types';
 
 export function LandingPageView({ landing }: Readonly<{ landing: LandingResponse }>) {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="dark flex min-h-screen flex-col bg-background font-display text-foreground">
       <SiteHeader />
       <main className="flex-1">
-        <Hero slug={landing.slug} hero={landing.hero} stats={landing.stats} tiers={landing.tiers} />
+        <Hero hero={landing.hero} stats={landing.stats} />
         <FeatureRow />
         <ServiceTiers
           slug={landing.slug}

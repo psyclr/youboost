@@ -4,7 +4,9 @@ import { ValidationError } from '../../../shared/errors';
 import type { DepositRepository } from '../deposit.repository';
 import type { DepositLifecycleService } from '../deposit-lifecycle.service';
 import type { PaymentProvider, CreateCheckoutInput, CheckoutResult } from '../providers/types';
-import type { GuestOrderProcessorPort } from '../ports/guest-order-processor.port';
+import type { PaymentReference } from '../payment-reference';
+import type { PaymentCompletionRouter } from '../payment-completion.router';
+import { stripeEncodeMetadata, stripeDecodeReference } from './stripe.reference';
 
 export interface CheckoutSessionResponse {
   sessionId: string;
@@ -17,11 +19,10 @@ export interface GuestOrderSessionResponse {
   url: string;
 }
 
-export interface GuestOrderSessionInput {
-  userId: string;
-  orderId: string;
+export interface PaymentSessionInput {
   amount: number;
   productName: string;
+  reference: PaymentReference;
   successUrl: string;
   cancelUrl: string;
 }
@@ -32,7 +33,7 @@ export interface StripePaymentService {
     userId: string,
     input: { amount: number },
   ): Promise<CheckoutSessionResponse>;
-  createGuestOrderSession(input: GuestOrderSessionInput): Promise<GuestOrderSessionResponse>;
+  createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(payload: string, signature: string): Promise<void>;
 }
 
@@ -40,22 +41,15 @@ export interface StripePaymentServiceDeps {
   stripeClient: Stripe | null;
   depositRepo: DepositRepository;
   lifecycle: DepositLifecycleService;
-  guestOrderProcessor: GuestOrderProcessorPort;
+  completionRouter: PaymentCompletionRouter;
   stripeConfig: { secretKey: string | undefined; webhookSecret: string | undefined };
   appUrl: string;
   logger: Logger;
 }
 
 export function createStripePaymentService(deps: StripePaymentServiceDeps): StripePaymentService {
-  const {
-    stripeClient,
-    depositRepo,
-    lifecycle,
-    guestOrderProcessor,
-    stripeConfig,
-    appUrl,
-    logger,
-  } = deps;
+  const { stripeClient, depositRepo, lifecycle, completionRouter, stripeConfig, appUrl, logger } =
+    deps;
 
   function getStripe(): Stripe {
     if (!stripeClient) {
@@ -120,8 +114,8 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     };
   }
 
-  async function createGuestOrderSession(
-    input: GuestOrderSessionInput,
+  async function createPaymentSession(
+    input: PaymentSessionInput,
   ): Promise<GuestOrderSessionResponse> {
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
@@ -139,11 +133,7 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
       mode: 'payment',
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
-      metadata: {
-        kind: 'guest-order',
-        userId: input.userId,
-        orderId: input.orderId,
-      },
+      metadata: stripeEncodeMetadata(input.reference),
     });
 
     if (!session.url) {
@@ -154,8 +144,8 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     }
 
     logger.info(
-      { orderId: input.orderId, userId: input.userId, sessionId: session.id },
-      'Stripe guest-order session created',
+      { reference: input.reference.kind, sessionId: session.id },
+      'Stripe payment session created',
     );
 
     return { sessionId: session.id, url: session.url };
@@ -165,30 +155,15 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     id: string;
     metadata?: Stripe.Metadata | null;
   }): Promise<void> {
-    const kind = session.metadata?.['kind'];
-    const userId = session.metadata?.['userId'];
-    if (kind === 'guest-order') {
-      const orderId = session.metadata?.['orderId'];
-      if (!userId || !orderId) {
-        logger.warn(
-          { sessionId: session.id },
-          'Missing userId/orderId in guest-order Stripe session',
-        );
-        return;
-      }
-      await guestOrderProcessor.confirmGuestOrderPayment({
-        orderId,
-        userId,
-        stripeSessionId: session.id,
-      });
+    const ref = stripeDecodeReference(session.metadata ?? null);
+    if (!ref) {
+      logger.warn(
+        { sessionId: session.id },
+        'Stripe session has unknown/missing metadata — skipping',
+      );
       return;
     }
-    const depositId = session.metadata?.['depositId'];
-    if (!userId || !depositId) {
-      logger.warn({ sessionId: session.id }, 'Missing metadata in Stripe session');
-      return;
-    }
-    await lifecycle.confirmDepositTransaction(depositId, userId, 'Stripe');
+    await completionRouter.handle(ref);
   }
 
   async function handleWebhookEvent(payload: string, signature: string): Promise<void> {
@@ -222,5 +197,10 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
     },
   };
 
-  return { provider, createCheckoutSession, createGuestOrderSession, handleWebhookEvent };
+  return {
+    provider,
+    createCheckoutSession,
+    createPaymentSession,
+    handleWebhookEvent,
+  };
 }
