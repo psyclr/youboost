@@ -12,12 +12,7 @@
       "ignoreDependencies": ["@testing-library/*", "tw-animate-css", "shadcn", "tailwindcss"]
     }
   },
-  "ignore": [
-    "frontend/src/components/ui/**",
-    "frontend/src/components/marketing/checkout-modal.tsx",
-    "frontend/src/components/marketing/hero-calculator.tsx",
-    "frontend/src/components/marketing/payment-method-modal.tsx"
-  ],
+  "ignore": ["frontend/src/components/ui/**"],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
     "src/modules/**/*.types.ts": ["exports", "types"],

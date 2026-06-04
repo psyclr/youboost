@@ -543,34 +543,6 @@ export interface LandingAnalyticsResponse {
   revenueUsd: number;
 }
 
-export interface LandingCalculateBody {
-  serviceId: string;
-  quantity: number;
-  link?: string;
-}
-
-export interface LandingCalculateResult {
-  valid: boolean;
-  price: number | null;
-  serviceId: string;
-  quantity: number;
-  reason: string | null;
-}
-
-export interface LandingCheckoutBody {
-  email: string;
-  tierId: string;
-  link: string;
-  quantity: number;
-  paymentProvider?: 'stripe' | 'cryptomus';
-}
-
-export interface LandingCheckoutResult {
-  orderId: string;
-  userId: string;
-  checkoutUrl: string;
-}
-
 export interface LandingCartCheckoutItem {
   tierId: string;
   link: string;
