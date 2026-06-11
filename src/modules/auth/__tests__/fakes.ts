@@ -8,13 +8,14 @@ type UserRecord = {
   id: string;
   email: string;
   username: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: string;
   status: string;
   emailVerified: boolean;
   isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
+  googleId: string | null;
 };
 
 export type FakeUserRepository = UserRepository & {
@@ -37,6 +38,9 @@ export type FakeUserRepository = UserRepository & {
     }>;
     updateUserRole: Array<{ userId: string; role: string }>;
     updateUserStatus: Array<{ userId: string; status: string }>;
+    findByGoogleId: string[];
+    createGoogleUser: Array<{ email: string; username: string; googleId: string }>;
+    linkGoogleId: Array<{ userId: string; googleId: string }>;
   };
 };
 
@@ -57,6 +61,9 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
     findAllUsers: [],
     updateUserRole: [],
     updateUserStatus: [],
+    findByGoogleId: [],
+    createGoogleUser: [],
+    linkGoogleId: [],
   };
 
   return {
@@ -86,6 +93,7 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
         isAutoCreated: false,
         createdAt: new Date('2026-01-01T00:00:00Z'),
         updatedAt: new Date('2026-01-01T00:00:00Z'),
+        googleId: null,
       };
       store.set(id, record);
       return record;
@@ -104,6 +112,7 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
         isAutoCreated: true,
         createdAt: new Date('2026-01-01T00:00:00Z'),
         updatedAt: new Date('2026-01-01T00:00:00Z'),
+        googleId: null,
       };
       store.set(id, record);
       return record;
@@ -163,6 +172,34 @@ export function createFakeUserRepository(seed: { users?: UserRecord[] } = {}): F
       const updated: UserRecord = { ...existing, status };
       store.set(userId, updated);
       return updated;
+    },
+    async findByGoogleId(googleId) {
+      calls.findByGoogleId.push(googleId);
+      return [...store.values()].find((u) => u.googleId === googleId) ?? null;
+    },
+    async createGoogleUser(data) {
+      calls.createGoogleUser.push(data);
+      const id = `user-${idCounter++}`;
+      const record: UserRecord = {
+        id,
+        email: data.email,
+        username: data.username,
+        passwordHash: null,
+        role: 'USER',
+        status: 'ACTIVE',
+        emailVerified: true,
+        isAutoCreated: false,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+        googleId: data.googleId,
+      };
+      store.set(id, record);
+      return record;
+    },
+    async linkGoogleId(userId, googleId) {
+      calls.linkGoogleId.push({ userId, googleId });
+      const existing = store.get(userId);
+      if (existing) store.set(userId, { ...existing, googleId });
     },
     store,
     calls,

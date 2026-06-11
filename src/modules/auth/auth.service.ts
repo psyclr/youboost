@@ -24,12 +24,11 @@ import type {
   UserProfile,
   UpdateProfileInput,
 } from './auth.types';
-
-const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-
 import type { AuthAutoUserService, AutoUserTicket } from './auth-auto-user.service';
 
 export type { AutoUserTicket } from './auth-auto-user.service';
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface AuthService {
   register(input: RegisterInput): Promise<{ userId: string; email: string; username: string }>;
@@ -42,6 +41,11 @@ export interface AuthService {
   updateProfile(userId: string, input: UpdateProfileInput): Promise<UserProfile>;
   createAutoUser(email: string): Promise<AutoUserTicket>;
   setPasswordViaAutoUserToken(rawToken: string, newPassword: string): Promise<{ userId: string }>;
+  loginWithGoogle(profile: {
+    googleId: string;
+    email: string;
+    emailVerified: boolean;
+  }): Promise<TokenPair>;
 }
 
 export interface AuthServiceDeps {
@@ -126,6 +130,10 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       throw new UnauthorizedError('Invalid credentials', 'INVALID_CREDENTIALS');
     }
 
+    if (!user.passwordHash) {
+      throw new UnauthorizedError('Invalid credentials', 'INVALID_CREDENTIALS');
+    }
+
     if (user.status !== 'ACTIVE') {
       throw new UnauthorizedError('Account is not active', 'ACCOUNT_INACTIVE');
     }
@@ -135,19 +143,62 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       throw new UnauthorizedError('Invalid credentials', 'INVALID_CREDENTIALS');
     }
 
+    logger.info({ userId: user.id }, 'User logged in');
+    return issueTokens(user);
+  }
+
+  function sanitizeUsername(email: string): string {
+    const base = (email.split('@')[0] ?? '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    return (base || 'user').slice(0, 24);
+  }
+
+  async function uniqueUsername(email: string): Promise<string> {
+    const base = sanitizeUsername(email);
+    if (!(await userRepo.findByUsername(base))) return base;
+    for (let i = 1; i < 100; i++) {
+      const candidate = `${base}${i}`.slice(0, 30);
+      if (!(await userRepo.findByUsername(candidate))) return candidate;
+    }
+    return `${base}${Date.now()}`.slice(0, 30);
+  }
+
+  async function issueTokens(user: { id: string; email: string; role: string }): Promise<TokenPair> {
     const accessToken = generateAccessToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as 'USER' | 'RESELLER' | 'ADMIN',
     });
-
     const refreshToken = generateRefreshToken();
     const refreshHash = hashToken(refreshToken);
-    const expiresAt = getRefreshExpiresAt();
-    await tokenStore.saveRefreshToken(user.id, refreshHash, expiresAt);
+    await tokenStore.saveRefreshToken(user.id, refreshHash, getRefreshExpiresAt());
+    return { accessToken, refreshToken, expiresIn: 3600, tokenType: 'Bearer' as const };
+  }
 
-    logger.info({ userId: user.id }, 'User logged in');
-    return { accessToken, refreshToken, expiresIn: 3600, tokenType: 'Bearer' };
+  async function loginWithGoogle(profile: {
+    googleId: string;
+    email: string;
+    emailVerified: boolean;
+  }): Promise<TokenPair> {
+    let user = await userRepo.findByGoogleId(profile.googleId);
+    if (!user) {
+      const byEmail = await userRepo.findByEmail(profile.email);
+      if (byEmail) {
+        await userRepo.linkGoogleId(byEmail.id, profile.googleId);
+        user = byEmail;
+      } else {
+        const username = await uniqueUsername(profile.email);
+        user = await userRepo.createGoogleUser({
+          email: profile.email,
+          username,
+          googleId: profile.googleId,
+        });
+      }
+    }
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedError('Account is not active', 'ACCOUNT_INACTIVE');
+    }
+    logger.info({ userId: user.id }, 'User logged in via Google');
+    return issueTokens(user);
   }
 
   async function refresh(
@@ -166,18 +217,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       throw new UnauthorizedError('User not found', 'USER_NOT_FOUND');
     }
 
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    const newRefreshToken = generateRefreshToken();
-    const newHash = hashToken(newRefreshToken);
-    const expiresAt = getRefreshExpiresAt();
-    await tokenStore.saveRefreshToken(user.id, newHash, expiresAt);
-
-    return { accessToken, refreshToken: newRefreshToken, expiresIn: 3600 };
+    return issueTokens(user);
   }
 
   async function logout(userId: string, jti: string): Promise<void> {
@@ -201,30 +241,44 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     };
   }
 
+  async function changePassword(args: {
+    userId: string;
+    currentHash: string | null;
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<void> {
+    const valid = args.currentHash
+      ? await comparePassword(args.currentPassword, args.currentHash)
+      : false;
+    if (!valid) {
+      throw new ValidationError('Current password is incorrect', 'INVALID_PASSWORD');
+    }
+    await userRepo.updatePassword(args.userId, await hashPassword(args.newPassword));
+  }
+
   async function updateProfile(userId: string, input: UpdateProfileInput): Promise<UserProfile> {
     const user = await userRepo.findById(userId);
     if (!user) {
       throw new NotFoundError('User not found', 'USER_NOT_FOUND');
     }
 
-    if (input.username && input.username !== user.username) {
-      const existing = await userRepo.findByUsername(input.username);
-      if (existing) {
-        throw new ConflictError('Username already taken', 'USERNAME_TAKEN');
-      }
+    const newUsername =
+      input.username && input.username !== user.username ? input.username : undefined;
+    if (newUsername && (await userRepo.findByUsername(newUsername))) {
+      throw new ConflictError('Username already taken', 'USERNAME_TAKEN');
     }
 
     if (input.currentPassword && input.newPassword) {
-      const valid = await comparePassword(input.currentPassword, user.passwordHash);
-      if (!valid) {
-        throw new ValidationError('Current password is incorrect', 'INVALID_PASSWORD');
-      }
-      const newHash = await hashPassword(input.newPassword);
-      await userRepo.updatePassword(userId, newHash);
+      await changePassword({
+        userId,
+        currentHash: user.passwordHash,
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+      });
     }
 
-    if (input.username && input.username !== user.username) {
-      await userRepo.updateUsername(userId, input.username);
+    if (newUsername) {
+      await userRepo.updateUsername(userId, newUsername);
     }
 
     return getMe(userId);
@@ -239,5 +293,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     updateProfile,
     createAutoUser: autoUser.createAutoUser,
     setPasswordViaAutoUserToken: autoUser.setPasswordViaAutoUserToken,
+    loginWithGoogle,
   };
 }
