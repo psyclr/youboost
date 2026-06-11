@@ -28,6 +28,7 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
+import { GoogleButton } from '@/components/auth/google-button';
 
 const registerSchema = z.object({
   email: z.email('Invalid email address'),
@@ -168,6 +169,10 @@ function RegisterFormContent() {
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? 'Creating account…' : 'Create Account'}
             </Button>
+            <div className="relative py-1 text-center">
+              <span className="bg-card px-2 text-xs text-muted-foreground">or</span>
+            </div>
+            <GoogleButton label="Sign up with Google" />
           </form>
         </Form>
       </CardContent>
