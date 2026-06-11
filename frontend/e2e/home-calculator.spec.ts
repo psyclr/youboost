@@ -89,4 +89,19 @@ test.describe.serial('Home calculator (dark landing)', () => {
     // Order panel shows the item
     await expect(panel().locator('h4').first()).toHaveText(secondTitle);
   });
+
+  test('6. Hero Go pre-adds a YouTube-views service with the link filled', async () => {
+    const heroInput = page.getByRole('textbox', { name: /link to your video/i });
+    await heroInput.fill('https://youtu.be/dQw4w9WgXcQ');
+    await page.getByRole('button', { name: /^go$/i }).click();
+
+    // Order panel now has one item whose link is pre-filled.
+    await expect(
+      panel()
+        .getByLabel(/add a link/i)
+        .first(),
+    ).toHaveValue('https://youtu.be/dQw4w9WgXcQ');
+    // Platform tab switched to YouTube (its button is active/visible in the catalog).
+    await expect(page.getByRole('button', { name: 'YouTube' })).toBeVisible();
+  });
 });

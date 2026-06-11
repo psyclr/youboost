@@ -55,6 +55,15 @@ function displayPrice(tier: LandingTierResponse): number {
   return tier.priceOverride ?? tier.service.pricePer1000;
 }
 
+function findYoutubeViewsTier(tiers: LandingResponse['tiers']): LandingTierResponse | null {
+  return (
+    tiers.find(
+      (t) =>
+        t.service.platform.toUpperCase() === 'YOUTUBE' && t.service.type.toUpperCase() === 'VIEWS',
+    ) ?? null
+  );
+}
+
 export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProps) {
   const [platform, setPlatform] = useState<PlatformId>('ALL');
   const [query, setQuery] = useState('');
@@ -69,33 +78,52 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
   const cartRef = useRef(cart);
   cartRef.current = cart;
 
-  // Pre-fill link from hero (sessionStorage on mount + custom event)
+  // Pre-fill link from hero (sessionStorage on mount + custom event).
+  // Prefer auto-adding the YouTube-views tier; otherwise fall back to filling
+  // the first empty-link item (or storing the link as pending).
   useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem(HERO_LINK_STORAGE_KEY);
-      if (stored) pendingHeroLink.current = stored;
-    } catch {
-      // ignore
-    }
+    const applyHeroLink = (detail: string) => {
+      const ytTier = findYoutubeViewsTier(tiers);
+      if (ytTier) {
+        setPlatform('YOUTUBE');
+        setPage(1);
+        const existing = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
+        if (existing) {
+          cartRef.current.setLink(existing.id, detail);
+        } else {
+          cartRef.current.addItem(ytTier);
+          setTimeout(() => {
+            const added = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
+            if (added) cartRef.current.setLink(added.id, detail);
+          }, 0);
+        }
+      } else {
+        // Fallback: fill the first empty-link item, else store as pending.
+        const emptyItem = cartRef.current.items.find((i) => !i.link.trim());
+        if (emptyItem) cartRef.current.setLink(emptyItem.id, detail);
+        else pendingHeroLink.current = detail;
+      }
+      if (panelRef.current) {
+        panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+
+    const stored = (() => {
+      try {
+        return sessionStorage.getItem(HERO_LINK_STORAGE_KEY);
+      } catch {
+        return null;
+      }
+    })();
+    if (stored) applyHeroLink(stored);
+
     const onHeroLink = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
-      if (typeof detail === 'string') {
-        // Apply immediately if cart has an item with an empty link
-        const currentItems = cartRef.current.items;
-        const emptyItem = currentItems.find((i) => !i.link.trim());
-        if (emptyItem) {
-          cartRef.current.setLink(emptyItem.id, detail);
-        } else {
-          // Cart is empty or all items have links — store as pending
-          pendingHeroLink.current = detail;
-        }
-        if (panelRef.current) {
-          panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }
+      if (typeof detail === 'string') applyHeroLink(detail);
     };
     window.addEventListener('youboost:hero-link', onHeroLink);
     return () => window.removeEventListener('youboost:hero-link', onHeroLink);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
