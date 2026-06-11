@@ -16,6 +16,16 @@ test.describe.serial('Home calculator (dark landing)', () => {
   test.beforeAll(async ({ browser }) => {
     context = await browser.newContext();
     page = await context.newPage();
+    // Isolate tests: a hero link stashed in sessionStorage by one test would
+    // otherwise be auto-applied (YouTube-views item) on the next test's page
+    // load. Clear it at the start of every navigation in this shared context.
+    await context.addInitScript(() => {
+      try {
+        window.sessionStorage.removeItem('youboost:landing-link');
+      } catch {
+        // ignore
+      }
+    });
   });
 
   test.afterAll(async () => {
