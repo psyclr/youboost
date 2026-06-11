@@ -21,6 +21,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   getAccessToken: () => string | null;
   refreshProfile: () => void;
+  setSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -94,6 +95,13 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     clearAuth();
   }, [clearAuth]);
 
+  const setSession = useCallback(async (tokens: { accessToken: string; refreshToken: string }) => {
+    accessTokenRef.current = tokens.accessToken;
+    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+    const profile = await authApi.getMe();
+    setUser(profile);
+  }, []);
+
   const refreshProfile = useCallback(() => {
     authApi
       .getMe()
@@ -102,8 +110,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, []);
 
   const contextValue = useMemo(
-    () => ({ user, isLoading, login, logout, getAccessToken, refreshProfile }),
-    [user, isLoading, login, logout, getAccessToken, refreshProfile],
+    () => ({ user, isLoading, login, logout, getAccessToken, refreshProfile, setSession }),
+    [user, isLoading, login, logout, getAccessToken, refreshProfile, setSession],
   );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

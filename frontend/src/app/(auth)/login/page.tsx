@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,6 +26,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { GoogleButton } from '@/components/auth/google-button';
 
 const loginSchema = z.object({
   email: z.email('Invalid email address'),
@@ -34,10 +35,13 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { login } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const googleError =
+    searchParams.get('error') === 'google' ? 'Google sign-in failed. Please try again.' : null;
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -74,9 +78,9 @@ export default function LoginPage() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
+            {(error || googleError) && (
               <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
+                {error || googleError}
               </div>
             )}
             <FormField
@@ -124,6 +128,10 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? 'Signing in…' : 'Sign In'}
             </Button>
+            <div className="relative py-1 text-center">
+              <span className="bg-card px-2 text-xs text-muted-foreground">or</span>
+            </div>
+            <GoogleButton label="Sign in with Google" />
           </form>
         </Form>
       </CardContent>
@@ -136,5 +144,13 @@ export default function LoginPage() {
         </p>
       </CardFooter>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageContent />
+    </Suspense>
   );
 }
