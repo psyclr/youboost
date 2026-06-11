@@ -9,6 +9,7 @@ import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import type { AuthService } from './auth.service';
 import type { AuthEmailService } from './auth-email.service';
+import type { AuthGoogleService } from './auth-google.service';
 import type { AuthenticatedUser } from './auth.types';
 import {
   registerSchema,
@@ -24,7 +25,9 @@ import {
 export interface AuthRoutesDeps {
   authService: AuthService;
   authEmailService: AuthEmailService;
+  authGoogleService: AuthGoogleService;
   authenticate: preHandlerAsyncHookHandler;
+  webUrl: string;
 }
 
 function validateBody<T>(
@@ -49,7 +52,7 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
 }
 
 export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
-  const { authService, authEmailService, authenticate } = deps;
+  const { authService, authEmailService, authGoogleService, authenticate, webUrl } = deps;
 
   return async (app) => {
     // Register rate limit plugin
@@ -95,6 +98,26 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       const input = validateBody(refreshSchema, request.body);
       const result = await authService.refresh(input.refreshToken);
       return reply.status(StatusCodes.OK).send(result);
+    });
+
+    app.get('/google', async (_request: FastifyRequest, reply: FastifyReply) => {
+      const state = await authGoogleService.createState();
+      return reply.redirect(authGoogleService.buildAuthUrl(state));
+    });
+
+    app.get('/google/callback', async (request: FastifyRequest, reply: FastifyReply) => {
+      const { code, state } = request.query as { code?: string; state?: string };
+      try {
+        if (!code || !state || !(await authGoogleService.consumeState(state))) {
+          return reply.redirect(`${webUrl}/login?error=google`);
+        }
+        const profile = await authGoogleService.exchangeCode(code);
+        const tokens = await authService.loginWithGoogle(profile);
+        const fragment = `accessToken=${encodeURIComponent(tokens.accessToken)}&refreshToken=${encodeURIComponent(tokens.refreshToken)}`;
+        return reply.redirect(`${webUrl}/auth/google/callback#${fragment}`);
+      } catch {
+        return reply.redirect(`${webUrl}/login?error=google`);
+      }
     });
 
     app.post(
