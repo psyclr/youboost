@@ -49,7 +49,7 @@ export function Hero({ hero, stats }: HeroProps) {
         className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
         style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, #0a0a0a 80%)' }}
       />
-      <div className="relative mx-auto grid max-w-[1280px] items-center gap-8 px-6 py-20 md:px-8 md:py-24 lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative mx-auto grid max-w-[1280px] items-center gap-8 px-6 pb-12 pt-8 md:px-8 md:pb-16 md:pt-12 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="max-w-[600px]">
           <h1
             className="text-4xl font-medium leading-[1.01] tracking-[-0.01em] text-white md:text-[60px]"
@@ -151,7 +151,7 @@ export function Hero({ hero, stats }: HeroProps) {
             width={547}
             height={648}
             priority
-            className="h-auto w-full max-w-[547px] select-none"
+            className="mx-auto h-auto w-auto max-h-[40vh] max-w-[547px] select-none xl:max-h-[58vh]"
             style={{
               filter: 'drop-shadow(0 40px 80px rgba(255,0,0,0.35))',
               userSelect: 'none',
