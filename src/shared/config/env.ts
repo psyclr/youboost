@@ -43,6 +43,12 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
+  // Google OAuth (optional — feature disabled when unset)
+  GOOGLE_CLIENT_ID: z.string().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_REDIRECT_URI: z.string().default(''),
+  WEB_URL: z.string().default('http://localhost:3001'),
+
   BCRYPT_ROUNDS: z
     .string()
     .default('12')
@@ -118,6 +124,12 @@ export interface AppConfig {
     port: number;
     logLevel: string;
     url: string;
+    webUrl: string;
+  };
+  google: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
   };
   jwt: {
     secret: string;
@@ -182,6 +194,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       port: parsed.PORT,
       logLevel: parsed.LOG_LEVEL,
       url: parsed.APP_URL,
+      webUrl: parsed.WEB_URL,
+    },
+    google: {
+      clientId: parsed.GOOGLE_CLIENT_ID,
+      clientSecret: parsed.GOOGLE_CLIENT_SECRET,
+      redirectUri: parsed.GOOGLE_REDIRECT_URI,
     },
     jwt: {
       secret: parsed.JWT_SECRET,
