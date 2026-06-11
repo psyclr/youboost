@@ -26,6 +26,7 @@ const mockUser = {
   isAutoCreated: false,
   createdAt: new Date(),
   updatedAt: new Date(),
+  googleId: null,
 };
 
 function createFakePrisma(): PrismaClient {

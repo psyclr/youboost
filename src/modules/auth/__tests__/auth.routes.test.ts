@@ -67,7 +67,14 @@ describe('Auth Routes', () => {
       createAuthRoutes({
         authService: makeAuthService(),
         authEmailService: makeAuthEmailService(),
+        authGoogleService: {
+          createState: jest.fn(),
+          consumeState: jest.fn(),
+          buildAuthUrl: jest.fn(),
+          exchangeCode: jest.fn(),
+        } as never,
         authenticate,
+        webUrl: 'http://web',
       }),
       { prefix: '/auth' },
     );

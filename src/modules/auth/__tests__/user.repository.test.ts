@@ -224,3 +224,54 @@ describe('User Repository', () => {
     });
   });
 });
+
+function makePrismaMock(): {
+  prisma: PrismaClient;
+  user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+} {
+  const user = {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  };
+  const prisma = { user } as unknown as PrismaClient;
+  return { prisma, user };
+}
+
+describe('UserRepository Google methods', () => {
+  it('findByGoogleId queries by googleId', async () => {
+    const { prisma, user } = makePrismaMock();
+    user.findUnique.mockResolvedValue({ id: 'u1' });
+    const repo = createUserRepository(prisma);
+    const found = await repo.findByGoogleId('g-123');
+    expect(user.findUnique).toHaveBeenCalledWith({ where: { googleId: 'g-123' } });
+    expect(found).toEqual({ id: 'u1' });
+  });
+
+  it('createGoogleUser creates a verified, password-less user', async () => {
+    const { prisma, user } = makePrismaMock();
+    user.create.mockResolvedValue({ id: 'u2' });
+    const repo = createUserRepository(prisma);
+    await repo.createGoogleUser({ email: 'a@b.com', username: 'ab', googleId: 'g-9' });
+    expect(user.create).toHaveBeenCalledWith({
+      data: {
+        email: 'a@b.com',
+        username: 'ab',
+        googleId: 'g-9',
+        passwordHash: null,
+        emailVerified: true,
+      },
+    });
+  });
+
+  it('linkGoogleId sets googleId on an existing user', async () => {
+    const { prisma, user } = makePrismaMock();
+    user.update.mockResolvedValue({ id: 'u3', googleId: 'g-1' });
+    const repo = createUserRepository(prisma);
+    await repo.linkGoogleId('u3', 'g-1');
+    expect(user.update).toHaveBeenCalledWith({
+      where: { id: 'u3' },
+      data: { googleId: 'g-1' },
+    });
+  });
+});

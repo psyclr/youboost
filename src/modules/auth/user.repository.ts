@@ -21,13 +21,14 @@ type UserRecord = {
   id: string;
   email: string;
   username: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: string;
   status: string;
   emailVerified: boolean;
   isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
+  googleId: string | null;
 };
 
 export interface UserRepository {
@@ -52,6 +53,13 @@ export interface UserRepository {
   }): Promise<{ users: UserRecord[]; total: number }>;
   updateUserRole(userId: string, role: string): Promise<UserRecord>;
   updateUserStatus(userId: string, status: string): Promise<UserRecord>;
+  findByGoogleId(googleId: string): Promise<UserRecord | null>;
+  createGoogleUser(data: {
+    email: string;
+    username: string;
+    googleId: string;
+  }): Promise<UserRecord>;
+  linkGoogleId(userId: string, googleId: string): Promise<void>;
 }
 
 export function createUserRepository(prisma: PrismaClient): UserRepository {
@@ -174,6 +182,30 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     });
   }
 
+  async function findByGoogleId(googleId: string): Promise<UserRecord | null> {
+    return prisma.user.findUnique({ where: { googleId } });
+  }
+
+  async function createGoogleUser(data: {
+    email: string;
+    username: string;
+    googleId: string;
+  }): Promise<UserRecord> {
+    return prisma.user.create({
+      data: {
+        email: data.email,
+        username: data.username,
+        googleId: data.googleId,
+        passwordHash: null,
+        emailVerified: true,
+      },
+    });
+  }
+
+  async function linkGoogleId(userId: string, googleId: string): Promise<void> {
+    await prisma.user.update({ where: { id: userId }, data: { googleId } });
+  }
+
   return {
     findByEmail,
     findByUsername,
@@ -187,5 +219,8 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     findAllUsers,
     updateUserRole,
     updateUserStatus,
+    findByGoogleId,
+    createGoogleUser,
+    linkGoogleId,
   };
 }

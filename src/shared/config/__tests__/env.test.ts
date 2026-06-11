@@ -17,6 +17,10 @@ describe('Environment Config', () => {
     CORS_ORIGIN: 'http://localhost:3000',
     PROVIDER_ENCRYPTION_KEY: 'test-encryption-key-at-least-32-chars!',
     PROVIDER_MODE: 'stub',
+    GOOGLE_CLIENT_ID: 'test-client-id',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    GOOGLE_REDIRECT_URI: 'http://localhost:3000/api/auth/google/callback',
+    WEB_URL: 'http://localhost:3001',
   };
 
   it('should parse valid environment variables', () => {
@@ -37,6 +41,8 @@ describe('Environment Config', () => {
     expect(config.security.corsOrigin).toBe('http://localhost:3000');
     expect(config.provider.encryptionKey).toBe(validEnv.PROVIDER_ENCRYPTION_KEY);
     expect(config.provider.mode).toBe('stub');
+    expect(config.google.clientId).toBe('test-client-id');
+    expect(config.app.webUrl).toBe('http://localhost:3001');
   });
 
   it('should coerce string PORT to number', () => {

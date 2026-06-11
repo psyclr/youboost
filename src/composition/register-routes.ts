@@ -1,6 +1,6 @@
 import type { FastifyInstance, preHandlerAsyncHookHandler } from 'fastify';
 import { createAuthRoutes } from '../modules/auth/auth.routes';
-import type { AuthService, AuthEmailService } from '../modules/auth';
+import type { AuthService, AuthEmailService, AuthGoogleService } from '../modules/auth';
 import {
   createBillingRoutes,
   createStripeRoutes,
@@ -37,6 +37,8 @@ export interface RouteRegistrationDeps {
   authenticate: preHandlerAsyncHookHandler;
   authService: AuthService;
   authEmailService: AuthEmailService;
+  authGoogleService: AuthGoogleService;
+  webUrl: string;
   billingService: BillingRoutesDeps['service'];
   paymentProviderRegistry: BillingRoutesDeps['providerRegistry'];
   stripePayment: StripeRoutesDeps['service'];
@@ -62,7 +64,9 @@ export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void>
     createAuthRoutes({
       authService: deps.authService,
       authEmailService: deps.authEmailService,
+      authGoogleService: deps.authGoogleService,
       authenticate,
+      webUrl: deps.webUrl,
     }),
     { prefix: '/auth' },
   );
