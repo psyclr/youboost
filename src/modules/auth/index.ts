@@ -4,6 +4,8 @@ export type { AuthAutoUserService, AuthAutoUserServiceDeps } from './auth-auto-u
 export { createAuthAutoUserService } from './auth-auto-user.service';
 export type { AuthEmailService, AuthEmailServiceDeps } from './auth-email.service';
 export { createAuthEmailService } from './auth-email.service';
+export { createAuthGoogleService } from './auth-google.service';
+export type { AuthGoogleService } from './auth-google.service';
 export type { UserRepository } from './user.repository';
 export { createUserRepository } from './user.repository';
 export type { TokenRepository } from './token.repository';

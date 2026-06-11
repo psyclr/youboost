@@ -124,13 +124,14 @@ type UserRecord = {
   id: string;
   email: string;
   username: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: string;
   status: string;
   emailVerified: boolean;
   isAutoCreated: boolean;
   createdAt: Date;
   updatedAt: Date;
+  googleId: string | null;
 };
 
 export function makeUserRecord(overrides: Partial<UserRecord> = {}): UserRecord {
@@ -145,6 +146,7 @@ export function makeUserRecord(overrides: Partial<UserRecord> = {}): UserRecord 
     isAutoCreated: false,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
+    googleId: null,
     ...overrides,
   };
 }
@@ -236,6 +238,26 @@ export function createFakeUserRepo(seed: { users?: UserRecord[] } = {}): FakeUse
       const next = { ...users[idx]!, status };
       users[idx] = next;
       return next;
+    },
+    async findByGoogleId(googleId): Promise<UserRecord | null> {
+      return users.find((u) => u.googleId === googleId) ?? null;
+    },
+    async createGoogleUser(data): Promise<UserRecord> {
+      const record = makeUserRecord({
+        id: `user-${users.length + 1}`,
+        email: data.email,
+        username: data.username,
+        googleId: data.googleId,
+        passwordHash: null,
+        emailVerified: true,
+      });
+      users.push(record);
+      return record;
+    },
+    async linkGoogleId(userId, googleId): Promise<void> {
+      const idx = users.findIndex((u) => u.id === userId);
+      if (idx === -1) return;
+      users[idx] = { ...users[idx]!, googleId };
     },
   };
 }

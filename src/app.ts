@@ -9,7 +9,7 @@ import { setupFastifyApp } from './composition/setup-fastify';
 import { buildOutboxHandlers } from './composition/outbox-handlers';
 import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
-import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService } from './modules/auth';
+import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService, createAuthGoogleService } from './modules/auth';
 // prettier-ignore
 import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createPaymentRepository } from './modules/billing';
 import { createPaymentCompletionRouter } from './modules/billing/payment-completion.router';
@@ -196,6 +196,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const authAutoUserService = createAuthAutoUserService({ prisma, userRepo, emailTokenRepo, outbox, appUrl: config.app.url, logger: createServiceLogger('auth-auto-user') });
   // prettier-ignore
   const authService = createAuthService({ prisma, userRepo, tokenStore: tokenRepo, emailTokenRepo, outbox, autoUser: authAutoUserService, appUrl: config.app.url, logger: createServiceLogger('auth') });
+  const authGoogleService = createAuthGoogleService({ config: config.google, redis });
 
   // Orders module — factory-wired with outbox producer semantics.
   const ordersRepo = createOrdersRepository(prisma);
@@ -252,6 +253,8 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     authenticate,
     authService,
     authEmailService,
+    authGoogleService,
+    webUrl: config.app.webUrl,
     billingService,
     paymentProviderRegistry,
     stripePayment,
