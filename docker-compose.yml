@@ -73,6 +73,13 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM:-YouBoost <noreply@tx.youboost.store>}
       APP_URL: ${APP_URL:-https://www.youboost.store}
+      # Google OAuth — read by src/shared/config/env.ts. Without these
+      # /auth/google returns GOOGLE_AUTH_NOT_CONFIGURED (503).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      # Frontend base URL the OAuth callback redirects back to.
+      WEB_URL: ${WEB_URL:-https://www.youboost.store}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     depends_on:

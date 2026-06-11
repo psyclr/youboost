@@ -5,6 +5,7 @@ import type {
   preHandlerAsyncHookHandler,
 } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
+import cookie from '@fastify/cookie';
 import { StatusCodes } from 'http-status-codes';
 import { UnauthorizedError, ValidationError } from '../../shared/errors';
 import type { AuthService } from './auth.service';
@@ -59,6 +60,8 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
     await app.register(rateLimit, {
       global: false, // Don't apply globally, only to specific routes
     });
+    // Cookie support for the OAuth browser-binding nonce
+    await app.register(cookie);
 
     app.post(
       '/register',
@@ -100,25 +103,56 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       return reply.status(StatusCodes.OK).send(result);
     });
 
-    app.get('/google', async (_request: FastifyRequest, reply: FastifyReply) => {
-      const state = await authGoogleService.createState();
-      return reply.redirect(authGoogleService.buildAuthUrl(state));
-    });
+    app.get(
+      '/google',
+      {
+        config: { rateLimit: { max: 20, timeWindow: '15 minutes' } },
+      },
+      async (_request: FastifyRequest, reply: FastifyReply) => {
+        if (!authGoogleService.isConfigured()) {
+          return reply.status(StatusCodes.SERVICE_UNAVAILABLE).send({
+            error: {
+              code: 'GOOGLE_AUTH_NOT_CONFIGURED',
+              message: 'Google sign-in is not configured',
+            },
+          });
+        }
+        const { state, nonce } = await authGoogleService.createState();
+        // httpOnly nonce binds the callback to the browser that started the
+        // flow (login-CSRF guard). Path "/" because the browser-visible path
+        // goes through the frontend /api proxy prefix.
+        reply.setCookie('oauth_nonce', nonce, {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 600,
+        });
+        return reply.redirect(authGoogleService.buildAuthUrl(state));
+      },
+    );
 
-    app.get('/google/callback', async (request: FastifyRequest, reply: FastifyReply) => {
-      const { code, state } = request.query as { code?: string; state?: string };
-      try {
-        if (!code || !state || !(await authGoogleService.consumeState(state))) {
+    app.get(
+      '/google/callback',
+      {
+        config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+      },
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const { code, state } = request.query as { code?: string; state?: string };
+        const nonce = request.cookies['oauth_nonce'];
+        reply.clearCookie('oauth_nonce', { path: '/' });
+        try {
+          if (!code || !state || !(await authGoogleService.consumeState(state, nonce))) {
+            return reply.redirect(`${webUrl}/login?error=google`);
+          }
+          const profile = await authGoogleService.exchangeCode(code);
+          const tokens = await authService.loginWithGoogle(profile);
+          const fragment = `accessToken=${encodeURIComponent(tokens.accessToken)}&refreshToken=${encodeURIComponent(tokens.refreshToken)}`;
+          return reply.redirect(`${webUrl}/auth/google/callback#${fragment}`);
+        } catch {
           return reply.redirect(`${webUrl}/login?error=google`);
         }
-        const profile = await authGoogleService.exchangeCode(code);
-        const tokens = await authService.loginWithGoogle(profile);
-        const fragment = `accessToken=${encodeURIComponent(tokens.accessToken)}&refreshToken=${encodeURIComponent(tokens.refreshToken)}`;
-        return reply.redirect(`${webUrl}/auth/google/callback#${fragment}`);
-      } catch {
-        return reply.redirect(`${webUrl}/login?error=google`);
-      }
-    });
+      },
+    );
 
     app.post(
       '/logout',

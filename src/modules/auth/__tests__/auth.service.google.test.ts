@@ -76,6 +76,62 @@ describe('loginWithGoogle', () => {
     );
   });
 
+  it('rejects linking by email when the Google email is unverified (account-takeover guard)', async () => {
+    const d = deps();
+    d._userRepo.findByGoogleId.mockResolvedValue(null);
+    d._userRepo.findByEmail.mockResolvedValue({
+      id: 'u2',
+      email: 'x@y.com',
+      role: 'USER',
+      status: 'ACTIVE',
+    });
+    const svc = createAuthService(d as never);
+    await expect(
+      svc.loginWithGoogle({ ...profile, emailVerified: false }),
+    ).rejects.toThrow('not verified');
+    expect(d._userRepo.linkGoogleId).not.toHaveBeenCalled();
+    expect(d._userRepo.createGoogleUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating a new user when the Google email is unverified', async () => {
+    const d = deps();
+    d._userRepo.findByGoogleId.mockResolvedValue(null);
+    d._userRepo.findByEmail.mockResolvedValue(null);
+    const svc = createAuthService(d as never);
+    await expect(
+      svc.loginWithGoogle({ ...profile, emailVerified: false }),
+    ).rejects.toThrow('not verified');
+    expect(d._userRepo.createGoogleUser).not.toHaveBeenCalled();
+  });
+
+  it('still logs in an already-linked user even if emailVerified is false', async () => {
+    const d = deps();
+    d._userRepo.findByGoogleId.mockResolvedValue({
+      id: 'u1',
+      email: 'x@y.com',
+      role: 'USER',
+      status: 'ACTIVE',
+    });
+    const svc = createAuthService(d as never);
+    const tokens = await svc.loginWithGoogle({ ...profile, emailVerified: false });
+    expect(tokens.accessToken).toBeTruthy();
+  });
+
+  it('refuses to overwrite an existing link to a different Google account', async () => {
+    const d = deps();
+    d._userRepo.findByGoogleId.mockResolvedValue(null);
+    d._userRepo.findByEmail.mockResolvedValue({
+      id: 'u2',
+      email: 'x@y.com',
+      role: 'USER',
+      status: 'ACTIVE',
+      googleId: 'g-other',
+    });
+    const svc = createAuthService(d as never);
+    await expect(svc.loginWithGoogle(profile)).rejects.toThrow();
+    expect(d._userRepo.linkGoogleId).not.toHaveBeenCalled();
+  });
+
   it('rejects an inactive account', async () => {
     const d = deps();
     d._userRepo.findByGoogleId.mockResolvedValue({

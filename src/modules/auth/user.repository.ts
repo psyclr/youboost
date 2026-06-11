@@ -191,15 +191,28 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
     username: string;
     googleId: string;
   }): Promise<UserRecord> {
-    return prisma.user.create({
-      data: {
-        email: data.email,
-        username: data.username,
-        googleId: data.googleId,
-        passwordHash: null,
-        emailVerified: true,
-      },
-    });
+    try {
+      return await prisma.user.create({
+        data: {
+          email: data.email,
+          username: data.username,
+          googleId: data.googleId,
+          passwordHash: null,
+          emailVerified: true,
+        },
+      });
+    } catch (error) {
+      // Concurrent callbacks for the same new user can race past the
+      // find-by-googleId/email checks; the loser hits the unique constraint.
+      // Recover by returning the row the winner created.
+      if (error instanceof Error && (error as { code?: string }).code === 'P2002') {
+        const byGoogleId = await prisma.user.findUnique({ where: { googleId: data.googleId } });
+        if (byGoogleId) return byGoogleId;
+        const byEmail = await prisma.user.findUnique({ where: { email: data.email } });
+        if (byEmail) return byEmail;
+      }
+      throw error;
+    }
   }
 
   async function linkGoogleId(userId: string, googleId: string): Promise<void> {

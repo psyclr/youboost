@@ -264,6 +264,37 @@ describe('UserRepository Google methods', () => {
     });
   });
 
+  it('createGoogleUser recovers from a concurrent-create unique violation (P2002) by refetching', async () => {
+    const { prisma, user } = makePrismaMock();
+    const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    user.create.mockRejectedValue(p2002);
+    user.findUnique.mockResolvedValueOnce({ id: 'u-existing' });
+    const repo = createUserRepository(prisma);
+    const result = await repo.createGoogleUser({ email: 'a@b.com', username: 'ab', googleId: 'g-9' });
+    expect(result).toEqual({ id: 'u-existing' });
+    expect(user.findUnique).toHaveBeenCalledWith({ where: { googleId: 'g-9' } });
+  });
+
+  it('createGoogleUser falls back to email lookup when googleId refetch misses', async () => {
+    const { prisma, user } = makePrismaMock();
+    const p2002 = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+    user.create.mockRejectedValue(p2002);
+    user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'u-by-email' });
+    const repo = createUserRepository(prisma);
+    const result = await repo.createGoogleUser({ email: 'a@b.com', username: 'ab', googleId: 'g-9' });
+    expect(result).toEqual({ id: 'u-by-email' });
+    expect(user.findUnique).toHaveBeenCalledWith({ where: { email: 'a@b.com' } });
+  });
+
+  it('createGoogleUser rethrows non-P2002 errors', async () => {
+    const { prisma, user } = makePrismaMock();
+    user.create.mockRejectedValue(new Error('connection lost'));
+    const repo = createUserRepository(prisma);
+    await expect(
+      repo.createGoogleUser({ email: 'a@b.com', username: 'ab', googleId: 'g-9' }),
+    ).rejects.toThrow('connection lost');
+  });
+
   it('linkGoogleId sets googleId on an existing user', async () => {
     const { prisma, user } = makePrismaMock();
     user.update.mockResolvedValue({ id: 'u3', googleId: 'g-1' });

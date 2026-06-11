@@ -9,10 +9,18 @@ export interface GoogleProfile {
   emailVerified: boolean;
 }
 
+export interface OAuthState {
+  /** Random value passed to Google and back via the `state` query param. */
+  state: string;
+  /** Random value stored in an httpOnly cookie to bind the flow to one browser. */
+  nonce: string;
+}
+
 export interface AuthGoogleService {
   buildAuthUrl(state: string): string;
-  createState(): Promise<string>;
-  consumeState(state: string): Promise<boolean>;
+  isConfigured(): boolean;
+  createState(): Promise<OAuthState>;
+  consumeState(state: string, nonce: string | undefined): Promise<boolean>;
   exchangeCode(code: string): Promise<GoogleProfile>;
 }
 
@@ -40,16 +48,23 @@ export function createAuthGoogleService(deps: AuthGoogleServiceDeps): AuthGoogle
     });
   }
 
-  async function createState(): Promise<string> {
-    const state = randomBytes(32).toString('hex');
-    await redis.set(stateKey(state), '1', 'EX', STATE_TTL_SECONDS);
-    return state;
+  function isConfigured(): boolean {
+    return Boolean(config.clientId && config.clientSecret && config.redirectUri);
   }
 
-  async function consumeState(state: string): Promise<boolean> {
+  async function createState(): Promise<OAuthState> {
+    const state = randomBytes(32).toString('hex');
+    const nonce = randomBytes(16).toString('hex');
+    await redis.set(stateKey(state), nonce, 'EX', STATE_TTL_SECONDS);
+    return { state, nonce };
+  }
+
+  async function consumeState(state: string, nonce: string | undefined): Promise<boolean> {
     if (!state) return false;
-    const found = await redis.getdel(stateKey(state));
-    return found === '1';
+    // getdel burns the state even on a nonce mismatch or missing nonce —
+    // single-use either way, so a presented state can never be retried.
+    const storedNonce = await redis.getdel(stateKey(state));
+    return storedNonce !== null && nonce !== undefined && storedNonce === nonce;
   }
 
   async function exchangeCode(code: string): Promise<GoogleProfile> {
@@ -70,5 +85,5 @@ export function createAuthGoogleService(deps: AuthGoogleServiceDeps): AuthGoogle
     };
   }
 
-  return { buildAuthUrl, createState, consumeState, exchangeCode };
+  return { buildAuthUrl, isConfigured, createState, consumeState, exchangeCode };
 }

@@ -8,6 +8,7 @@ import {
 } from '../../shared/errors';
 import type { OutboxPort } from '../../shared/outbox';
 import { hashPassword, comparePassword } from './utils/password';
+import { uniqueUsername } from './utils/username';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -147,21 +148,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     return issueTokens(user);
   }
 
-  function sanitizeUsername(email: string): string {
-    const base = (email.split('@')[0] ?? '').toLowerCase().replace(/[^a-z0-9_]/g, '');
-    return (base || 'user').slice(0, 24);
-  }
-
-  async function uniqueUsername(email: string): Promise<string> {
-    const base = sanitizeUsername(email);
-    if (!(await userRepo.findByUsername(base))) return base;
-    for (let i = 1; i < 100; i++) {
-      const candidate = `${base}${i}`.slice(0, 30);
-      if (!(await userRepo.findByUsername(candidate))) return candidate;
-    }
-    return `${base}${Date.now()}`.slice(0, 30);
-  }
-
   async function issueTokens(user: { id: string; email: string; role: string }): Promise<TokenPair> {
     const accessToken = generateAccessToken({
       userId: user.id,
@@ -181,12 +167,28 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   }): Promise<TokenPair> {
     let user = await userRepo.findByGoogleId(profile.googleId);
     if (!user) {
+      // An unverified Google email could take over an existing local account.
+      if (!profile.emailVerified) {
+        throw new UnauthorizedError(
+          'Google account email is not verified',
+          'GOOGLE_EMAIL_UNVERIFIED',
+        );
+      }
       const byEmail = await userRepo.findByEmail(profile.email);
       if (byEmail) {
+        // Non-null googleId = a different Google account — never silently re-link.
+        if (byEmail.googleId) {
+          throw new UnauthorizedError(
+            'Account is already linked to another Google account',
+            'GOOGLE_ALREADY_LINKED',
+          );
+        }
         await userRepo.linkGoogleId(byEmail.id, profile.googleId);
         user = byEmail;
       } else {
-        const username = await uniqueUsername(profile.email);
+        const username = await uniqueUsername(profile.email, async (candidate) =>
+          Boolean(await userRepo.findByUsername(candidate)),
+        );
         user = await userRepo.createGoogleUser({
           email: profile.email,
           username,

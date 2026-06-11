@@ -19,18 +19,44 @@ function redisMock() {
 const cfg = { clientId: 'cid', clientSecret: 'secret', redirectUri: 'http://x/cb' };
 
 describe('auth-google service: state', () => {
-  it('createState stores a single-use token and consumeState validates it once', async () => {
+  it('createState stores a browser nonce under the state key; consumeState validates the pair once', async () => {
     const redis = redisMock();
     const svc = createAuthGoogleService({
       config: cfg,
       redis: redis as never,
       oauthClient: {} as never,
     });
-    const state = await svc.createState();
+    const { state, nonce } = await svc.createState();
     expect(state).toHaveLength(64); // 32 bytes hex
-    expect(redis.set).toHaveBeenCalledWith(`oauth:state:${state}`, '1', 'EX', 600);
-    expect(await svc.consumeState(state)).toBe(true);
-    expect(await svc.consumeState(state)).toBe(false); // single-use
+    expect(nonce).toHaveLength(32); // 16 bytes hex
+    expect(redis.set).toHaveBeenCalledWith(`oauth:state:${state}`, nonce, 'EX', 600);
+    expect(await svc.consumeState(state, nonce)).toBe(true);
+    expect(await svc.consumeState(state, nonce)).toBe(false); // single-use
+  });
+
+  it('consumeState rejects a valid state presented with the wrong browser nonce (login-CSRF guard)', async () => {
+    const redis = redisMock();
+    const svc = createAuthGoogleService({
+      config: cfg,
+      redis: redis as never,
+      oauthClient: {} as never,
+    });
+    const { state } = await svc.createState();
+    expect(await svc.consumeState(state, 'attacker-nonce')).toBe(false);
+    // the state is burned even on a failed attempt (single-use either way)
+    expect(await svc.consumeState(state, 'anything')).toBe(false);
+  });
+
+  it('consumeState rejects a missing nonce', async () => {
+    const redis = redisMock();
+    const svc = createAuthGoogleService({
+      config: cfg,
+      redis: redis as never,
+      oauthClient: {} as never,
+    });
+    const { state, nonce } = await svc.createState();
+    expect(await svc.consumeState(state, undefined)).toBe(false);
+    expect(await svc.consumeState(state, nonce)).toBe(false); // already burned
   });
 
   it('consumeState returns false for unknown state', async () => {
@@ -40,7 +66,7 @@ describe('auth-google service: state', () => {
       redis: redis as never,
       oauthClient: {} as never,
     });
-    expect(await svc.consumeState('nope')).toBe(false);
+    expect(await svc.consumeState('nope', 'n')).toBe(false);
   });
 });
 
