@@ -33,31 +33,17 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { AdminOrderResponse, OrderStatus } from '@/lib/api/types';
+import {
+  ORDER_ADMIN_FILTER_STATUSES,
+  ORDER_BULK_STATUSES,
+} from '@/lib/constants/statuses';
 import { toast } from 'sonner';
 
-const statuses = [
-  { value: 'ALL', label: 'All Statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'PROCESSING', label: 'Processing' },
-  { value: 'STUCK', label: 'Stuck (>24h)' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'PARTIAL', label: 'Partial' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'FAILED', label: 'Failed' },
-  { value: 'REFUNDED', label: 'Refunded' },
-];
+const statuses = ORDER_ADMIN_FILTER_STATUSES;
 
 const STUCK_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const allStatuses: OrderStatus[] = [
-  'PENDING',
-  'PROCESSING',
-  'COMPLETED',
-  'PARTIAL',
-  'CANCELLED',
-  'FAILED',
-  'REFUNDED',
-];
+const allStatuses = ORDER_BULK_STATUSES;
 
 interface OrderActionCallbacks {
   onStatusClick: (order: AdminOrderResponse) => void;
@@ -175,7 +161,7 @@ export default function AdminOrdersPage() {
 
   const apiStatus = status === 'STUCK' ? 'PROCESSING' : status;
 
-  const { data: rawData, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['admin', 'orders', { page, status, dripFeedOnly }],
     queryFn: () =>
       getAdminOrders({
@@ -184,18 +170,18 @@ export default function AdminOrdersPage() {
         status: apiStatus === 'ALL' ? undefined : (apiStatus as OrderStatus),
         isDripFeed: dripFeedOnly ? true : undefined,
       }),
+    // Client-side filter for "stuck" — PROCESSING orders older than 24h.
+    // Runs in select (not render) so the Date.now() snapshot stays pure.
+    select: (rawData) =>
+      status === 'STUCK'
+        ? {
+            ...rawData,
+            orders: rawData.orders.filter(
+              (o) => new Date(o.updatedAt).getTime() < Date.now() - STUCK_THRESHOLD_MS,
+            ),
+          }
+        : rawData,
   });
-
-  // Client-side filter for "stuck" — PROCESSING orders older than 24h
-  const data =
-    status === 'STUCK' && rawData
-      ? {
-          ...rawData,
-          orders: rawData.orders.filter(
-            (o) => new Date(o.updatedAt).getTime() < Date.now() - STUCK_THRESHOLD_MS,
-          ),
-        }
-      : rawData;
 
   const forceStatusMutation = useMutation({
     mutationFn: ({ orderId, status }: { orderId: string; status: string }) =>

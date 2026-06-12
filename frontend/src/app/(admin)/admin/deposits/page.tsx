@@ -18,16 +18,11 @@ import {
 } from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { AdminDepositResponse, DepositStatus } from '@/lib/api/types';
+import { DEPOSIT_ADMIN_FILTER_STATUSES } from '@/lib/constants/statuses';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle } from 'lucide-react';
 
-const statuses = [
-  { value: 'ALL', label: 'All Statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'CONFIRMED', label: 'Confirmed' },
-  { value: 'EXPIRED', label: 'Expired' },
-  { value: 'FAILED', label: 'Failed' },
-];
+const statuses = DEPOSIT_ADMIN_FILTER_STATUSES;
 
 export default function AdminDepositsPage() {
   const queryClient = useQueryClient();

@@ -1,10 +1,14 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestVoid } from './client';
+import { buildQuery } from './query';
 import type {
   AdminDepositResponse,
+  AdminServiceCreateInput,
   AdminServiceResponse,
+  AdminServiceUpdateInput,
   AdminUserDetailResponse,
   AdminOrderResponse,
   DashboardStats,
+  Paginated,
   PaginatedAdminOrders,
   PaginatedUsers,
   ProviderResponse,
@@ -23,17 +27,15 @@ export const getAdminUsers = (params?: {
   limit?: number;
   role?: string;
   status?: string;
-}) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.role) searchParams.set('role', params.role);
-  if (params?.status) searchParams.set('status', params.status);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/admin/users${query}`;
-  return apiRequest<PaginatedUsers>(url);
-};
+}) =>
+  apiRequest<PaginatedUsers>(
+    `/admin/users${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      role: params?.role,
+      status: params?.status,
+    })}`,
+  );
 
 export const getAdminUser = (userId: string) =>
   apiRequest<AdminUserDetailResponse>(`/admin/users/${userId}`);
@@ -57,18 +59,16 @@ export const getAdminOrders = (params?: {
   status?: string;
   userId?: string;
   isDripFeed?: boolean;
-}) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.status) searchParams.set('status', params.status);
-  if (params?.userId) searchParams.set('userId', params.userId);
-  if (params?.isDripFeed !== undefined) searchParams.set('isDripFeed', String(params.isDripFeed));
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/admin/orders${query}`;
-  return apiRequest<PaginatedAdminOrders>(url);
-};
+}) =>
+  apiRequest<PaginatedAdminOrders>(
+    `/admin/orders${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      status: params?.status,
+      userId: params?.userId,
+      isDripFeed: params?.isDripFeed,
+    })}`,
+  );
 
 export const getAdminOrder = (orderId: string) =>
   apiRequest<AdminOrderResponse>(`/admin/orders/${orderId}`);
@@ -100,19 +100,15 @@ export const getAdminDeposits = (params?: {
   limit?: number;
   status?: string;
   userId?: string;
-}) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.status) searchParams.set('status', params.status);
-  if (params?.userId) searchParams.set('userId', params.userId);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  return apiRequest<{
-    deposits: AdminDepositResponse[];
-    pagination: { page: number; limit: number; total: number; totalPages: number };
-  }>(`/admin/deposits${query}`);
-};
+}) =>
+  apiRequest<Paginated<'deposits', AdminDepositResponse>>(
+    `/admin/deposits${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      status: params?.status,
+      userId: params?.userId,
+    })}`,
+  );
 
 export const adminConfirmDeposit = (depositId: string) =>
   apiRequest<AdminDepositResponse>(`/admin/deposits/${depositId}/confirm`, {
@@ -125,52 +121,35 @@ export const adminExpireDeposit = (depositId: string) =>
   });
 
 // Services
-export const getAdminServices = (params?: { page?: number; limit?: number }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/admin/services${query}`;
-  return apiRequest<{
-    services: AdminServiceResponse[];
-    pagination: { page: number; limit: number; total: number; totalPages: number };
-  }>(url);
-};
+export const getAdminServices = (params?: { page?: number; limit?: number }) =>
+  apiRequest<Paginated<'services', AdminServiceResponse>>(
+    `/admin/services${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+    })}`,
+  );
 
-export const createAdminService = (data: {
-  name: string;
-  description?: string;
-  platform: string;
-  type: string;
-  pricePer1000: number;
-  minQuantity: number;
-  maxQuantity: number;
-  providerId: string;
-  externalServiceId: string;
-}) =>
+export const createAdminService = (data: AdminServiceCreateInput) =>
   apiRequest<AdminServiceResponse>('/admin/services', {
     method: 'POST',
     body: JSON.stringify(data),
   });
 
-export const updateAdminService = (serviceId: string, data: Record<string, unknown>) =>
+export const updateAdminService = (serviceId: string, data: AdminServiceUpdateInput) =>
   apiRequest<AdminServiceResponse>(`/admin/services/${serviceId}`, {
     method: 'PATCH',
     body: JSON.stringify(data),
   });
 
 // Providers
-export const getProviders = (params?: { page?: number; limit?: number; isActive?: boolean }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.isActive !== undefined) searchParams.set('isActive', String(params.isActive));
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/providers${query}`;
-  return apiRequest<PaginatedProviders>(url);
-};
+export const getProviders = (params?: { page?: number; limit?: number; isActive?: boolean }) =>
+  apiRequest<PaginatedProviders>(
+    `/providers${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      isActive: params?.isActive,
+    })}`,
+  );
 
 export const getProvider = (id: string) => apiRequest<ProviderDetailResponse>(`/providers/${id}`);
 
@@ -201,7 +180,7 @@ export const updateProvider = (
   });
 
 export const deactivateProvider = (id: string) =>
-  apiRequest<void>(`/providers/${id}`, { method: 'DELETE' });
+  apiRequestVoid(`/providers/${id}`, { method: 'DELETE' });
 
 export const getProviderServices = (id: string) =>
   apiRequest<{ services: ProviderServiceItem[] }>(`/providers/${id}/services`);

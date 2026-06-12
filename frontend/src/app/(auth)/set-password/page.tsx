@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
 import { setPassword } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/client';
@@ -27,15 +26,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { AuthErrorBanner } from '@/components/auth/auth-error-banner';
+import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
+import { strongPasswordSchema } from '@/lib/validation/password';
+import { ROUTES } from '@/lib/constants/routes';
 
 const setPasswordSchema = z
   .object({
-    newPassword: z
-      .string()
-      .min(8, 'At least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[a-z]/, 'Must contain a lowercase letter')
-      .regex(/\d/, 'Must contain a digit'),
+    newPassword: strongPasswordSchema,
     confirmPassword: z.string(),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -71,21 +69,6 @@ function SetPasswordFormContent() {
     defaultValues: { newPassword: '', confirmPassword: '' },
   });
 
-  const mutation = useMutation({
-    mutationFn: (data: SetPasswordForm) =>
-      setPassword({ token: token ?? '', newPassword: data.newPassword }),
-    onSuccess: () => {
-      router.push('/login?setupDone=1');
-    },
-    onError: (err: unknown) => {
-      if (err instanceof ApiError) {
-        setError(errorMessage(err.code));
-      } else {
-        setError('Something went wrong. Try again.');
-      }
-    },
-  });
-
   if (!token) {
     return (
       <Card>
@@ -94,7 +77,7 @@ function SetPasswordFormContent() {
           <CardDescription>This link is invalid. Request a new one.</CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
-          <Link href="/" className="text-sm text-primary hover:underline">
+          <Link href={ROUTES.home} className="text-sm text-primary hover:underline">
             Back to Home
           </Link>
         </CardFooter>
@@ -102,9 +85,18 @@ function SetPasswordFormContent() {
     );
   }
 
-  const onSubmit = (data: SetPasswordForm) => {
+  const onSubmit = async (data: SetPasswordForm) => {
     setError(null);
-    mutation.mutate(data);
+    try {
+      await setPassword({ token, newPassword: data.newPassword });
+      router.push(ROUTES.login);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(errorMessage(err.code));
+      } else {
+        setError('Something went wrong. Try again.');
+      }
+    }
   };
 
   return (
@@ -116,11 +108,7 @@ function SetPasswordFormContent() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <AuthErrorBanner message={error} />}
             <FormField
               control={form.control}
               name="newPassword"
@@ -157,14 +145,14 @@ function SetPasswordFormContent() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Setting Password…' : 'Set Password'}
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Setting Password…' : 'Set Password'}
             </Button>
           </form>
         </Form>
       </CardContent>
       <CardFooter className="justify-center">
-        <Link href="/login" className="text-sm text-primary hover:underline">
+        <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
           Back to Sign In
         </Link>
       </CardFooter>
@@ -174,7 +162,7 @@ function SetPasswordFormContent() {
 
 export default function SetPasswordPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <SetPasswordFormContent />
     </Suspense>
   );

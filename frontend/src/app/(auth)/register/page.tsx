@@ -29,6 +29,10 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { GoogleButton } from '@/components/auth/google-button';
+import { AuthErrorBanner } from '@/components/auth/auth-error-banner';
+import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
+import { strongPasswordSchema } from '@/lib/validation/password';
+import { ROUTES } from '@/lib/constants/routes';
 
 const registerSchema = z.object({
   email: z.email('Invalid email address'),
@@ -37,12 +41,7 @@ const registerSchema = z.object({
     .min(3, 'Username must be at least 3 characters')
     .max(30, 'Username must be at most 30 characters')
     .regex(/^\w+$/, 'Only letters, numbers, and underscores'),
-  password: z
-    .string()
-    .min(8, 'At least 8 characters')
-    .regex(/[A-Z]/, 'Must contain an uppercase letter')
-    .regex(/[a-z]/, 'Must contain a lowercase letter')
-    .regex(/\d/, 'Must contain a digit'),
+  password: strongPasswordSchema,
   referralCode: z.string().optional(),
 });
 
@@ -68,7 +67,7 @@ function RegisterFormContent() {
         username: sanitizeInput(data.username),
         referralCode: data.referralCode || undefined,
       });
-      router.push('/login');
+      router.push(ROUTES.login);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -87,11 +86,7 @@ function RegisterFormContent() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <AuthErrorBanner message={error} />}
             <FormField
               control={form.control}
               name="email"
@@ -179,7 +174,7 @@ function RegisterFormContent() {
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link href="/login" className="text-primary hover:underline">
+          <Link href={ROUTES.login} className="text-primary hover:underline">
             Sign in
           </Link>
         </p>
@@ -190,7 +185,7 @@ function RegisterFormContent() {
 
 export default function RegisterPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <RegisterFormContent />
     </Suspense>
   );

@@ -1,4 +1,6 @@
 import { apiRequest } from './client';
+import { buildQuery } from './query';
+import type { Paginated } from './types';
 
 export interface TicketMessageResponse {
   id: string;
@@ -27,30 +29,20 @@ export interface TicketDetailResponse extends TicketResponse {
   messages: TicketMessageResponse[];
 }
 
-export interface PaginatedTickets {
-  tickets: TicketResponse[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
+export type PaginatedTickets = Paginated<'tickets', TicketResponse>;
 
 // User functions
 
 export const createTicket = (data: { subject: string; description: string; priority?: string }) =>
   apiRequest<TicketResponse>('/support/tickets', { method: 'POST', body: JSON.stringify(data) });
 
-export const listTickets = (params?: { page?: number; status?: string }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.status) searchParams.set('status', params.status);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/support/tickets${query}`;
-  return apiRequest<PaginatedTickets>(url);
-};
+export const listTickets = (params?: { page?: number; status?: string }) =>
+  apiRequest<PaginatedTickets>(
+    `/support/tickets${buildQuery({
+      page: params?.page || undefined,
+      status: params?.status,
+    })}`,
+  );
 
 export const getTicket = (ticketId: string) =>
   apiRequest<TicketDetailResponse>(`/support/tickets/${ticketId}`);
@@ -63,15 +55,13 @@ export const addTicketMessage = (ticketId: string, body: string) =>
 
 // Admin functions
 
-export const adminListTickets = (params?: { page?: number; status?: string }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.status) searchParams.set('status', params.status);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/admin/support/tickets${query}`;
-  return apiRequest<PaginatedTickets>(url);
-};
+export const adminListTickets = (params?: { page?: number; status?: string }) =>
+  apiRequest<PaginatedTickets>(
+    `/admin/support/tickets${buildQuery({
+      page: params?.page || undefined,
+      status: params?.status,
+    })}`,
+  );
 
 export const adminGetTicket = (ticketId: string) =>
   apiRequest<TicketDetailResponse>(`/admin/support/tickets/${ticketId}`);

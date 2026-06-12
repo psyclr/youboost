@@ -8,7 +8,8 @@ import { adminListTickets } from '@/lib/api/support';
 import type { TicketResponse } from '@/lib/api/support';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
-import { Badge } from '@/components/ui/badge';
+import { TicketStatusBadge, TicketPriorityBadge } from '@/components/shared/ticket-badges';
+import { TICKET_STATUS_FILTER_OPTIONS } from '@/lib/constants/tickets';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -19,39 +20,7 @@ import {
 } from '@/components/ui/select';
 import { formatDate } from '@/lib/utils';
 
-const statusConfig: Record<string, { className: string; label: string }> = {
-  OPEN: {
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    label: 'Open',
-  },
-  IN_PROGRESS: {
-    className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-    label: 'In Progress',
-  },
-  RESOLVED: {
-    className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-    label: 'Resolved',
-  },
-  CLOSED: {
-    className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-    label: 'Closed',
-  },
-};
-
-const priorityConfig: Record<string, { className: string }> = {
-  LOW: { className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200' },
-  MEDIUM: { className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
-  HIGH: { className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-  URGENT: { className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-};
-
-const statuses = [
-  { value: 'ALL', label: 'All Statuses' },
-  { value: 'OPEN', label: 'Open' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'RESOLVED', label: 'Resolved' },
-  { value: 'CLOSED', label: 'Closed' },
-];
+const statuses = TICKET_STATUS_FILTER_OPTIONS;
 
 const columns: Column<TicketResponse>[] = [
   {
@@ -66,25 +35,11 @@ const columns: Column<TicketResponse>[] = [
   },
   {
     header: 'Status',
-    cell: (row: TicketResponse) => {
-      const cfg = statusConfig[row.status] ?? { className: '', label: row.status };
-      return (
-        <Badge variant="secondary" className={cfg.className}>
-          {cfg.label}
-        </Badge>
-      );
-    },
+    cell: (row: TicketResponse) => <TicketStatusBadge status={row.status} />,
   },
   {
     header: 'Priority',
-    cell: (row: TicketResponse) => {
-      const cfg = priorityConfig[row.priority] ?? { className: '' };
-      return (
-        <Badge variant="secondary" className={cfg.className}>
-          {row.priority}
-        </Badge>
-      );
-    },
+    cell: (row: TicketResponse) => <TicketPriorityBadge priority={row.priority} />,
   },
   {
     header: 'Created',

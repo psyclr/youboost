@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestVoid } from './client';
 import type { LoginInput, RegisterInput, TokenPair, UserProfile } from './types';
 
 export const login = (data: LoginInput) =>
@@ -21,7 +21,7 @@ export const refreshToken = (refreshToken: string) =>
 
 export const getMe = () => apiRequest<UserProfile>('/auth/me');
 
-export const logout = () => apiRequest<void>('/auth/logout', { method: 'POST' });
+export const logout = () => apiRequestVoid('/auth/logout', { method: 'POST' });
 
 export const forgotPassword = (email: string) =>
   apiRequest<{ success: boolean }>('/auth/forgot-password', {

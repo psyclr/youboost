@@ -1,13 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-context';
+import {
+  ROUTES,
+  OAUTH_ERROR_QUERY_PARAM,
+  GOOGLE_OAUTH_ERROR,
+} from '@/lib/constants/routes';
+
+const GOOGLE_ERROR_REDIRECT = `${ROUTES.login}?${OAUTH_ERROR_QUERY_PARAM}=${GOOGLE_OAUTH_ERROR}`;
 
 export default function GoogleCallbackPage() {
   const { setSession } = useAuth();
   const router = useRouter();
-  const [failed, setFailed] = useState(false);
   const ran = useRef(false);
 
   useEffect(() => {
@@ -23,21 +29,20 @@ export default function GoogleCallbackPage() {
     window.history.replaceState(null, '', window.location.pathname);
 
     if (!accessToken || !refreshToken) {
-      router.replace('/login?error=google');
+      router.replace(GOOGLE_ERROR_REDIRECT);
       return;
     }
 
     setSession({ accessToken, refreshToken })
-      .then(() => router.replace('/dashboard'))
+      .then(() => router.replace(ROUTES.dashboard))
       .catch(() => {
-        setFailed(true);
-        router.replace('/login?error=google');
+        router.replace(GOOGLE_ERROR_REDIRECT);
       });
   }, [setSession, router]);
 
   return (
     <p className="text-sm text-muted-foreground" role="status">
-      {failed ? 'Sign-in failed, redirecting…' : 'Completing sign-in…'}
+      Completing sign-in…
     </p>
   );
 }

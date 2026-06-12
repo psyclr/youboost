@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestVoid } from './client';
 
 export interface TrackingLinkWithStats {
   id: string;
@@ -23,4 +23,4 @@ export const createTrackingLink = (data: CreateTrackingLinkInput) =>
   });
 
 export const deleteTrackingLink = (id: string) =>
-  apiRequest<void>(`/admin/tracking-links/${id}`, { method: 'DELETE' });
+  apiRequestVoid(`/admin/tracking-links/${id}`, { method: 'DELETE' });

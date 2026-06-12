@@ -4,6 +4,7 @@ import { useAuth } from './auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ROUTES } from '@/lib/constants/routes';
 
 export function AdminGuard({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, isLoading } = useAuth();
@@ -11,9 +12,9 @@ export function AdminGuard({ children }: Readonly<{ children: React.ReactNode }>
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/login');
+      router.replace(ROUTES.login);
     } else if (!isLoading && user && user.role !== 'ADMIN') {
-      router.replace('/dashboard');
+      router.replace(ROUTES.dashboard);
     }
   }, [isLoading, user, router]);
 

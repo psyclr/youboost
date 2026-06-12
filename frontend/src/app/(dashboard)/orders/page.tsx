@@ -18,19 +18,11 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Plus, Layers } from 'lucide-react';
 import type { OrderResponse, OrderStatus } from '@/lib/api/types';
+import { ORDER_USER_FILTER_STATUSES } from '@/lib/constants/statuses';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-const statuses: { value: string; label: string }[] = [
-  { value: 'ALL', label: 'All Statuses' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'PROCESSING', label: 'Processing' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'PARTIAL', label: 'Partial' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-  { value: 'FAILED', label: 'Failed' },
-  { value: 'REFUNDED', label: 'Refunded' },
-];
+const statuses = ORDER_USER_FILTER_STATUSES;
 
 const columns: Column<OrderResponse>[] = [
   {

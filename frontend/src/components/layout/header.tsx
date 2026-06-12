@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LogOut, User, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { NavItem, FooterLink } from '@/lib/nav-items';
+import { ROUTES } from '@/lib/constants/routes';
 import { MobileNav } from './mobile-nav';
 import Link from 'next/link';
 
@@ -32,7 +33,7 @@ export function Header({
 
   const handleLogout = async () => {
     await logout();
-    router.push('/login');
+    router.push(ROUTES.login);
   };
 
   const initials = user?.username?.slice(0, 2).toUpperCase() ?? 'U';

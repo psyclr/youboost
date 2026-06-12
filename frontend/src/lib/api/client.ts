@@ -20,6 +20,21 @@ let getAccessToken: TokenAccessor = () => null;
 let refreshAccessToken: TokenRefresher = async () => null;
 let onAuthFailure: LogoutHandler = () => {};
 
+// Deduplicates concurrent token refreshes. The backend rotates refresh tokens
+// (the old one is revoked when a new pair is issued), so N requests hitting 401
+// at once must share a single refresh — parallel refreshes would race and the
+// losers would wipe a live session.
+let refreshPromise: Promise<string | null> | null = null;
+
+function refreshOnce(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 export function setAuthHandlers(
   accessor: TokenAccessor,
   refresher: TokenRefresher,
@@ -28,11 +43,12 @@ export function setAuthHandlers(
   getAccessToken = accessor;
   refreshAccessToken = refresher;
   onAuthFailure = onFailure;
+  refreshPromise = null;
 }
 
 const BASE_URL = '/api';
 
-export async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+async function rawRequest(path: string, options?: RequestInit): Promise<unknown> {
   const doFetch = async (token: string | null) => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -55,7 +71,7 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
   let response = await doFetch(token);
 
   if (response.status === 401 && token) {
-    const newToken = await refreshAccessToken();
+    const newToken = await refreshOnce();
     if (newToken) {
       response = await doFetch(newToken);
     } else {
@@ -65,10 +81,10 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
   }
 
   if (response.status === 204) {
-    return undefined as T;
+    return undefined;
   }
 
-  const data = await response.json();
+  const data: unknown = await response.json();
 
   if (!response.ok) {
     const errorData = data as ApiErrorResponse;
@@ -80,5 +96,16 @@ export async function apiRequest<T>(path: string, options?: RequestInit): Promis
     );
   }
 
-  return data as T;
+  return data;
+}
+
+export function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  // The cast is trusted: responses come from our own backend and are not
+  // schema-validated at runtime.
+  return rawRequest(path, options) as Promise<T>;
+}
+
+/** For endpoints that respond with no content (e.g. DELETE -> 204). */
+export async function apiRequestVoid(path: string, options?: RequestInit): Promise<void> {
+  await rawRequest(path, options);
 }

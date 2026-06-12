@@ -25,6 +25,8 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { AuthErrorBanner } from '@/components/auth/auth-error-banner';
+import { ROUTES } from '@/lib/constants/routes';
 
 const forgotPasswordSchema = z.object({
   email: z.email('Invalid email address'),
@@ -65,7 +67,7 @@ export default function ForgotPasswordPage() {
           </CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
-          <Link href="/login" className="text-sm text-primary hover:underline">
+          <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
             Back to Sign In
           </Link>
         </CardFooter>
@@ -82,11 +84,7 @@ export default function ForgotPasswordPage() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <AuthErrorBanner message={error} />}
             <FormField
               control={form.control}
               name="email"

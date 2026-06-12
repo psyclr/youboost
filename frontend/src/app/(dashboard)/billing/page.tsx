@@ -9,26 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { ArrowRight } from 'lucide-react';
-import type { TransactionSummary, LedgerType } from '@/lib/api/types';
+import type { TransactionSummary } from '@/lib/api/types';
+import { txBadgeVariant } from '@/lib/constants/statuses';
 import Link from 'next/link';
 
-function txBadgeVariant(type: LedgerType): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (type) {
-    case 'DEPOSIT':
-    case 'REFUND':
-      return 'default';
-    case 'HOLD':
-    case 'WITHDRAW':
-    case 'FEE':
-      return 'destructive';
-    case 'RELEASE':
-      return 'secondary';
-    default:
-      return 'outline';
-  }
-}
-
-const txColumns: Column<TransactionSummary>[] = [
+export const txColumns: Column<TransactionSummary>[] = [
   {
     header: 'Type',
     cell: (row) => <Badge variant={txBadgeVariant(row.type)}>{row.type}</Badge>,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { AuthProvider, useAuth } from '../auth-context';
+import { AuthProvider, useAuth, REFRESH_TOKEN_KEY } from '../auth-context';
 
 const mockLogin = jest.fn();
 const mockRefreshToken = jest.fn();
@@ -121,7 +121,7 @@ describe('AuthContext', () => {
   });
 
   it('should clear user after logout', async () => {
-    mockLocalStorage['youboost_refresh_token'] = 'stored-refresh';
+    mockLocalStorage[REFRESH_TOKEN_KEY] = 'stored-refresh';
     mockRefreshToken.mockResolvedValue({
       accessToken: 'token',
       refreshToken: 'new-refresh',

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useCatalog } from '@/hooks/use-catalog';
+import { useCatalog, useService } from '@/hooks/use-catalog';
 import { useBulkOrders } from '@/hooks/use-orders';
 import { useBalance } from '@/hooks/use-balance';
 import { ApiError } from '@/lib/api/client';
@@ -24,19 +24,13 @@ import {
   FormMessage,
   FormDescription,
 } from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { PlatformBadge } from '@/components/shared/platform-badge';
+import { ServiceSelectField } from '@/components/orders/service-select-field';
+import { InsufficientBalanceNote } from '@/components/orders/insufficient-balance-note';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle, XCircle, Eye } from 'lucide-react';
 import Link from 'next/link';
-import type { BulkOrderResult, CatalogService } from '@/lib/api/types';
+import type { BulkOrderResult } from '@/lib/api/types';
 
 const bulkSchema = z.object({
   serviceId: z.uuid('Please select a service'),
@@ -56,7 +50,6 @@ export default function BulkOrderPage() {
   const [parsedLinks, setParsedLinks] = useState<ParsedLink[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [result, setResult] = useState<BulkOrderResult | null>(null);
-  const [selectedService, setSelectedService] = useState<CatalogService | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const bulkOrders = useBulkOrders();
 
@@ -74,6 +67,11 @@ export default function BulkOrderPage() {
   });
 
   const watchQuantity = form.watch('defaultQuantity');
+  const watchServiceId = form.watch('serviceId');
+  // Derive the selected service from the watched serviceId so the estimate stays
+  // correct even when serviceId is set programmatically (reset/setValue), not only
+  // through the Select's onValueChange.
+  const { data: selectedService } = useService(watchServiceId);
 
   const handlePreview = () => {
     const linksText = form.getValues('linksText');
@@ -159,39 +157,10 @@ export default function BulkOrderPage() {
         <CardContent>
           <Form {...form}>
             <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
+              <ServiceSelectField
                 control={form.control}
                 name="serviceId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Service</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(val) => {
-                        field.onChange(val);
-                        const svc = catalogData?.services.find((s) => s.id === val) ?? null;
-                        setSelectedService(svc);
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a service" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {catalogData?.services.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            <span className="flex items-center gap-2">
-                              {s.name}
-                              <PlatformBadge platform={s.platform} />
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                services={catalogData?.services}
               />
 
               <FormField
@@ -304,14 +273,7 @@ export default function BulkOrderPage() {
                     </span>
                   </div>
                 )}
-                {insufficientBalance && (
-                  <p className="text-xs text-destructive">
-                    Insufficient balance.{' '}
-                    <Link href="/billing/deposit" className="underline">
-                      Add funds
-                    </Link>
-                  </p>
-                )}
+                {insufficientBalance && <InsufficientBalanceNote />}
               </div>
             )}
             <div className="max-h-64 overflow-y-auto space-y-1">

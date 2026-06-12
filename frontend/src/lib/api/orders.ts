@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import { buildQuery } from './query';
 import type {
   BulkOrderInput,
   BulkOrderResult,
@@ -20,17 +21,15 @@ export const getOrders = (params?: {
   limit?: number;
   status?: string;
   serviceId?: string;
-}) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.status) searchParams.set('status', params.status);
-  if (params?.serviceId) searchParams.set('serviceId', params.serviceId);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/orders${query}`;
-  return apiRequest<PaginatedOrders>(url);
-};
+}) =>
+  apiRequest<PaginatedOrders>(
+    `/orders${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      status: params?.status,
+      serviceId: params?.serviceId,
+    })}`,
+  );
 
 export const getOrder = (orderId: string) => apiRequest<OrderDetailed>(`/orders/${orderId}`);
 

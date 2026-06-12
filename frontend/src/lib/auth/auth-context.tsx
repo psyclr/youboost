@@ -26,7 +26,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const REFRESH_TOKEN_KEY = 'youboost_refresh_token';
+export const REFRESH_TOKEN_KEY = 'youboost_refresh_token';
 
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [user, setUser] = useState<UserProfile | null>(null);

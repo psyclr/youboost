@@ -9,7 +9,17 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { Users, ShoppingCart, DollarSign, Package } from 'lucide-react';
 import type { AdminOrderResponse } from '@/lib/api/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Skeleton } from '@/components/ui/skeleton';
+import dynamic from 'next/dynamic';
+
+// Recharts is a heavy client-only bundle (~200KB); load it on demand.
+const RevenueChart = dynamic(
+  () => import('@/components/admin/revenue-chart').then((m) => m.RevenueChart),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  },
+);
 
 const orderColumns: Column<AdminOrderResponse>[] = [
   {
@@ -77,15 +87,7 @@ export default function AdminDashboardPage() {
             <CardTitle>Recent Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="date" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip />
-                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <RevenueChart data={chartData} />
           </CardContent>
         </Card>
       )}

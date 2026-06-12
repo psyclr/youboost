@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/form';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { strongPasswordSchema } from '@/lib/validation/password';
 
 const usernameSchema = z.object({
   username: z
@@ -34,12 +35,7 @@ const usernameSchema = z.object({
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Current password is required'),
-    newPassword: z
-      .string()
-      .min(8, 'At least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[a-z]/, 'Must contain a lowercase letter')
-      .regex(/\d/, 'Must contain a digit'),
+    newPassword: strongPasswordSchema,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {

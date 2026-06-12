@@ -6,19 +6,23 @@ import { useSearchParams } from 'next/navigation';
 import { verifyEmail } from '@/lib/api/auth';
 import { ApiError } from '@/lib/api/client';
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
+import { ROUTES } from '@/lib/constants/routes';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [error, setError] = useState<string | null>(null);
+  // A missing token is known at first render — start in the error state
+  // instead of transitioning to it from the effect.
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>(
+    token ? 'loading' : 'error',
+  );
+  const [error, setError] = useState<string | null>(
+    token ? null : 'Invalid verification link. No token provided.',
+  );
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error');
-      setError('Invalid verification link. No token provided.');
-      return;
-    }
+    if (!token) return;
 
     verifyEmail(token)
       .then(() => setStatus('success'))
@@ -51,7 +55,7 @@ function VerifyEmailContent() {
           <CardDescription>{error}</CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
-          <Link href="/login" className="text-sm text-primary hover:underline">
+          <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
             Go to Sign In
           </Link>
         </CardFooter>
@@ -68,7 +72,7 @@ function VerifyEmailContent() {
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-center">
-        <Link href="/login" className="text-sm text-primary hover:underline">
+        <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
           Sign In
         </Link>
       </CardFooter>
@@ -78,7 +82,7 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <VerifyEmailContent />
     </Suspense>
   );

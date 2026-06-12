@@ -27,6 +27,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { GoogleButton } from '@/components/auth/google-button';
+import { AuthErrorBanner } from '@/components/auth/auth-error-banner';
+import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
+import { ROUTES, OAUTH_ERROR_QUERY_PARAM, GOOGLE_OAUTH_ERROR } from '@/lib/constants/routes';
 
 const loginSchema = z.object({
   email: z.email('Invalid email address'),
@@ -41,7 +44,9 @@ function LoginPageContent() {
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const googleError =
-    searchParams.get('error') === 'google' ? 'Google sign-in failed. Please try again.' : null;
+    searchParams.get(OAUTH_ERROR_QUERY_PARAM) === GOOGLE_OAUTH_ERROR
+      ? 'Google sign-in failed. Please try again.'
+      : null;
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -52,7 +57,7 @@ function LoginPageContent() {
 
   useEffect(() => {
     if (user) {
-      router.replace(user.role === 'ADMIN' ? '/admin' : '/dashboard');
+      router.replace(user.role === 'ADMIN' ? ROUTES.admin : ROUTES.dashboard);
     }
   }, [user, router]);
 
@@ -78,11 +83,7 @@ function LoginPageContent() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {(error || googleError) && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error || googleError}
-              </div>
-            )}
+            {(error ?? googleError) && <AuthErrorBanner message={(error ?? googleError) as string} />}
             <FormField
               control={form.control}
               name="email"
@@ -121,7 +122,7 @@ function LoginPageContent() {
               )}
             />
             <div className="flex justify-end">
-              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+              <Link href={ROUTES.forgotPassword} className="text-sm text-primary hover:underline">
                 Forgot password?
               </Link>
             </div>
@@ -138,7 +139,7 @@ function LoginPageContent() {
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
           Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-primary hover:underline">
+          <Link href={ROUTES.register} className="text-primary hover:underline">
             Sign up
           </Link>
         </p>
@@ -149,7 +150,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <LoginPageContent />
     </Suspense>
   );

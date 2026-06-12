@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getTransactions } from '@/lib/api/billing';
 import { usePagination } from '@/hooks/use-pagination';
-import { DataTable, type Column } from '@/components/shared/data-table';
-import { Badge } from '@/components/ui/badge';
+import { DataTable } from '@/components/shared/data-table';
+import { txColumns } from '@/app/(dashboard)/billing/page';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -14,45 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatCurrency, formatDate } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
-import type { TransactionSummary, LedgerType } from '@/lib/api/types';
+import type { LedgerType } from '@/lib/api/types';
+import { LEDGER_TYPE_FILTER_OPTIONS } from '@/lib/constants/statuses';
 import Link from 'next/link';
 
-const types: { value: string; label: string }[] = [
-  { value: 'ALL', label: 'All Types' },
-  { value: 'DEPOSIT', label: 'Deposit' },
-  { value: 'WITHDRAW', label: 'Withdraw' },
-  { value: 'HOLD', label: 'Hold' },
-  { value: 'RELEASE', label: 'Release' },
-  { value: 'REFUND', label: 'Refund' },
-  { value: 'FEE', label: 'Fee' },
-  { value: 'ADMIN_ADJUSTMENT', label: 'Admin Adjustment' },
-];
+const types = LEDGER_TYPE_FILTER_OPTIONS;
 
-const columns: Column<TransactionSummary>[] = [
-  {
-    header: 'Type',
-    cell: (row) => <Badge variant="outline">{row.type}</Badge>,
-  },
-  {
-    header: 'Amount',
-    cell: (row) => (
-      <span className={row.amount >= 0 ? 'text-green-600' : 'text-red-600'}>
-        {row.amount >= 0 ? '+' : ''}
-        {formatCurrency(row.amount)}
-      </span>
-    ),
-  },
-  {
-    header: 'Description',
-    cell: (row) => <span className="text-sm text-muted-foreground">{row.description ?? '—'}</span>,
-  },
-  {
-    header: 'Date',
-    cell: (row) => formatDate(row.createdAt),
-  },
-];
+const columns = txColumns;
 
 export default function TransactionsPage() {
   const [type, setType] = useState('ALL');

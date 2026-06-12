@@ -13,15 +13,12 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
 import { Search, ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ServiceType } from '@/lib/api/types';
+import { PLATFORMS } from '@/lib/constants/platforms';
 import Link from 'next/link';
 
 const platforms: { value: string; label: string }[] = [
   { value: 'ALL', label: 'All' },
-  { value: 'YOUTUBE', label: 'YouTube' },
-  { value: 'INSTAGRAM', label: 'Instagram' },
-  { value: 'TIKTOK', label: 'TikTok' },
-  { value: 'TWITTER', label: 'Twitter' },
-  { value: 'FACEBOOK', label: 'Facebook' },
+  ...PLATFORMS.map((p) => ({ value: p.id, label: p.label })),
 ];
 
 const serviceTypeLabels: Record<ServiceType, string> = {

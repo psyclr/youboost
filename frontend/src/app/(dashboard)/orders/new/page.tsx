@@ -32,7 +32,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PlatformBadge } from '@/components/shared/platform-badge';
+import { ServiceSelectField } from '@/components/orders/service-select-field';
+import { InsufficientBalanceNote } from '@/components/orders/insufficient-balance-note';
+import { OrderFormSkeleton } from '@/components/orders/order-form-skeleton';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -91,6 +93,7 @@ function NewOrderForm() {
   const watchQuantity = form.watch('quantity');
   const watchIsDripFeed = form.watch('isDripFeed');
   const watchDripFeedRuns = form.watch('dripFeedRuns');
+  const watchDripFeedInterval = form.watch('dripFeedInterval');
 
   // Memoize expensive calculations
   const estimatedPrice = useMemo(() => {
@@ -174,38 +177,11 @@ function NewOrderForm() {
         <CardContent>
           <Form {...form}>
             <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
+              <ServiceSelectField
                 control={form.control}
                 name="serviceId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Service</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(val) => {
-                        field.onChange(val);
-                        setSelectedServiceId(val);
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a service" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {catalogData?.services.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            <span className="flex items-center gap-2">
-                              {s.name}
-                              <PlatformBadge platform={s.platform} />
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                services={catalogData?.services}
+                onServiceChange={setSelectedServiceId}
               />
 
               <FormField
@@ -381,18 +357,11 @@ function NewOrderForm() {
                       </span>
                     </div>
                   )}
-                  {insufficientBalance && (
-                    <p className="text-xs text-destructive">
-                      Insufficient balance.{' '}
-                      <Link href="/billing/deposit" className="underline">
-                        Add funds
-                      </Link>
-                    </p>
-                  )}
-                  {watchIsDripFeed && watchDripFeedRuns && form.watch('dripFeedInterval') && (
+                  {insufficientBalance && <InsufficientBalanceNote />}
+                  {watchIsDripFeed && watchDripFeedRuns && watchDripFeedInterval && (
                     <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
                       {watchDripFeedRuns} runs of {chunkSize.toLocaleString()} every{' '}
-                      {getIntervalLabel(form.watch('dripFeedInterval')!)}
+                      {getIntervalLabel(watchDripFeedInterval)}
                     </p>
                   )}
                 </div>
@@ -426,7 +395,7 @@ function NewOrderForm() {
 
 export default function NewOrderPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<OrderFormSkeleton />}>
       <NewOrderForm />
     </Suspense>
   );

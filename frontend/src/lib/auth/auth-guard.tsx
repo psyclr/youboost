@@ -4,6 +4,7 @@ import { useAuth } from './auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ROUTES } from '@/lib/constants/routes';
 
 export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, isLoading } = useAuth();
@@ -11,7 +12,7 @@ export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>)
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/login');
+      router.replace(ROUTES.login);
     }
   }, [isLoading, user, router]);
 

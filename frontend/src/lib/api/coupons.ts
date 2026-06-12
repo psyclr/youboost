@@ -1,4 +1,6 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestVoid } from './client';
+import { buildQuery } from './query';
+import type { Paginated } from './types';
 
 export interface ValidateCouponResult {
   valid: boolean;
@@ -22,15 +24,7 @@ export interface CouponResponse {
   createdAt: string;
 }
 
-export interface PaginatedCoupons {
-  coupons: CouponResponse[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
+export type PaginatedCoupons = Paginated<'coupons', CouponResponse>;
 
 export interface CreateCouponInput {
   code: string;
@@ -55,14 +49,13 @@ export const adminCreateCoupon = (data: CreateCouponInput) =>
     body: JSON.stringify(data),
   });
 
-export const adminListCoupons = (params?: { page?: number; isActive?: boolean }) => {
-  const sp = new URLSearchParams();
-  if (params?.page) sp.set('page', String(params.page));
-  if (params?.isActive !== undefined) sp.set('isActive', String(params.isActive));
-  const qs = sp.toString();
-  const query = qs ? `?${qs}` : '';
-  return apiRequest<PaginatedCoupons>(`/admin/coupons${query}`);
-};
+export const adminListCoupons = (params?: { page?: number; isActive?: boolean }) =>
+  apiRequest<PaginatedCoupons>(
+    `/admin/coupons${buildQuery({
+      page: params?.page || undefined,
+      isActive: params?.isActive,
+    })}`,
+  );
 
 export const adminDeleteCoupon = (couponId: string) =>
-  apiRequest<void>(`/admin/coupons/${couponId}`, { method: 'DELETE' });
+  apiRequestVoid(`/admin/coupons/${couponId}`, { method: 'DELETE' });

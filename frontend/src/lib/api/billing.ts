@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import { buildQuery } from './query';
 import type {
   BalanceResponse,
   PaginatedDeposits,
@@ -8,27 +9,23 @@ import type {
 
 export const getBalance = () => apiRequest<BalanceResponse>('/billing/balance');
 
-export const getDeposits = (params?: { page?: number; limit?: number; status?: string }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.status) searchParams.set('status', params.status);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/billing/deposits${query}`;
-  return apiRequest<PaginatedDeposits>(url);
-};
+export const getDeposits = (params?: { page?: number; limit?: number; status?: string }) =>
+  apiRequest<PaginatedDeposits>(
+    `/billing/deposits${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      status: params?.status,
+    })}`,
+  );
 
-export const getTransactions = (params?: { page?: number; limit?: number; type?: string }) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.type) searchParams.set('type', params.type);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  const url = `/billing/transactions${query}`;
-  return apiRequest<PaginatedTransactions>(url);
-};
+export const getTransactions = (params?: { page?: number; limit?: number; type?: string }) =>
+  apiRequest<PaginatedTransactions>(
+    `/billing/transactions${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      type: params?.type,
+    })}`,
+  );
 
 export const getTransaction = (id: string) =>
   apiRequest<TransactionDetailed>(`/billing/transactions/${id}`);

@@ -13,35 +13,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, cn } from '@/lib/utils';
+import { ticketStatusConfig, ticketPriorityConfig } from '@/lib/constants/tickets';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-
-const statusConfig: Record<string, { className: string; label: string }> = {
-  OPEN: {
-    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    label: 'Open',
-  },
-  IN_PROGRESS: {
-    className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-    label: 'In Progress',
-  },
-  RESOLVED: {
-    className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-    label: 'Resolved',
-  },
-  CLOSED: {
-    className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-    label: 'Closed',
-  },
-};
-
-const priorityConfig: Record<string, { className: string }> = {
-  LOW: { className: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200' },
-  MEDIUM: { className: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
-  HIGH: { className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-  URGENT: { className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-};
 
 function MessageBubble({ message }: Readonly<{ message: TicketMessageResponse }>) {
   return (
@@ -117,8 +92,8 @@ export default function TicketDetailPage({
   }
 
   const isClosed = ticket.status === 'CLOSED';
-  const statusCfg = statusConfig[ticket.status] ?? { className: '', label: ticket.status };
-  const priorityCfg = priorityConfig[ticket.priority] ?? { className: '' };
+  const statusCfg = ticketStatusConfig[ticket.status] ?? { className: '', label: ticket.status };
+  const priorityCfg = ticketPriorityConfig[ticket.priority] ?? { className: '' };
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">

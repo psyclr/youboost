@@ -42,6 +42,12 @@ export interface Pagination {
   totalPages: number;
 }
 
+/**
+ * Generic paginated list response: `{ <key>: T[], pagination: Pagination }`.
+ * The backend names the list key per resource (`orders`, `users`, ...).
+ */
+export type Paginated<K extends string, T> = { [P in K]: T[] } & { pagination: Pagination };
+
 // ============================================
 // Auth
 // ============================================
@@ -119,15 +125,9 @@ export interface TransactionDetailed extends TransactionSummary {
   referenceId: string | null;
 }
 
-export interface PaginatedTransactions {
-  transactions: TransactionSummary[];
-  pagination: Pagination;
-}
+export type PaginatedTransactions = Paginated<'transactions', TransactionSummary>;
 
-export interface PaginatedDeposits {
-  deposits: DepositDetail[];
-  pagination: Pagination;
-}
+export type PaginatedDeposits = Paginated<'deposits', DepositDetail>;
 
 // ============================================
 // Catalog
@@ -145,10 +145,7 @@ export interface CatalogService {
   refillDays: number | null;
 }
 
-export interface PaginatedCatalog {
-  services: CatalogService[];
-  pagination: Pagination;
-}
+export type PaginatedCatalog = Paginated<'services', CatalogService>;
 
 // ============================================
 // Orders
@@ -221,10 +218,7 @@ export interface CancelOrderResponse {
   cancelledAt: string;
 }
 
-export interface PaginatedOrders {
-  orders: OrderResponse[];
-  pagination: Pagination;
-}
+export type PaginatedOrders = Paginated<'orders', OrderResponse>;
 
 // ============================================
 // API Keys
@@ -251,10 +245,7 @@ export interface ApiKeyCreatedResponse extends ApiKeyResponse {
   rawKey: string;
 }
 
-export interface PaginatedApiKeys {
-  apiKeys: ApiKeyResponse[];
-  pagination: Pagination;
-}
+export type PaginatedApiKeys = Paginated<'apiKeys', ApiKeyResponse>;
 
 // ============================================
 // Webhooks
@@ -280,10 +271,7 @@ export interface WebhookResponse {
   createdAt: string;
 }
 
-export interface PaginatedWebhooks {
-  webhooks: WebhookResponse[];
-  pagination: Pagination;
-}
+export type PaginatedWebhooks = Paginated<'webhooks', WebhookResponse>;
 
 // ============================================
 // Admin
@@ -345,6 +333,23 @@ export interface AdminServiceResponse {
   updatedAt: string;
 }
 
+export interface AdminServiceCreateInput {
+  name: string;
+  description?: string;
+  platform: string;
+  type: string;
+  pricePer1000: number;
+  minQuantity: number;
+  maxQuantity: number;
+  providerId: string;
+  externalServiceId: string;
+}
+
+/** Writable service fields accepted by PATCH /admin/services/:id. */
+export type AdminServiceUpdateInput = Partial<AdminServiceCreateInput> & {
+  isActive?: boolean;
+};
+
 export interface DashboardStats {
   totalUsers: number;
   totalOrders: number;
@@ -353,15 +358,9 @@ export interface DashboardStats {
   recentOrders: AdminOrderResponse[];
 }
 
-export interface PaginatedUsers {
-  users: AdminUserResponse[];
-  pagination: Pagination;
-}
+export type PaginatedUsers = Paginated<'users', AdminUserResponse>;
 
-export interface PaginatedAdminOrders {
-  orders: AdminOrderResponse[];
-  pagination: Pagination;
-}
+export type PaginatedAdminOrders = Paginated<'orders', AdminOrderResponse>;
 
 // ============================================
 // Providers
@@ -382,10 +381,7 @@ export interface ProviderDetailResponse extends ProviderResponse {
   metadata: unknown;
 }
 
-export interface PaginatedProviders {
-  providers: ProviderResponse[];
-  pagination: Pagination;
-}
+export type PaginatedProviders = Paginated<'providers', ProviderResponse>;
 
 export interface ProviderServiceItem {
   serviceId: string;
@@ -482,8 +478,10 @@ export interface LandingTierResponse {
     id: string;
     name: string;
     description: string | null;
-    platform: string;
-    type: string;
+    // The backend serializer passes the Prisma Platform/ServiceType enums
+    // through verbatim, so the values match these unions.
+    platform: Platform;
+    type: ServiceType;
     pricePer1000: number;
     minQuantity: number;
     maxQuantity: number;
@@ -530,10 +528,7 @@ export interface AdminLandingListItem {
   tierCount: number;
 }
 
-export interface PaginatedLandings {
-  landings: AdminLandingListItem[];
-  pagination: Pagination;
-}
+export type PaginatedLandings = Paginated<'landings', AdminLandingListItem>;
 
 export interface LandingAnalyticsResponse {
   views: number;

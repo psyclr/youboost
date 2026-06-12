@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import { buildQuery } from './query';
 import type {
   AdminLandingListItem,
   LandingAnalyticsResponse,
@@ -13,15 +14,14 @@ export const getAdminLandings = (params?: {
   page?: number;
   limit?: number;
   status?: LandingStatus;
-}) => {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.limit) searchParams.set('limit', String(params.limit));
-  if (params?.status) searchParams.set('status', params.status);
-  const qs = searchParams.toString();
-  const query = qs ? `?${qs}` : '';
-  return apiRequest<PaginatedLandings>(`/admin/landings${query}`);
-};
+}) =>
+  apiRequest<PaginatedLandings>(
+    `/admin/landings${buildQuery({
+      page: params?.page || undefined,
+      limit: params?.limit || undefined,
+      status: params?.status,
+    })}`,
+  );
 
 export const getAdminLanding = (landingId: string) =>
   apiRequest<LandingResponse>(`/admin/landings/${landingId}`);

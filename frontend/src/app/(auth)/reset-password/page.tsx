@@ -27,15 +27,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { AuthErrorBanner } from '@/components/auth/auth-error-banner';
+import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
+import { strongPasswordSchema } from '@/lib/validation/password';
+import { ROUTES } from '@/lib/constants/routes';
 
 const resetPasswordSchema = z
   .object({
-    newPassword: z
-      .string()
-      .min(8, 'At least 8 characters')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter')
-      .regex(/[a-z]/, 'Must contain a lowercase letter')
-      .regex(/\d/, 'Must contain a digit'),
+    newPassword: strongPasswordSchema,
     confirmPassword: z.string(),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -69,8 +68,7 @@ function ResetPasswordForm() {
       try {
         const result = await verifyResetToken(token);
         setIsTokenValid(result.valid);
-      } catch (err) {
-        console.error('Token validation failed:', err);
+      } catch {
         setIsTokenValid(false);
       } finally {
         setIsValidating(false);
@@ -104,7 +102,7 @@ function ResetPasswordForm() {
           <CardDescription>This password reset link is invalid or has expired.</CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
-          <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+          <Link href={ROUTES.forgotPassword} className="text-sm text-primary hover:underline">
             Request a new link
           </Link>
         </CardFooter>
@@ -120,7 +118,7 @@ function ResetPasswordForm() {
           <CardDescription>Your password has been reset successfully.</CardDescription>
         </CardHeader>
         <CardFooter className="justify-center">
-          <Link href="/login" className="text-sm text-primary hover:underline">
+          <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
             Sign In
           </Link>
         </CardFooter>
@@ -151,11 +149,7 @@ function ResetPasswordForm() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+            {error && <AuthErrorBanner message={error} />}
             <FormField
               control={form.control}
               name="newPassword"
@@ -199,7 +193,7 @@ function ResetPasswordForm() {
         </Form>
       </CardContent>
       <CardFooter className="justify-center">
-        <Link href="/login" className="text-sm text-primary hover:underline">
+        <Link href={ROUTES.login} className="text-sm text-primary hover:underline">
           Back to Sign In
         </Link>
       </CardFooter>
@@ -209,7 +203,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <ResetPasswordForm />
     </Suspense>
   );
