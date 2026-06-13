@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { useCatalog, useService } from '@/hooks/use-catalog';
 import { useBulkOrders } from '@/hooks/use-orders';
 import { useBalance } from '@/hooks/use-balance';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { formatCurrency } from '@/lib/utils';
 import { sanitizeInput } from '@/lib/utils/sanitize';
 import { Button } from '@/components/ui/button';
@@ -115,11 +115,7 @@ export default function BulkOrderPage() {
       setResult(res);
       toast.success(`${res.totalCreated} orders created, ${res.totalFailed} failed`);
     } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message);
-      } else {
-        toast.error('Failed to create bulk orders');
-      }
+      toast.error(getErrorMessage(err, 'Failed to create bulk orders'));
     } finally {
       setShowConfirm(false);
     }

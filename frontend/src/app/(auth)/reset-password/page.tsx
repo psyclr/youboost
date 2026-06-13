@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { resetPassword, verifyResetToken } from '@/lib/api/auth';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -132,11 +132,7 @@ function ResetPasswordForm() {
       await resetPassword(token, data.newPassword);
       setSuccess(true);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+      setError(getErrorMessage(err, 'An unexpected error occurred'));
     }
   };
 

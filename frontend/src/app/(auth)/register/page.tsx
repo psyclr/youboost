@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { register as registerApi } from '@/lib/api/auth';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { sanitizeInput } from '@/lib/utils/sanitize';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,11 +69,7 @@ function RegisterFormContent() {
       });
       router.push(ROUTES.login);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+      setError(getErrorMessage(err, 'An unexpected error occurred'));
     }
   };
 

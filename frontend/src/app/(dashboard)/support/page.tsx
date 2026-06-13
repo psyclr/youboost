@@ -7,7 +7,8 @@ import { useForm } from 'react-hook-form';
 import { usePagination } from '@/hooks/use-pagination';
 import { listTickets, createTicket } from '@/lib/api/support';
 import type { TicketResponse } from '@/lib/api/support';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { sanitizeInput } from '@/lib/utils/sanitize';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -72,7 +73,7 @@ export default function SupportPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tickets', { page, status }],
+    queryKey: queryKeys.tickets.list({ page, status }),
     queryFn: () =>
       listTickets({
         page,
@@ -93,10 +94,10 @@ export default function SupportPage() {
       toast.success('Ticket created');
       setShowCreate(false);
       reset();
-      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tickets.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create ticket');
+      toast.error(getErrorMessage(err, 'Failed to create ticket'));
     },
   });
 

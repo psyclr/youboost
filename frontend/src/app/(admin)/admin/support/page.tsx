@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { usePagination } from '@/hooks/use-pagination';
 import { adminListTickets } from '@/lib/api/support';
+import { queryKeys } from '@/lib/query-keys';
 import type { TicketResponse } from '@/lib/api/support';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -53,7 +54,7 @@ export default function AdminSupportPage() {
   const router = useRouter();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'support', 'tickets', { page, status }],
+    queryKey: queryKeys.adminSupportTickets.list({ page, status }),
     queryFn: () =>
       adminListTickets({
         page,

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getTransactions } from '@/lib/api/billing';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable } from '@/components/shared/data-table';
 import { txColumns } from '@/app/(dashboard)/billing/page';
@@ -28,7 +29,7 @@ export default function TransactionsPage() {
   const { page, setPage } = usePagination();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['transactions', { page, type }],
+    queryKey: queryKeys.transactions.list({ page, type }),
     queryFn: () =>
       getTransactions({
         page,

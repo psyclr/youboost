@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { createAdminLanding } from '@/lib/api/admin-landings';
-import { getCatalog } from '@/lib/api/catalog';
-import { ApiError } from '@/lib/api/client';
+import { useAllServices } from '@/hooks/use-catalog';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,10 +43,7 @@ export default function NewLandingPage() {
 
   // Wait for the catalog before mounting the editor so the tiers state can be
   // seeded once from a useState initializer (no set-state-in-effect needed).
-  const { data: catalog, isLoading: catalogLoading } = useQuery({
-    queryKey: ['catalog', 'services', 'all'],
-    queryFn: () => getCatalog({ limit: 100 }),
-  });
+  const { data: catalog, isLoading: catalogLoading } = useAllServices();
 
   return (
     <div className="space-y-6">
@@ -89,11 +87,11 @@ function NewLandingEditor({ router, services, servicesLoading }: Readonly<NewLan
     mutationFn: (payload: LandingCreateInput) => createAdminLanding(payload),
     onSuccess: (landing) => {
       toast.success('Landing created');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'landings'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminLandings.all });
       router.push(`/admin/landings/${landing.id}`);
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create landing');
+      toast.error(getErrorMessage(err, 'Failed to create landing'));
     },
   });
 

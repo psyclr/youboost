@@ -9,7 +9,8 @@ import {
   getProviders,
   getProviderServices,
 } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { ServiceTable } from '@/components/admin/service-table';
 import {
@@ -54,17 +55,17 @@ export default function AdminServicesPage() {
   const [activeProviderId, setActiveProviderId] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'services', { page }],
+    queryKey: queryKeys.adminServices.list({ page }),
     queryFn: () => getAdminServices({ page, limit: 20 }),
   });
 
   const { data: providersData } = useQuery({
-    queryKey: ['providers'],
+    queryKey: queryKeys.providers,
     queryFn: () => getProviders({ limit: 100 }),
   });
 
   const { data: providerServicesData, isLoading: providerServicesLoading } = useQuery({
-    queryKey: ['provider-services', activeProviderId],
+    queryKey: queryKeys.providerServices(activeProviderId),
     queryFn: () => getProviderServices(activeProviderId),
     enabled: !!activeProviderId,
     retry: false,
@@ -87,10 +88,10 @@ export default function AdminServicesPage() {
       toast.success('Service created');
       setCreateOpen(false);
       setActiveProviderId('');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminServices.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create service');
+      toast.error(getErrorMessage(err, 'Failed to create service'));
     },
   });
 
@@ -101,10 +102,10 @@ export default function AdminServicesPage() {
       toast.success('Service updated');
       setEditService(null);
       setActiveProviderId('');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminServices.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update status');
+      toast.error(getErrorMessage(err, 'Failed to update status'));
     },
   });
 
@@ -113,10 +114,10 @@ export default function AdminServicesPage() {
       updateAdminService(service.serviceId, { isActive: !service.isActive }),
     onSuccess: () => {
       toast.success('Service status updated');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'services'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminServices.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update status');
+      toast.error(getErrorMessage(err, 'Failed to update status'));
     },
   });
 

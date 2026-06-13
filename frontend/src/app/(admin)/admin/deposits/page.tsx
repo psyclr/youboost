@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdminDeposits, adminConfirmDeposit, adminExpireDeposit } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -34,7 +35,7 @@ export default function AdminDepositsPage() {
   } | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-deposits', page, statusFilter],
+    queryKey: queryKeys.adminDeposits.list(page, statusFilter),
     queryFn: () =>
       getAdminDeposits({
         page,
@@ -47,10 +48,10 @@ export default function AdminDepositsPage() {
     mutationFn: (depositId: string) => adminConfirmDeposit(depositId),
     onSuccess: () => {
       toast.success('Deposit confirmed');
-      queryClient.invalidateQueries({ queryKey: ['admin-deposits'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminDeposits.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to confirm deposit');
+      toast.error(getErrorMessage(err, 'Failed to confirm deposit'));
     },
   });
 
@@ -58,10 +59,10 @@ export default function AdminDepositsPage() {
     mutationFn: (depositId: string) => adminExpireDeposit(depositId),
     onSuccess: () => {
       toast.success('Deposit expired');
-      queryClient.invalidateQueries({ queryKey: ['admin-deposits'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminDeposits.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to expire deposit');
+      toast.error(getErrorMessage(err, 'Failed to expire deposit'));
     },
   });
 

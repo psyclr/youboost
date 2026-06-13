@@ -10,6 +10,7 @@ import {
   createBulkOrders,
 } from '@/lib/api/orders';
 import type { CreateOrderInput, BulkOrderInput } from '@/lib/api/types';
+import { queryKeys } from '@/lib/query-keys';
 
 export function useOrders(params?: {
   page?: number;
@@ -18,14 +19,14 @@ export function useOrders(params?: {
   serviceId?: string;
 }) {
   return useQuery({
-    queryKey: ['orders', params],
+    queryKey: queryKeys.orders.list(params),
     queryFn: () => getOrders(params),
   });
 }
 
 export function useOrder(orderId: string) {
   return useQuery({
-    queryKey: ['orders', orderId],
+    queryKey: queryKeys.orders.detail(orderId),
     queryFn: () => getOrder(orderId),
     enabled: !!orderId,
   });
@@ -36,8 +37,8 @@ export function useCreateOrder() {
   return useMutation({
     mutationFn: (data: CreateOrderInput) => createOrder(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.balance });
     },
   });
 }
@@ -47,8 +48,8 @@ export function useCancelOrder() {
   return useMutation({
     mutationFn: (orderId: string) => cancelOrder(orderId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.balance });
     },
   });
 }
@@ -58,7 +59,7 @@ export function useRefillOrder() {
   return useMutation({
     mutationFn: (orderId: string) => refillOrder(orderId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
     },
   });
 }
@@ -68,8 +69,8 @@ export function useBulkOrders() {
   return useMutation({
     mutationFn: (data: BulkOrderInput) => createBulkOrders(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['balance'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.balance });
     },
   });
 }

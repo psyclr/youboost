@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { useService, useCatalog } from '@/hooks/use-catalog';
 import { useCreateOrder } from '@/hooks/use-orders';
 import { useBalance } from '@/hooks/use-balance';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { formatCurrency } from '@/lib/utils';
 import { sanitizeInput } from '@/lib/utils/sanitize';
 import { Button } from '@/components/ui/button';
@@ -139,11 +139,7 @@ function NewOrderForm() {
       toast.success('Order created successfully');
       router.push(`/orders/${result.orderId}`);
     } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message);
-      } else {
-        toast.error('Failed to create order');
-      }
+      toast.error(getErrorMessage(err, 'Failed to create order'));
     } finally {
       setShowConfirm(false);
       setPendingData(null);

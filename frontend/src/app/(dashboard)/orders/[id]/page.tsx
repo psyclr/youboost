@@ -14,7 +14,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { ArrowLeft, XCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 
 function formatInterval(minutes: number | null): string {
   if (!minutes) return 'N/A';
@@ -47,11 +47,7 @@ export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{
       toast.success('Order cancelled');
       setShowCancel(false);
     } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message);
-      } else {
-        toast.error('Failed to cancel order');
-      }
+      toast.error(getErrorMessage(err, 'Failed to cancel order'));
     }
   };
 
@@ -61,11 +57,7 @@ export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{
       toast.success('Refill order created');
       router.push(`/orders/${result.orderId}`);
     } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message);
-      } else {
-        toast.error('Failed to create refill');
-      }
+      toast.error(getErrorMessage(err, 'Failed to create refill'));
     }
   };
 

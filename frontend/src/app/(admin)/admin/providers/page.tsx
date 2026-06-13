@@ -12,7 +12,8 @@ import {
   getProviderServices,
   getProviderBalance,
 } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -235,12 +236,12 @@ export default function AdminProvidersPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'providers', { page }],
+    queryKey: queryKeys.adminProviders.list({ page }),
     queryFn: () => getProviders({ page, limit: 20 }),
   });
 
   const { data: servicesData, isLoading: servicesLoading } = useQuery({
-    queryKey: ['provider-services', servicesProvider?.providerId],
+    queryKey: queryKeys.providerServices(servicesProvider?.providerId),
     queryFn: () => getProviderServices(servicesProvider!.providerId),
     enabled: !!servicesProvider,
   });
@@ -257,10 +258,10 @@ export default function AdminProvidersPage() {
       toast.success('Provider created');
       setCreateOpen(false);
       createForm.reset(defaultProviderFormValues);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminProviders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create provider');
+      toast.error(getErrorMessage(err, 'Failed to create provider'));
     },
   });
 
@@ -271,10 +272,10 @@ export default function AdminProvidersPage() {
     onSuccess: () => {
       toast.success('Provider updated');
       setEditProvider(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminProviders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update provider');
+      toast.error(getErrorMessage(err, 'Failed to update provider'));
     },
   });
 
@@ -283,10 +284,10 @@ export default function AdminProvidersPage() {
     onSuccess: () => {
       toast.success('Provider deactivated');
       setDeactivateTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminProviders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to deactivate provider');
+      toast.error(getErrorMessage(err, 'Failed to deactivate provider'));
     },
   });
 
@@ -296,7 +297,7 @@ export default function AdminProvidersPage() {
       const result = await getProviderBalance(providerId);
       toast.success(`Balance: ${result.currency} ${result.balance.toFixed(2)}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to check balance');
+      toast.error(getErrorMessage(err, 'Failed to check balance'));
     } finally {
       setCheckingBalanceId(null);
     }

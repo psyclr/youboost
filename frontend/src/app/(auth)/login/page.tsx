@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/lib/auth/auth-context';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -66,11 +66,7 @@ function LoginPageContent() {
     try {
       await login(data.email, data.password);
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+      setError(getErrorMessage(err, 'An unexpected error occurred'));
     }
   };
 
@@ -83,7 +79,9 @@ function LoginPageContent() {
       <CardContent>
         <Form {...form}>
           <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {(error ?? googleError) && <AuthErrorBanner message={(error ?? googleError) as string} />}
+            {(error ?? googleError) && (
+              <AuthErrorBanner message={(error ?? googleError) as string} />
+            )}
             <FormField
               control={form.control}
               name="email"

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/lib/auth/auth-context';
 import { updateProfile } from '@/lib/api/auth';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -68,11 +68,7 @@ export default function SettingsPage() {
       refreshProfile?.();
       toast.success('Username updated');
     } catch (err) {
-      if (err instanceof ApiError) {
-        setUsernameError(err.message);
-      } else {
-        setUsernameError('An unexpected error occurred');
-      }
+      setUsernameError(getErrorMessage(err, 'An unexpected error occurred'));
     }
   };
 
@@ -86,11 +82,7 @@ export default function SettingsPage() {
       passwordForm.reset();
       toast.success('Password changed successfully');
     } catch (err) {
-      if (err instanceof ApiError) {
-        setPasswordError(err.message);
-      } else {
-        setPasswordError('An unexpected error occurred');
-      }
+      setPasswordError(getErrorMessage(err, 'An unexpected error occurred'));
     }
   };
 
@@ -149,7 +141,11 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <Form {...usernameForm}>
-            <form noValidate onSubmit={usernameForm.handleSubmit(onUpdateUsername)} className="space-y-4">
+            <form
+              noValidate
+              onSubmit={usernameForm.handleSubmit(onUpdateUsername)}
+              className="space-y-4"
+            >
               {usernameError && (
                 <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                   {usernameError}
@@ -183,7 +179,11 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <Form {...passwordForm}>
-            <form noValidate onSubmit={passwordForm.handleSubmit(onChangePassword)} className="space-y-4">
+            <form
+              noValidate
+              onSubmit={passwordForm.handleSubmit(onChangePassword)}
+              className="space-y-4"
+            >
               {passwordError && (
                 <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                   {passwordError}

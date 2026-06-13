@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTrackingLinks, createTrackingLink, deleteTrackingLink } from '@/lib/api/tracking';
 import type { TrackingLinkWithStats } from '@/lib/api/tracking';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -95,43 +96,45 @@ function TrackingLinkDeleteCell({
   );
 }
 
-const staticTrackingColumns: Column<TrackingLinkWithStats>[] = [
-  {
-    header: 'Name',
-    cell: (row: TrackingLinkWithStats) => <span className="font-medium">{row.name}</span>,
-  },
-  {
-    header: 'Code',
-    cell: (row: TrackingLinkWithStats) => <span className="font-mono text-sm">{row.code}</span>,
-  },
-  {
-    header: 'Registrations',
-    cell: (row: TrackingLinkWithStats) => row.registrations,
-  },
-  {
-    header: 'Last Registration',
-    cell: (row: TrackingLinkWithStats) =>
-      row.lastRegistration ? formatDate(row.lastRegistration) : '-',
-  },
-  {
-    header: 'Created',
-    cell: (row: TrackingLinkWithStats) => formatDate(row.createdAt),
-  },
-];
+const nameColumn: Column<TrackingLinkWithStats> = {
+  header: 'Name',
+  cell: (row: TrackingLinkWithStats) => <span className="font-medium">{row.name}</span>,
+};
+
+const codeColumn: Column<TrackingLinkWithStats> = {
+  header: 'Code',
+  cell: (row: TrackingLinkWithStats) => <span className="font-mono text-sm">{row.code}</span>,
+};
+
+const registrationsColumn: Column<TrackingLinkWithStats> = {
+  header: 'Registrations',
+  cell: (row: TrackingLinkWithStats) => row.registrations,
+};
+
+const lastRegistrationColumn: Column<TrackingLinkWithStats> = {
+  header: 'Last Registration',
+  cell: (row: TrackingLinkWithStats) =>
+    row.lastRegistration ? formatDate(row.lastRegistration) : '-',
+};
+
+const createdColumn: Column<TrackingLinkWithStats> = {
+  header: 'Created',
+  cell: (row: TrackingLinkWithStats) => formatDate(row.createdAt),
+};
 
 function buildTrackingColumns(callbacks: TrackingLinkCallbacks): Column<TrackingLinkWithStats>[] {
   return [
-    staticTrackingColumns[0],
-    staticTrackingColumns[1],
+    nameColumn,
+    codeColumn,
     {
       header: 'Full Link',
       cell: (row: TrackingLinkWithStats) => (
         <TrackingLinkCopyCell row={row} onCopy={callbacks.onCopy} />
       ),
     },
-    staticTrackingColumns[2],
-    staticTrackingColumns[3],
-    staticTrackingColumns[4],
+    registrationsColumn,
+    lastRegistrationColumn,
+    createdColumn,
     {
       header: '',
       cell: (row: TrackingLinkWithStats) => (
@@ -155,7 +158,7 @@ export default function AdminTrackingLinksPage() {
   const code = form.watch('code');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'tracking-links'],
+    queryKey: queryKeys.adminTrackingLinks,
     queryFn: getTrackingLinks,
   });
 
@@ -166,10 +169,10 @@ export default function AdminTrackingLinksPage() {
       toast.success('Tracking link created');
       setCreateOpen(false);
       form.reset(defaultTrackingFormValues);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'tracking-links'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminTrackingLinks });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create tracking link');
+      toast.error(getErrorMessage(err, 'Failed to create tracking link'));
     },
   });
 
@@ -178,10 +181,10 @@ export default function AdminTrackingLinksPage() {
     onSuccess: () => {
       toast.success('Tracking link deleted');
       setDeleteId(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'tracking-links'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminTrackingLinks });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to delete tracking link');
+      toast.error(getErrorMessage(err, 'Failed to delete tracking link'));
     },
   });
 

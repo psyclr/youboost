@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { verifyEmail } from '@/lib/api/auth';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { AuthPageSkeleton } from '@/components/auth/auth-page-skeleton';
 import { ROUTES } from '@/lib/constants/routes';
@@ -28,11 +28,7 @@ function VerifyEmailContent() {
       .then(() => setStatus('success'))
       .catch((err) => {
         setStatus('error');
-        if (err instanceof ApiError) {
-          setError(err.message);
-        } else {
-          setError('An unexpected error occurred');
-        }
+        setError(getErrorMessage(err, 'An unexpected error occurred'));
       });
   }, [token]);
 

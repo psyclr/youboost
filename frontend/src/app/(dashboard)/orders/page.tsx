@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Layers } from 'lucide-react';
 import type { OrderResponse, OrderStatus } from '@/lib/api/types';
 import { ORDER_USER_FILTER_STATUSES } from '@/lib/constants/statuses';
@@ -139,9 +140,32 @@ function OrdersContent() {
   );
 }
 
+/**
+ * Suspense fallback mirroring the page layout — avoids a blank flash while
+ * the client component (and its useSearchParams) hydrates.
+ */
+function OrdersPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-32" />
+          <Skeleton className="h-9 w-32" />
+        </div>
+      </div>
+      <Skeleton className="h-9 w-48" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<OrdersPageSkeleton />}>
       <OrdersContent />
     </Suspense>
   );

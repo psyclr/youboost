@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardStats } from '@/lib/api/admin';
+import { queryKeys } from '@/lib/query-keys';
 import { StatCard } from '@/components/shared/stat-card';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { DataTable, type Column } from '@/components/shared/data-table';
@@ -46,7 +47,7 @@ const orderColumns: Column<AdminOrderResponse>[] = [
 
 export default function AdminDashboardPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'dashboard'],
+    queryKey: queryKeys.adminDashboard,
     queryFn: getDashboardStats,
   });
 

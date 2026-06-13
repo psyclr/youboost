@@ -3,7 +3,8 @@
 import { use, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdminUser, updateAdminUser, adjustBalance } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,7 +32,7 @@ export default function AdminUserDetailPage({
   const { id } = use(params);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({
-    queryKey: ['admin', 'users', id],
+    queryKey: queryKeys.adminUsers.detail(id),
     queryFn: () => getAdminUser(id),
   });
 
@@ -42,10 +43,10 @@ export default function AdminUserDetailPage({
     mutationFn: (data: { role?: string; status?: string }) => updateAdminUser(id, data),
     onSuccess: () => {
       toast.success('User updated');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers.detail(id) });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update user');
+      toast.error(getErrorMessage(err, 'Failed to update user'));
     },
   });
 
@@ -55,10 +56,10 @@ export default function AdminUserDetailPage({
       toast.success('Balance adjusted');
       setAdjustAmount('');
       setAdjustReason('');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users', id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers.detail(id) });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to adjust balance');
+      toast.error(getErrorMessage(err, 'Failed to adjust balance'));
     },
   });
 

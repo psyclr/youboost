@@ -14,8 +14,9 @@ import {
   unpublishAdminLanding,
   updateAdminLanding,
 } from '@/lib/api/admin-landings';
-import { getCatalog } from '@/lib/api/catalog';
-import { ApiError } from '@/lib/api/client';
+import { useAllServices } from '@/hooks/use-catalog';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -58,14 +59,11 @@ export default function EditLandingPage({
   const { landingId } = use(params);
 
   const { data: landing, isLoading } = useQuery({
-    queryKey: ['admin', 'landings', landingId],
+    queryKey: queryKeys.adminLandings.detail(landingId),
     queryFn: () => getAdminLanding(landingId),
   });
 
-  const { data: catalog, isLoading: catalogLoading } = useQuery({
-    queryKey: ['catalog', 'services', 'all'],
-    queryFn: () => getCatalog({ limit: 100 }),
-  });
+  const { data: catalog, isLoading: catalogLoading } = useAllServices();
 
   if (isLoading || !landing) {
     return (
@@ -106,8 +104,8 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
   );
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'landings', landingId] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'landings'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.adminLandings.detail(landingId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.adminLandings.all });
   };
 
   const updateMutation = useMutation({
@@ -117,7 +115,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to save landing');
+      toast.error(getErrorMessage(err, 'Failed to save landing'));
     },
   });
 
@@ -128,7 +126,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to publish');
+      toast.error(getErrorMessage(err, 'Failed to publish'));
     },
   });
 
@@ -139,7 +137,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to unpublish');
+      toast.error(getErrorMessage(err, 'Failed to unpublish'));
     },
   });
 
@@ -151,7 +149,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
       router.push('/admin/landings');
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to archive');
+      toast.error(getErrorMessage(err, 'Failed to archive'));
     },
   });
 
@@ -276,7 +274,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
 
 function AnalyticsTabContent({ landingId }: Readonly<{ landingId: string }>) {
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'landings', landingId, 'analytics'],
+    queryKey: queryKeys.adminLandings.analytics(landingId),
     queryFn: () => getAdminLandingAnalytics(landingId),
   });
   return <LandingAnalyticsPanel analytics={data} isLoading={isLoading} />;

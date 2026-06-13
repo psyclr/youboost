@@ -3,6 +3,7 @@
 import { useBalance } from '@/hooks/use-balance';
 import { useQuery } from '@tanstack/react-query';
 import { getTransactions } from '@/lib/api/billing';
+import { queryKeys } from '@/lib/query-keys';
 import { BalanceWidget } from '@/components/shared/balance-widget';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +41,7 @@ export const txColumns: Column<TransactionSummary>[] = [
 export default function BillingPage() {
   const { data: balance, isLoading: balanceLoading } = useBalance();
   const { data: txData, isLoading: txLoading } = useQuery({
-    queryKey: ['transactions', { limit: 5 }],
+    queryKey: queryKeys.transactions.list({ limit: 5 }),
     queryFn: () => getTransactions({ limit: 5 }),
   });
 

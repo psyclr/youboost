@@ -11,7 +11,8 @@ export function pickDefaultTier(
   }
   const sale = tiers.find((t) => t.pillKind === 'SALE');
   if (sale) return sale;
-  return tiers[0];
+  // Non-empty (guarded above); `?? null` satisfies noUncheckedIndexedAccess.
+  return tiers[0] ?? null;
 }
 
 /** Effective price per 1000 units: landing override wins over the service price. */

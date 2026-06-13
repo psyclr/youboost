@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getReferralStats } from '@/lib/api/referrals';
 import type { ReferralBonusSummary } from '@/lib/api/referrals';
+import { queryKeys } from '@/lib/query-keys';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +36,7 @@ const columns: Column<ReferralBonusSummary>[] = [
 
 export default function ReferralPage() {
   const { data, isLoading } = useQuery({
-    queryKey: ['referral-stats'],
+    queryKey: queryKeys.referralStats,
     queryFn: getReferralStats,
   });
 

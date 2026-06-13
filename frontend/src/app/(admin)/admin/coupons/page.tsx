@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '@/lib/api/coupons';
 import type { CouponResponse, CreateCouponInput } from '@/lib/api/coupons';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -138,7 +139,7 @@ export default function AdminCouponsPage() {
   const discountType = form.watch('discountType');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'coupons', { page }],
+    queryKey: queryKeys.adminCoupons.list({ page }),
     queryFn: () => adminListCoupons({ page }),
   });
 
@@ -158,10 +159,10 @@ export default function AdminCouponsPage() {
       toast.success('Coupon created');
       setCreateOpen(false);
       form.reset(defaultCouponFormValues);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCoupons.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to create coupon');
+      toast.error(getErrorMessage(err, 'Failed to create coupon'));
     },
   });
 
@@ -170,10 +171,10 @@ export default function AdminCouponsPage() {
     onSuccess: () => {
       toast.success('Coupon deactivated');
       setDeleteId(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminCoupons.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to deactivate coupon');
+      toast.error(getErrorMessage(err, 'Failed to deactivate coupon'));
     },
   });
 

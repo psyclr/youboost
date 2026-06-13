@@ -10,7 +10,8 @@ import {
   publishAdminLanding,
   unpublishAdminLanding,
 } from '@/lib/api/admin-landings';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -57,11 +58,11 @@ export default function AdminLandingsPage() {
   const statusParam = status === 'ALL' ? undefined : status;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'landings', { page, limit, status }],
+    queryKey: queryKeys.adminLandings.list({ page, limit, status }),
     queryFn: () => getAdminLandings({ page, limit, status: statusParam }),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'landings'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKeys.adminLandings.all });
 
   const publishMutation = useMutation({
     mutationFn: (id: string) => publishAdminLanding(id),
@@ -70,7 +71,7 @@ export default function AdminLandingsPage() {
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to publish');
+      toast.error(getErrorMessage(err, 'Failed to publish'));
     },
   });
 
@@ -81,7 +82,7 @@ export default function AdminLandingsPage() {
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to unpublish');
+      toast.error(getErrorMessage(err, 'Failed to unpublish'));
     },
   });
 
@@ -93,7 +94,7 @@ export default function AdminLandingsPage() {
       invalidate();
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to archive');
+      toast.error(getErrorMessage(err, 'Failed to archive'));
     },
   });
 

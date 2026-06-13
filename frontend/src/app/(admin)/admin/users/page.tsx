@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAdminUsers } from '@/lib/api/admin';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -57,7 +58,7 @@ export default function AdminUsersPage() {
   const router = useRouter();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'users', { page, role, status }],
+    queryKey: queryKeys.adminUsers.list({ page, role, status }),
     queryFn: () =>
       getAdminUsers({
         page,

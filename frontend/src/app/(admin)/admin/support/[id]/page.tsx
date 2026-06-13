@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { adminGetTicket, adminAddMessage, adminUpdateTicketStatus } from '@/lib/api/support';
 import type { TicketMessageResponse } from '@/lib/api/support';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,11 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatDate, cn } from '@/lib/utils';
-import {
-  ticketStatusConfig,
-  ticketPriorityConfig,
-  TICKET_STATUSES,
-} from '@/lib/constants/tickets';
+import { ticketStatusConfig, ticketPriorityConfig, TICKET_STATUSES } from '@/lib/constants/tickets';
 import { ArrowLeft, Send } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -60,7 +57,7 @@ export default function AdminTicketDetailPage({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: ticket, isLoading } = useQuery({
-    queryKey: ['admin', 'support', 'tickets', id],
+    queryKey: queryKeys.adminSupportTickets.detail(id),
     queryFn: () => adminGetTicket(id),
     enabled: !!id,
   });
@@ -69,10 +66,10 @@ export default function AdminTicketDetailPage({
     mutationFn: (body: string) => adminAddMessage(id, body),
     onSuccess: () => {
       reset();
-      queryClient.invalidateQueries({ queryKey: ['admin', 'support', 'tickets', id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminSupportTickets.detail(id) });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to send message');
+      toast.error(getErrorMessage(err, 'Failed to send message'));
     },
   });
 
@@ -80,11 +77,11 @@ export default function AdminTicketDetailPage({
     mutationFn: (status: string) => adminUpdateTicketStatus(id, status),
     onSuccess: () => {
       toast.success('Status updated');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'support', 'tickets', id] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'support', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminSupportTickets.detail(id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminSupportTickets.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update status');
+      toast.error(getErrorMessage(err, 'Failed to update status'));
     },
   });
 

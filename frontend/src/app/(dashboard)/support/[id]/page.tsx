@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { getTicket, addTicketMessage } from '@/lib/api/support';
 import type { TicketMessageResponse } from '@/lib/api/support';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +50,7 @@ export default function TicketDetailPage({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: ticket, isLoading } = useQuery({
-    queryKey: ['tickets', id],
+    queryKey: queryKeys.tickets.detail(id),
     queryFn: () => getTicket(id),
     enabled: !!id,
   });
@@ -58,10 +59,10 @@ export default function TicketDetailPage({
     mutationFn: (body: string) => addTicketMessage(id, body),
     onSuccess: () => {
       reset();
-      queryClient.invalidateQueries({ queryKey: ['tickets', id] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tickets.detail(id) });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to send message');
+      toast.error(getErrorMessage(err, 'Failed to send message'));
     },
   });
 

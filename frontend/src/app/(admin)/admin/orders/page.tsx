@@ -9,7 +9,8 @@ import {
   pauseDripFeed,
   resumeDripFeed,
 } from '@/lib/api/admin';
-import { ApiError } from '@/lib/api/client';
+import { getErrorMessage } from '@/lib/api/error-messages';
+import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -33,10 +34,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { AdminOrderResponse, OrderStatus } from '@/lib/api/types';
-import {
-  ORDER_ADMIN_FILTER_STATUSES,
-  ORDER_BULK_STATUSES,
-} from '@/lib/constants/statuses';
+import { ORDER_ADMIN_FILTER_STATUSES, ORDER_BULK_STATUSES } from '@/lib/constants/statuses';
 import { toast } from 'sonner';
 
 const statuses = ORDER_ADMIN_FILTER_STATUSES;
@@ -162,7 +160,7 @@ export default function AdminOrdersPage() {
   const apiStatus = status === 'STUCK' ? 'PROCESSING' : status;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'orders', { page, status, dripFeedOnly }],
+    queryKey: queryKeys.adminOrders.list({ page, status, dripFeedOnly }),
     queryFn: () =>
       getAdminOrders({
         page,
@@ -189,10 +187,10 @@ export default function AdminOrdersPage() {
     onSuccess: () => {
       toast.success('Order status updated');
       setSelectedOrder(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to update status');
+      toast.error(getErrorMessage(err, 'Failed to update status'));
     },
   });
 
@@ -201,10 +199,10 @@ export default function AdminOrdersPage() {
     onSuccess: () => {
       toast.success('Order refunded');
       setRefundOrderId(null);
-      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to refund order');
+      toast.error(getErrorMessage(err, 'Failed to refund order'));
     },
   });
 
@@ -212,10 +210,10 @@ export default function AdminOrdersPage() {
     mutationFn: (orderId: string) => pauseDripFeed(orderId),
     onSuccess: () => {
       toast.success('Drip-feed paused');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to pause drip-feed');
+      toast.error(getErrorMessage(err, 'Failed to pause drip-feed'));
     },
   });
 
@@ -223,10 +221,10 @@ export default function AdminOrdersPage() {
     mutationFn: (orderId: string) => resumeDripFeed(orderId),
     onSuccess: () => {
       toast.success('Drip-feed resumed');
-      queryClient.invalidateQueries({ queryKey: ['admin', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders.all });
     },
     onError: (err) => {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to resume drip-feed');
+      toast.error(getErrorMessage(err, 'Failed to resume drip-feed'));
     },
   });
 
