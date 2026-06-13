@@ -18,6 +18,7 @@ import { getCatalog } from '@/lib/api/catalog';
 import { ApiError } from '@/lib/api/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -97,6 +98,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
   const landingId = landing.id;
 
   const [tiers, setTiers] = useState<TierDraft[]>(() => tiersFromResponse(landing.tiers));
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const initialFormValues = useMemo<LandingFormValues>(
     () => landingToFormValues(landing),
@@ -214,11 +216,7 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
           )}
           <Button
             variant="outline"
-            onClick={() => {
-              if (confirm(`Archive landing "${landing.slug}"?`)) {
-                archiveMutation.mutate();
-              }
-            }}
+            onClick={() => setArchiveOpen(true)}
             disabled={archiveMutation.isPending || landing.status === 'ARCHIVED'}
             className="text-destructive border-destructive/40 hover:bg-destructive/5 hover:text-destructive"
           >
@@ -262,6 +260,16 @@ function EditLandingView({ landing, services, servicesLoading }: Readonly<EditLa
           <AnalyticsTabContent landingId={landingId} />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        title="Archive Landing"
+        description={`Archive landing "${landing.slug}"?`}
+        confirmLabel="Archive"
+        onConfirm={() => archiveMutation.mutate()}
+        isLoading={archiveMutation.isPending}
+      />
     </div>
   );
 }

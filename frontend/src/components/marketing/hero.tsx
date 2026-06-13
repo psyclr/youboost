@@ -2,14 +2,13 @@
 
 import Image from 'next/image';
 import { useState } from 'react';
+import { emitHeroLink } from '@/lib/landings/hero-link';
 import type { LandingResponse } from '@/lib/api/types';
 
 interface HeroProps {
   hero: LandingResponse['hero'];
   stats: LandingResponse['stats'];
 }
-
-const HERO_LINK_STORAGE_KEY = 'youboost:landing-link';
 
 export function Hero({ hero, stats }: HeroProps) {
   const [link, setLink] = useState('');
@@ -22,12 +21,7 @@ export function Hero({ hero, stats }: HeroProps) {
       return;
     }
     setError(null);
-    try {
-      sessionStorage.setItem(HERO_LINK_STORAGE_KEY, trimmed);
-    } catch {
-      // sessionStorage unavailable — fail silently, services panel still works
-    }
-    window.dispatchEvent(new CustomEvent('youboost:hero-link', { detail: trimmed }));
+    emitHeroLink(trimmed);
     const target = document.getElementById('services');
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };

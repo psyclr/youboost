@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTrackingLinks, createTrackingLink, deleteTrackingLink } from '@/lib/api/tracking';
 import type { TrackingLinkWithStats } from '@/lib/api/tracking';
@@ -10,8 +12,16 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
@@ -24,13 +34,11 @@ import {
 import { formatDate } from '@/lib/utils';
 import { Trash2, Copy, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface TrackingFormData {
-  code: string;
-  name: string;
-}
-
-const defaultForm: TrackingFormData = { code: '', name: '' };
+import {
+  trackingFormSchema,
+  defaultTrackingFormValues,
+  type TrackingFormValues,
+} from '@/lib/validation/admin-forms';
 
 interface TrackingLinkCallbacks {
   onCopy: (code: string) => void;
@@ -138,7 +146,13 @@ export default function AdminTrackingLinksPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm] = useState<TrackingFormData>(defaultForm);
+
+  const form = useForm<TrackingFormValues>({
+    resolver: zodResolver(trackingFormSchema),
+    defaultValues: defaultTrackingFormValues,
+  });
+
+  const code = form.watch('code');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'tracking-links'],
@@ -146,12 +160,12 @@ export default function AdminTrackingLinksPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (formData: TrackingFormData) =>
-      createTrackingLink({ code: formData.code, name: formData.name }),
+    mutationFn: (values: TrackingFormValues) =>
+      createTrackingLink({ code: values.code, name: values.name }),
     onSuccess: () => {
       toast.success('Tracking link created');
       setCreateOpen(false);
-      setForm(defaultForm);
+      form.reset(defaultTrackingFormValues);
       queryClient.invalidateQueries({ queryKey: ['admin', 'tracking-links'] });
     },
     onError: (err) => {
@@ -178,10 +192,6 @@ export default function AdminTrackingLinksPage() {
     });
   };
 
-  const updateField = (key: keyof TrackingFormData, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
   const columns = buildTrackingColumns({
     onCopy: copyToClipboard,
     onDelete: setDeleteId,
@@ -198,7 +208,7 @@ export default function AdminTrackingLinksPage() {
           open={createOpen}
           onOpenChange={(open) => {
             setCreateOpen(open);
-            if (!open) setForm(defaultForm);
+            if (!open) form.reset(defaultTrackingFormValues);
           }}
         >
           <DialogTrigger asChild>
@@ -214,47 +224,66 @@ export default function AdminTrackingLinksPage() {
                 Create a new tracking link to monitor registrations from a campaign
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  placeholder="Telegram Banner March"
-                  value={form.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Code</Label>
-                <Input
-                  placeholder="tg_banner_march"
-                  value={form.code}
-                  onChange={(e) =>
-                    updateField('code', e.target.value.toLowerCase().replaceAll(/[^a-z0-9_-]/g, ''))
-                  }
-                />
-                <p className="text-xs text-muted-foreground">
-                  Only lowercase letters, numbers, dashes, and underscores
-                </p>
-              </div>
-              {form.code && (
-                <div className="rounded-md bg-muted p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Preview link:</p>
-                  <p className="font-mono text-sm break-all">
-                    {typeof globalThis === 'undefined' ? '' : globalThis.location.origin}
-                    /register?ref=
-                    {form.code}
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => createMutation.mutate(form)}
-                disabled={!form.code || !form.name || createMutation.isPending}
+            <Form {...form}>
+              <form
+                noValidate
+                onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}
+                className="space-y-4"
               >
-                {createMutation.isPending ? 'Creating…' : 'Create'}
-              </Button>
-            </DialogFooter>
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Telegram Banner March" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Code</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="tg_banner_march"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value.toLowerCase().replaceAll(/[^a-z0-9_-]/g, ''),
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Only lowercase letters, numbers, dashes, and underscores
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {code && (
+                  <div className="rounded-md bg-muted p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Preview link:</p>
+                    <p className="font-mono text-sm break-all">
+                      {typeof globalThis === 'undefined' ? '' : globalThis.location.origin}
+                      /register?ref=
+                      {code}
+                    </p>
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? 'Creating…' : 'Create'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>

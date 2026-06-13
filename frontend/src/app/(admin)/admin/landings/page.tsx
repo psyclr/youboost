@@ -13,6 +13,7 @@ import {
 import { ApiError } from '@/lib/api/client';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,6 +50,7 @@ function statusBadgeClass(status: LandingStatus): string {
 export default function AdminLandingsPage() {
   const [status, setStatus] = useState<'ALL' | LandingStatus>('ALL');
   const [limit, setLimit] = useState<number>(20);
+  const [archiveTarget, setArchiveTarget] = useState<AdminLandingListItem | null>(null);
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
 
@@ -87,6 +89,7 @@ export default function AdminLandingsPage() {
     mutationFn: (id: string) => archiveAdminLanding(id),
     onSuccess: () => {
       toast.success('Landing archived');
+      setArchiveTarget(null);
       invalidate();
     },
     onError: (err) => {
@@ -164,11 +167,7 @@ export default function AdminLandingsPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => {
-              if (confirm(`Archive landing "${row.slug}"?`)) {
-                archiveMutation.mutate(row.id);
-              }
-            }}
+            onClick={() => setArchiveTarget(row)}
             disabled={archiveMutation.isPending || row.status === 'ARCHIVED'}
             className="text-destructive hover:text-destructive"
             aria-label="Archive landing"
@@ -267,6 +266,16 @@ export default function AdminLandingsPage() {
               }
             : undefined
         }
+      />
+
+      <ConfirmDialog
+        open={!!archiveTarget}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title="Archive Landing"
+        description={archiveTarget ? `Archive landing "${archiveTarget.slug}"?` : ''}
+        confirmLabel="Archive"
+        onConfirm={() => archiveTarget && archiveMutation.mutate(archiveTarget.id)}
+        isLoading={archiveMutation.isPending}
       />
     </div>
   );

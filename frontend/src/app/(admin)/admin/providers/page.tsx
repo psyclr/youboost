@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getProviders,
@@ -13,10 +15,19 @@ import {
 import { ApiError } from '@/lib/api/client';
 import { usePagination } from '@/hooks/use-pagination';
 import { DataTable, type Column } from '@/components/shared/data-table';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
@@ -28,21 +39,12 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Pencil, Wallet, List } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  buildProviderFormSchema,
+  defaultProviderFormValues,
+  type ProviderFormValues,
+} from '@/lib/validation/admin-forms';
 import type { ProviderResponse, ProviderServiceItem } from '@/lib/api/types';
-
-interface ProviderFormData {
-  name: string;
-  apiEndpoint: string;
-  apiKey: string;
-  priority: string;
-}
-
-const defaultForm: ProviderFormData = {
-  name: '',
-  apiEndpoint: '',
-  apiKey: '',
-  priority: '0',
-};
 
 const staticServiceColumns: Column<ProviderServiceItem>[] = [
   { header: 'ID', accessorKey: 'serviceId' },
@@ -70,8 +72,7 @@ interface ProviderActionCallbacks {
   onCheckBalance: (providerId: string) => void;
   checkingBalanceId: string | null;
   onViewServices: (provider: ProviderResponse) => void;
-  onDeactivate: (providerId: string) => void;
-  onActivate: (providerId: string) => void;
+  onToggleActive: (provider: ProviderResponse) => void;
 }
 
 function ProviderActionsCell({
@@ -108,24 +109,7 @@ function ProviderActionsCell({
       >
         <List className="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          if (
-            row.isActive &&
-            !globalThis.confirm(
-              `Deactivate "${row.name}"? Services linked to this provider may stop working.`,
-            )
-          )
-            return;
-          if (row.isActive) {
-            callbacks.onDeactivate(row.providerId);
-          } else {
-            callbacks.onActivate(row.providerId);
-          }
-        }}
-      >
+      <Button variant="ghost" size="sm" onClick={() => callbacks.onToggleActive(row)}>
         {row.isActive ? 'Deactivate' : 'Activate'}
       </Button>
     </div>
@@ -162,14 +146,93 @@ function buildProviderColumns(callbacks: ProviderActionCallbacks): Column<Provid
   ];
 }
 
+interface ProviderFormFieldsProps {
+  form: ReturnType<typeof useForm<ProviderFormValues>>;
+  mode: 'create' | 'edit';
+}
+
+function ProviderFormFields({ form, mode }: Readonly<ProviderFormFieldsProps>) {
+  return (
+    <div className="space-y-4">
+      <FormField
+        control={form.control}
+        name="name"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Name</FormLabel>
+            <FormControl>
+              <Input {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="apiEndpoint"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>API Endpoint</FormLabel>
+            <FormControl>
+              <Input placeholder="https://provider-api.com/v1" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="apiKey"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>API Key</FormLabel>
+            <FormControl>
+              <Input
+                type="password"
+                placeholder={mode === 'edit' ? 'Leave empty to keep current' : ''}
+                {...field}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="priority"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Priority</FormLabel>
+            <FormControl>
+              <Input type="number" {...field} />
+            </FormControl>
+            <FormDescription>Higher priority providers are selected first.</FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </div>
+  );
+}
+
 export default function AdminProvidersPage() {
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editProvider, setEditProvider] = useState<ProviderResponse | null>(null);
-  const [form, setForm] = useState<ProviderFormData>(defaultForm);
   const [servicesProvider, setServicesProvider] = useState<ProviderResponse | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<ProviderResponse | null>(null);
   const [checkingBalanceId, setCheckingBalanceId] = useState<string | null>(null);
+
+  const createForm = useForm<ProviderFormValues>({
+    resolver: zodResolver(buildProviderFormSchema('create')),
+    defaultValues: defaultProviderFormValues,
+  });
+
+  const editForm = useForm<ProviderFormValues>({
+    resolver: zodResolver(buildProviderFormSchema('edit')),
+    defaultValues: defaultProviderFormValues,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'providers', { page }],
@@ -183,17 +246,17 @@ export default function AdminProvidersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (formData: ProviderFormData) =>
+    mutationFn: (values: ProviderFormValues) =>
       createProvider({
-        name: formData.name,
-        apiEndpoint: formData.apiEndpoint,
-        apiKey: formData.apiKey,
-        priority: Number.parseInt(formData.priority, 10) || 0,
+        name: values.name,
+        apiEndpoint: values.apiEndpoint,
+        apiKey: values.apiKey,
+        priority: Number.parseInt(values.priority, 10) || 0,
       }),
     onSuccess: () => {
       toast.success('Provider created');
       setCreateOpen(false);
-      setForm(defaultForm);
+      createForm.reset(defaultProviderFormValues);
       queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
     },
     onError: (err) => {
@@ -208,7 +271,6 @@ export default function AdminProvidersPage() {
     onSuccess: () => {
       toast.success('Provider updated');
       setEditProvider(null);
-      setForm(defaultForm);
       queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
     },
     onError: (err) => {
@@ -220,6 +282,7 @@ export default function AdminProvidersPage() {
     mutationFn: (id: string) => deactivateProvider(id),
     onSuccess: () => {
       toast.success('Provider deactivated');
+      setDeactivateTarget(null);
       queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
     },
     onError: (err) => {
@@ -241,7 +304,7 @@ export default function AdminProvidersPage() {
 
   const openEdit = (provider: ProviderResponse) => {
     setEditProvider(provider);
-    setForm({
+    editForm.reset({
       name: provider.name,
       apiEndpoint: provider.apiEndpoint,
       apiKey: '',
@@ -249,51 +312,33 @@ export default function AdminProvidersPage() {
     });
   };
 
-  const updateField = (key: keyof ProviderFormData, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const handleEditSubmit = (values: ProviderFormValues) => {
+    if (!editProvider) return;
+    const updateData: Record<string, unknown> = {
+      name: values.name,
+      apiEndpoint: values.apiEndpoint,
+      priority: Number.parseInt(values.priority, 10) || 0,
+    };
+    if (values.apiKey) {
+      updateData.apiKey = values.apiKey;
+    }
+    updateMutation.mutate({ id: editProvider.providerId, data: updateData });
   };
 
-  const providerForm = (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Name</Label>
-        <Input value={form.name} onChange={(e) => updateField('name', e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <Label>API Endpoint</Label>
-        <Input
-          value={form.apiEndpoint}
-          onChange={(e) => updateField('apiEndpoint', e.target.value)}
-          placeholder="https://provider-api.com/v1"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>API Key</Label>
-        <Input
-          type="password"
-          value={form.apiKey}
-          onChange={(e) => updateField('apiKey', e.target.value)}
-          placeholder={editProvider ? 'Leave empty to keep current' : ''}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Priority</Label>
-        <Input
-          type="number"
-          value={form.priority}
-          onChange={(e) => updateField('priority', e.target.value)}
-        />
-      </div>
-    </div>
-  );
+  const handleToggleActive = (provider: ProviderResponse) => {
+    if (provider.isActive) {
+      setDeactivateTarget(provider);
+    } else {
+      updateMutation.mutate({ id: provider.providerId, data: { isActive: true } });
+    }
+  };
 
   const columns = buildProviderColumns({
     onEdit: openEdit,
     onCheckBalance: handleCheckBalance,
     checkingBalanceId,
     onViewServices: setServicesProvider,
-    onDeactivate: (id: string) => deactivateMutation.mutate(id),
-    onActivate: (id: string) => updateMutation.mutate({ id, data: { isActive: true } }),
+    onToggleActive: handleToggleActive,
   });
 
   return (
@@ -307,7 +352,7 @@ export default function AdminProvidersPage() {
           open={createOpen}
           onOpenChange={(open) => {
             setCreateOpen(open);
-            if (!open) setForm(defaultForm);
+            if (!open) createForm.reset(defaultProviderFormValues);
           }}
         >
           <DialogTrigger asChild>
@@ -321,17 +366,19 @@ export default function AdminProvidersPage() {
               <DialogTitle>Create Provider</DialogTitle>
               <DialogDescription>Add a new SMM service provider</DialogDescription>
             </DialogHeader>
-            {providerForm}
-            <DialogFooter>
-              <Button
-                onClick={() => createMutation.mutate(form)}
-                disabled={
-                  !form.name || !form.apiEndpoint || !form.apiKey || createMutation.isPending
-                }
+            <Form {...createForm}>
+              <form
+                noValidate
+                onSubmit={createForm.handleSubmit((values) => createMutation.mutate(values))}
               >
-                {createMutation.isPending ? 'Creating…' : 'Create'}
-              </Button>
-            </DialogFooter>
+                <ProviderFormFields form={createForm} mode="create" />
+                <DialogFooter className="pt-4">
+                  <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? 'Creating…' : 'Create'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
@@ -355,10 +402,7 @@ export default function AdminProvidersPage() {
       <Dialog
         open={!!editProvider}
         onOpenChange={(open) => {
-          if (!open) {
-            setEditProvider(null);
-            setForm(defaultForm);
-          }
+          if (!open) setEditProvider(null);
         }}
       >
         <DialogContent>
@@ -366,29 +410,16 @@ export default function AdminProvidersPage() {
             <DialogTitle>Edit Provider</DialogTitle>
             <DialogDescription>Update provider configuration</DialogDescription>
           </DialogHeader>
-          {providerForm}
-          <DialogFooter>
-            <Button
-              onClick={() => {
-                if (!editProvider) return;
-                const updateData: Record<string, unknown> = {
-                  name: form.name,
-                  apiEndpoint: form.apiEndpoint,
-                  priority: Number.parseInt(form.priority, 10) || 0,
-                };
-                if (form.apiKey) {
-                  updateData.apiKey = form.apiKey;
-                }
-                updateMutation.mutate({
-                  id: editProvider.providerId,
-                  data: updateData,
-                });
-              }}
-              disabled={!form.name || !form.apiEndpoint || updateMutation.isPending}
-            >
-              {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
-            </Button>
-          </DialogFooter>
+          <Form {...editForm}>
+            <form noValidate onSubmit={editForm.handleSubmit(handleEditSubmit)}>
+              <ProviderFormFields form={editForm} mode="edit" />
+              <DialogFooter className="pt-4">
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
@@ -402,7 +433,7 @@ export default function AdminProvidersPage() {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{servicesProvider?.name} - Available Services</DialogTitle>
-            <DialogDescription>Services available from this provider's API</DialogDescription>
+            <DialogDescription>Services available from this provider&apos;s API</DialogDescription>
           </DialogHeader>
           <DataTable
             columns={staticServiceColumns}
@@ -412,6 +443,20 @@ export default function AdminProvidersPage() {
           />
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onOpenChange={(open) => !open && setDeactivateTarget(null)}
+        title="Deactivate Provider"
+        description={
+          deactivateTarget
+            ? `Deactivate "${deactivateTarget.name}"? Services linked to this provider may stop working.`
+            : ''
+        }
+        confirmLabel="Deactivate"
+        onConfirm={() => deactivateTarget && deactivateMutation.mutate(deactivateTarget.providerId)}
+        isLoading={deactivateMutation.isPending}
+      />
     </div>
   );
 }

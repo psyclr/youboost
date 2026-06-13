@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { createStripeCheckout, createCryptomusCheckout } from '@/lib/api/billing';
 import { publicApiErrorMessage } from '@/lib/api/error-messages';
+import { isTrustedStripeHost, isTrustedCryptomusHost } from '@/lib/payments/checkout-host';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +45,7 @@ export default function DepositPage() {
     onSuccess: (data) => {
       try {
         const url = new URL(data.url);
-        if (url.hostname === 'checkout.stripe.com' || url.hostname.endsWith('.stripe.com')) {
+        if (isTrustedStripeHost(url.hostname)) {
           globalThis.location.href = data.url;
         } else {
           toast.error('Invalid payment URL received. Please try again.');
@@ -63,7 +64,9 @@ export default function DepositPage() {
     onSuccess: (data) => {
       try {
         const url = new URL(data.url);
-        if (url.hostname.endsWith('cryptomus.com')) {
+        // Note: was a bare endsWith('cryptomus.com') that accepted lookalikes
+        // such as "evilcryptomus.com" — the shared helper is strict.
+        if (isTrustedCryptomusHost(url.hostname)) {
           globalThis.location.href = data.url;
         } else {
           toast.error('Invalid payment URL received. Please try again.');

@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { ChevronsUpDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -13,6 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command,
@@ -23,45 +32,29 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { serviceFormSchema, type ServiceFormValues } from '@/lib/validation/admin-forms';
 import type { Platform, ServiceType, ProviderServiceItem } from '@/lib/api/types';
+
+export {
+  serviceFormSchema,
+  defaultServiceFormValues,
+  type ServiceFormValues,
+} from '@/lib/validation/admin-forms';
 
 const platformOptions: Platform[] = ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK'];
 const typeOptions: ServiceType[] = ['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES'];
 
-export interface ServiceFormData {
-  name: string;
-  description: string;
-  platform: Platform;
-  type: ServiceType;
-  pricePer1000: string;
-  minQuantity: string;
-  maxQuantity: string;
-  providerId: string;
-  externalServiceId: string;
-}
-
-export const defaultServiceForm: ServiceFormData = {
-  name: '',
-  description: '',
-  platform: 'YOUTUBE',
-  type: 'VIEWS',
-  pricePer1000: '',
-  minQuantity: '100',
-  maxQuantity: '100000',
-  providerId: '',
-  externalServiceId: '',
-};
-
 interface ServiceFormProps {
-  form: ServiceFormData;
-  onUpdateField: (key: keyof ServiceFormData, value: string) => void;
-  onSelectProviderService: (svc: ProviderServiceItem) => void;
+  /** Initial field values; the form resets to these when they change identity. */
+  values: ServiceFormValues;
+  onSubmit: (values: ServiceFormValues) => void;
+  onCancel: () => void;
+  /** Reported upward so the page can fetch services for the chosen provider. */
+  onProviderChange?: (providerId: string) => void;
   providers?: Array<{ providerId: string; name: string }>;
   providerServices?: ProviderServiceItem[];
   providerServicesLoading?: boolean;
   isSubmitting?: boolean;
-  onSubmit: () => void;
-  onCancel: () => void;
   submitLabel?: string;
 }
 
@@ -113,36 +106,36 @@ function ProviderServiceCombobox({
 
   if (!providerId) {
     return (
-      <div className="space-y-2">
-        <Label>Provider Service</Label>
+      <FormItem>
+        <FormLabel>Provider Service</FormLabel>
         <p className="text-sm text-muted-foreground">Select a provider first</p>
-      </div>
+      </FormItem>
     );
   }
 
   if (providerServicesLoading) {
     return (
-      <div className="space-y-2">
-        <Label>Provider Service</Label>
+      <FormItem>
+        <FormLabel>Provider Service</FormLabel>
         <p className="text-sm text-muted-foreground">Loading services…</p>
-      </div>
+      </FormItem>
     );
   }
 
   if (!providerServices?.length) {
     return (
-      <div className="space-y-2">
-        <Label>Provider Service</Label>
+      <FormItem>
+        <FormLabel>Provider Service</FormLabel>
         <p className="text-sm text-destructive">
           Could not load services from provider. Check API key and endpoint.
         </p>
-      </div>
+      </FormItem>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <Label>Provider Service ({providerServices.length} services)</Label>
+    <FormItem>
+      <FormLabel>Provider Service ({providerServices.length} services)</FormLabel>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -205,133 +198,222 @@ function ProviderServiceCombobox({
           </Command>
         </PopoverContent>
       </Popover>
-    </div>
+    </FormItem>
   );
 }
 
 export function ServiceForm({
-  form,
-  onUpdateField,
-  onSelectProviderService,
+  values,
+  onSubmit,
+  onCancel,
+  onProviderChange,
   providers = [],
   providerServices,
   providerServicesLoading = false,
   isSubmitting = false,
-  onSubmit,
-  onCancel,
   submitLabel = 'Save',
 }: Readonly<ServiceFormProps>) {
+  const form = useForm<ServiceFormValues>({
+    resolver: zodResolver(serviceFormSchema),
+    values,
+    resetOptions: { keepDirtyValues: false },
+  });
+
+  const providerId = form.watch('providerId');
+  const externalServiceId = form.watch('externalServiceId');
+
+  const selectProviderService = (svc: ProviderServiceItem) => {
+    form.setValue('externalServiceId', svc.serviceId, { shouldValidate: true });
+    if (!form.getValues('name')) {
+      form.setValue('name', svc.name, { shouldValidate: true });
+    }
+    form.setValue('minQuantity', String(svc.min), { shouldValidate: true });
+    form.setValue('maxQuantity', String(svc.max), { shouldValidate: true });
+    form.setValue('pricePer1000', String(svc.rate), { shouldValidate: true });
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Provider</Label>
-        <Select value={form.providerId} onValueChange={(v) => onUpdateField('providerId', v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select provider" />
-          </SelectTrigger>
-          <SelectContent>
-            {providers.map((p) => (
-              <SelectItem key={p.providerId} value={p.providerId}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <ProviderServiceCombobox
-        providerId={form.providerId}
-        externalServiceId={form.externalServiceId}
-        providerServices={providerServices}
-        providerServicesLoading={providerServicesLoading}
-        onSelectProviderService={onSelectProviderService}
-      />
-
-      <div className="space-y-2">
-        <Label>Name</Label>
-        <Input value={form.name} onChange={(e) => onUpdateField('name', e.target.value)} />
-      </div>
-
-      <div className="space-y-2">
-        <Label>Description</Label>
-        <Textarea
-          value={form.description}
-          onChange={(e) => onUpdateField('description', e.target.value)}
+    <Form {...form}>
+      <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="providerId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Provider</FormLabel>
+              <Select
+                value={field.value}
+                onValueChange={(v) => {
+                  field.onChange(v);
+                  onProviderChange?.(v);
+                }}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {providers.map((p) => (
+                    <SelectItem key={p.providerId} value={p.providerId}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Platform</Label>
-          <Select value={form.platform} onValueChange={(v) => onUpdateField('platform', v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {platformOptions.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="space-y-1">
+          <ProviderServiceCombobox
+            providerId={providerId}
+            externalServiceId={externalServiceId}
+            providerServices={providerServices}
+            providerServicesLoading={providerServicesLoading}
+            onSelectProviderService={selectProviderService}
+          />
+          {form.formState.errors.externalServiceId && (
+            <p className="text-sm text-destructive">
+              {form.formState.errors.externalServiceId.message}
+            </p>
+          )}
         </div>
 
-        <div className="space-y-2">
-          <Label>Type</Label>
-          <Select value={form.type} onValueChange={(v) => onUpdateField('type', v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {typeOptions.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label>Price per 1000</Label>
-          <Input
-            type="number"
-            step="0.01"
-            value={form.pricePer1000}
-            onChange={(e) => onUpdateField('pricePer1000', e.target.value)}
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Textarea {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="platform"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Platform</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {platformOptions.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Type</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {typeOptions.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
 
-        <div className="space-y-2">
-          <Label>Min Quantity</Label>
-          <Input
-            type="number"
-            value={form.minQuantity}
-            onChange={(e) => onUpdateField('minQuantity', e.target.value)}
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={form.control}
+            name="pricePer1000"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Price per 1000</FormLabel>
+                <FormControl>
+                  <Input type="number" step="0.01" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="minQuantity"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Min Quantity</FormLabel>
+                <FormControl>
+                  <Input type="number" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="maxQuantity"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Max Quantity</FormLabel>
+                <FormControl>
+                  <Input type="number" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
 
-        <div className="space-y-2">
-          <Label>Max Quantity</Label>
-          <Input
-            type="number"
-            value={form.maxQuantity}
-            onChange={(e) => onUpdateField('maxQuantity', e.target.value)}
-          />
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Saving…' : submitLabel}
+          </Button>
         </div>
-      </div>
-
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button onClick={onSubmit} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving…' : submitLabel}
-        </Button>
-      </div>
-    </div>
+      </form>
+    </Form>
   );
 }

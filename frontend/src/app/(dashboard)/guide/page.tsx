@@ -1,5 +1,4 @@
-'use client';
-
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,34 +13,40 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  Zap,
-  Wallet,
   Eye,
   ThumbsUp,
   UserPlus,
   MessageCircle,
   Share2,
   ArrowRight,
-  Shield,
-  Clock,
-  TrendingUp,
-  Key,
-  Webhook,
-  Bell,
   CheckCircle,
-  RefreshCw,
   ChevronRight,
+  Wallet,
 } from 'lucide-react';
+import {
+  GUIDE_HERO_ICON,
+  GUIDE_STEPS,
+  GUIDE_PLATFORMS,
+  GUIDE_PRICING_FEATURES,
+  GUIDE_DEVELOPER_FEATURES,
+  GUIDE_WALLET_STATS,
+  GUIDE_ORDER_STATUSES,
+  GUIDE_SECURITY_POINTS,
+  GUIDE_API_EXAMPLE,
+  type FeatureItem,
+  type GuideStep,
+} from '@/content/guide';
+
+export const metadata: Metadata = {
+  title: 'Руководство — youboost',
+  description: 'Как продвигать контент через youboost: каталог, заказы, кошелёк, API и безопасность.',
+};
 
 function FeatureCard({
   icon: Icon,
   title,
   description,
-}: Readonly<{
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-}>): React.ReactElement {
+}: Readonly<FeatureItem>): React.ReactElement {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="pt-6">
@@ -59,17 +64,7 @@ function FeatureCard({
   );
 }
 
-function StepCard({
-  step,
-  title,
-  description,
-  action,
-}: Readonly<{
-  step: number;
-  title: string;
-  description: string;
-  action?: { label: string; href: string };
-}>): React.ReactElement {
+function StepCard({ step, title, description, action }: Readonly<GuideStep>): React.ReactElement {
   return (
     <div className="flex gap-4">
       <div className="flex-shrink-0">
@@ -107,12 +102,13 @@ function ServiceTypeIcon({ type }: Readonly<{ type: string }>): React.ReactEleme
 }
 
 export default function GuidePage(): React.ReactElement {
+  const HeroIcon = GUIDE_HERO_ICON;
   return (
     <div className="space-y-12 max-w-4xl mx-auto">
       {/* Hero */}
       <div className="text-center space-y-4 pt-4">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <Zap className="h-8 w-8 text-primary" />
+          <HeroIcon className="h-8 w-8 text-primary" />
           <span className="text-3xl font-bold">youboost</span>
         </div>
         <h1 className="text-4xl font-bold tracking-tight">Продвигай контент в соцсетях</h1>
@@ -145,29 +141,9 @@ export default function GuidePage(): React.ReactElement {
         </div>
 
         <div className="max-w-lg mx-auto">
-          <StepCard
-            step={1}
-            title="Пополни баланс"
-            description="Переведи USDT на сгенерированный адрес. Деньги зачисляются после подтверждения."
-            action={{ label: 'Пополнить', href: '/billing/deposit' }}
-          />
-          <StepCard
-            step={2}
-            title="Выбери услугу"
-            description="В каталоге — просмотры, лайки, подписчики для всех популярных платформ. Фильтруй по площадке и типу."
-            action={{ label: 'Каталог', href: '/catalog' }}
-          />
-          <StepCard
-            step={3}
-            title="Вставь ссылку и количество"
-            description="Укажи ссылку на видео или профиль и нужное количество. Цена рассчитается автоматически."
-            action={{ label: 'Новый заказ', href: '/orders/new' }}
-          />
-          <StepCard
-            step={4}
-            title="Получи результат"
-            description="Заказ выполняется автоматически. Следи за прогрессом в реальном времени. Уведомления на почту и вебхуки."
-          />
+          {GUIDE_STEPS.map((s) => (
+            <StepCard key={s.step} {...s} />
+          ))}
         </div>
       </div>
 
@@ -181,121 +157,29 @@ export default function GuidePage(): React.ReactElement {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded bg-red-500/10 flex items-center justify-center">
-                  <Eye className="h-4 w-4 text-red-500" />
-                </div>
-                <span className="font-semibold">YouTube</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="VIEWS" />
-                  <span className="ml-1">Просмотры</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SUBSCRIBERS" />
-                  <span className="ml-1">Подписчики</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="LIKES" />
-                  <span className="ml-1">Лайки</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="COMMENTS" />
-                  <span className="ml-1">Комментарии</span>
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded bg-pink-500/10 flex items-center justify-center">
-                  <ThumbsUp className="h-4 w-4 text-pink-500" />
-                </div>
-                <span className="font-semibold">Instagram</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="LIKES" />
-                  <span className="ml-1">Лайки</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SUBSCRIBERS" />
-                  <span className="ml-1">Подписчики</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="VIEWS" />
-                  <span className="ml-1">Просмотры</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="COMMENTS" />
-                  <span className="ml-1">Комментарии</span>
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center">
-                  <TrendingUp className="h-4 w-4 text-cyan-500" />
-                </div>
-                <span className="font-semibold">TikTok</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="VIEWS" />
-                  <span className="ml-1">Просмотры</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="LIKES" />
-                  <span className="ml-1">Лайки</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SUBSCRIBERS" />
-                  <span className="ml-1">Подписчики</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SHARES" />
-                  <span className="ml-1">Репосты</span>
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center">
-                  <Share2 className="h-4 w-4 text-blue-500" />
-                </div>
-                <span className="font-semibold">Twitter / Facebook</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="LIKES" />
-                  <span className="ml-1">Лайки</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SUBSCRIBERS" />
-                  <span className="ml-1">Подписчики</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="SHARES" />
-                  <span className="ml-1">Репосты</span>
-                </Badge>
-                <Badge variant="outline">
-                  <ServiceTypeIcon type="VIEWS" />
-                  <span className="ml-1">Просмотры</span>
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
+          {GUIDE_PLATFORMS.map((platform) => {
+            const PlatformIcon = platform.icon;
+            return (
+              <Card key={platform.name}>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className={platform.iconWrapClassName}>
+                      <PlatformIcon className={platform.iconClassName} />
+                    </div>
+                    <span className="font-semibold">{platform.name}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {platform.badges.map((badge) => (
+                      <Badge key={badge.label} variant="outline">
+                        <ServiceTypeIcon type={badge.type} />
+                        <span className="ml-1">{badge.label}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
 
@@ -309,21 +193,9 @@ export default function GuidePage(): React.ReactElement {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <FeatureCard
-            icon={Wallet}
-            title="Оплата за результат"
-            description="Деньги замораживаются при заказе и списываются только после выполнения. Если заказ провален — полный возврат."
-          />
-          <FeatureCard
-            icon={RefreshCw}
-            title="Частичное выполнение"
-            description="Если выполнено 60% — заплатишь только за 60%. Остаток вернётся на баланс автоматически."
-          />
-          <FeatureCard
-            icon={Shield}
-            title="Полная прозрачность"
-            description="Каждая транзакция записана в истории. Видно баланс до/после, тип операции и к какому заказу относится."
-          />
+          {GUIDE_PRICING_FEATURES.map((feature) => (
+            <FeatureCard key={feature.title} {...feature} />
+          ))}
         </div>
       </div>
 
@@ -338,21 +210,15 @@ export default function GuidePage(): React.ReactElement {
         <Card>
           <CardContent className="pt-6">
             <div className="grid grid-cols-3 gap-6 text-center mb-6">
-              <div>
-                <p className="text-3xl font-bold">$50</p>
-                <p className="text-sm text-muted-foreground mt-1">Balance</p>
-                <p className="text-xs text-muted-foreground">Всего на счету</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-yellow-500">$10</p>
-                <p className="text-sm text-muted-foreground mt-1">Frozen</p>
-                <p className="text-xs text-muted-foreground">Заморожено под заказы</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-green-500">$40</p>
-                <p className="text-sm text-muted-foreground mt-1">Available</p>
-                <p className="text-xs text-muted-foreground">Можно тратить</p>
-              </div>
+              {GUIDE_WALLET_STATS.map((stat) => (
+                <div key={stat.label}>
+                  <p className={`text-3xl font-bold${stat.valueClassName ? ` ${stat.valueClassName}` : ''}`}>
+                    {stat.value}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+                  <p className="text-xs text-muted-foreground">{stat.hint}</p>
+                </div>
+              ))}
             </div>
             <p className="text-sm text-muted-foreground text-center">
               Frozen — не списание. Деньги просто заблокированы пока заказ в работе. Выполнен —
@@ -382,60 +248,17 @@ export default function GuidePage(): React.ReactElement {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="outline">PENDING</Badge>
-                  </TableCell>
-                  <TableCell>Заказ создан, ждёт отправки</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Заморожены
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="secondary">PROCESSING</Badge>
-                  </TableCell>
-                  <TableCell>Выполняется</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Заморожены
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="default">COMPLETED</Badge>
-                  </TableCell>
-                  <TableCell>Готово</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Списаны
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="secondary">PARTIAL</Badge>
-                  </TableCell>
-                  <TableCell>Частично выполнен</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Частично списаны
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="destructive">FAILED</Badge>
-                  </TableCell>
-                  <TableCell>Не удалось</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Возвращены
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>
-                    <Badge variant="destructive">CANCELLED</Badge>
-                  </TableCell>
-                  <TableCell>Отменён</TableCell>
-                  <TableCell className="hidden sm:table-cell text-muted-foreground">
-                    Возвращены
-                  </TableCell>
-                </TableRow>
+                {GUIDE_ORDER_STATUSES.map((row) => (
+                  <TableRow key={row.status}>
+                    <TableCell>
+                      <Badge variant={row.variant}>{row.status}</Badge>
+                    </TableCell>
+                    <TableCell>{row.meaning}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground">
+                      {row.money}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </CardContent>
@@ -452,49 +275,16 @@ export default function GuidePage(): React.ReactElement {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FeatureCard
-            icon={Key}
-            title="API-ключи"
-            description="Управляй заказами из своего кода. Формат: yb_..., три тарифа rate-limit: 100, 500, 2000 запросов в минуту."
-          />
-          <FeatureCard
-            icon={Webhook}
-            title="Вебхуки"
-            description="Получай POST-уведомления на свой сервер при изменении статуса. HMAC-SHA256 подпись, 3 повтора при сбое."
-          />
-          <FeatureCard
-            icon={Bell}
-            title="Email-уведомления"
-            description="Автоматические уведомления на почту: заказ создан, выполнен, провален, отменён."
-          />
-          <FeatureCard
-            icon={Clock}
-            title="Реальное время"
-            description="Статус заказа обновляется каждые 30 секунд. Отслеживай прогресс на странице заказа."
-          />
+          {GUIDE_DEVELOPER_FEATURES.map((feature) => (
+            <FeatureCard key={feature.title} {...feature} />
+          ))}
         </div>
 
         <Card>
           <CardContent className="pt-6 space-y-4">
             <h3 className="font-semibold">Пример использования API</h3>
             <pre className="bg-muted rounded-lg p-4 text-sm font-mono overflow-x-auto">
-              {`// Авторизация
-Authorization: Bearer yb_your_api_key_here
-
-// Создание заказа
-POST /orders
-{
-  "serviceId": "uuid",
-  "link": "https://youtube.com/watch?v=...",
-  "quantity": 5000
-}
-
-// Вебхук на ваш сервер
-{
-  "event": "order.completed",
-  "data": { "orderId": "abc", "status": "COMPLETED" },
-  "timestamp": "2026-02-26T12:00:00Z"
-}`}
+              {GUIDE_API_EXAMPLE}
             </pre>
           </CardContent>
         </Card>
@@ -509,42 +299,15 @@ POST /orders
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Пароли зашифрованы</p>
-              <p className="text-sm text-muted-foreground">
-                bcrypt хеширование, пароль никогда не хранится в открытом виде
-              </p>
+          {GUIDE_SECURITY_POINTS.map((point) => (
+            <div key={point.title} className="flex items-start gap-3">
+              <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">{point.title}</p>
+                <p className="text-sm text-muted-foreground">{point.description}</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">API-ключи захешированы</p>
-              <p className="text-sm text-muted-foreground">
-                SHA256 — даже при утечке базы ключ не восстановить
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Вебхуки подписаны</p>
-              <p className="text-sm text-muted-foreground">
-                HMAC-SHA256 — всегда проверяй подпись на своей стороне
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Полный аудит</p>
-              <p className="text-sm text-muted-foreground">
-                Каждая транзакция записана с балансом до и после
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 

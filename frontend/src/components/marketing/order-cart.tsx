@@ -4,7 +4,8 @@ import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from './cart-item';
-import { formatUsd } from '@/lib/landings/calculator';
+import { formatCurrency } from '@/lib/utils';
+import { isTrustedCheckoutHost } from '@/lib/payments/checkout-host';
 import { checkoutLandingCart } from '@/lib/api/landings';
 import { publicApiErrorMessage } from '@/lib/api/error-messages';
 import type { UseCart } from '@/lib/landings/use-cart';
@@ -31,12 +32,7 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
     onSuccess: (data) => {
       try {
         const url = new URL(data.checkoutUrl);
-        const ok =
-          url.hostname === 'checkout.stripe.com' ||
-          url.hostname.endsWith('.stripe.com') ||
-          url.hostname === 'cryptomus.com' ||
-          url.hostname.endsWith('.cryptomus.com');
-        if (ok) globalThis.location.href = data.checkoutUrl;
+        if (isTrustedCheckoutHost(url.hostname)) globalThis.location.href = data.checkoutUrl;
         else setError('Invalid payment URL received. Please try again.');
       } catch {
         setError('Invalid payment URL format. Please try again.');
@@ -162,10 +158,10 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
         type="button"
         onClick={onPay}
         disabled={mutation.isPending}
-        aria-label={`Pay ${formatUsd(cart.total)}`}
+        aria-label={`Pay ${formatCurrency(cart.total)}`}
         className="w-full"
       >
-        {mutation.isPending ? 'Redirecting…' : `Pay ${formatUsd(cart.total)}`}
+        {mutation.isPending ? 'Redirecting…' : `Pay ${formatCurrency(cart.total)}`}
       </Button>
       <p className="text-center text-[11px] leading-relaxed text-[#676767]">
         Guest checkout creates an account automatically after payment.

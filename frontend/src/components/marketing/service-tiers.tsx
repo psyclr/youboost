@@ -1,20 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  Eye,
-  MessageSquare,
-  ThumbsUp,
-  Users,
-  Music2,
-  Twitter,
-  Facebook,
-  Instagram,
-  Youtube,
-} from 'lucide-react';
+import { Eye, MessageSquare, ThumbsUp, Users } from 'lucide-react';
+import { PLATFORMS } from '@/lib/constants/platforms';
+import { unitPrice } from '@/lib/landings/calculator';
+import { useHeroLink } from '@/lib/landings/hero-link';
 import { useCart } from '@/lib/landings/use-cart';
 import { OrderCart } from './order-cart';
-import type { LandingResponse, LandingTierResponse } from '@/lib/api/types';
+import type { LandingResponse, LandingTierResponse, Platform } from '@/lib/api/types';
 
 interface ServiceTiersProps {
   slug: string;
@@ -22,19 +15,14 @@ interface ServiceTiersProps {
   defaultMinAmount: number;
 }
 
-const HERO_LINK_STORAGE_KEY = 'youboost:landing-link';
 const PAGE_SIZE = 6;
 
-const PLATFORMS = [
-  { id: 'ALL', label: 'All' },
-  { id: 'YOUTUBE', label: 'YouTube' },
-  { id: 'INSTAGRAM', label: 'Instagram' },
-  { id: 'TIKTOK', label: 'TikTok' },
-  { id: 'TWITTER', label: 'Twitter' },
-  { id: 'FACEBOOK', label: 'Facebook' },
-] as const;
+type PlatformId = 'ALL' | Platform;
 
-type PlatformId = (typeof PLATFORMS)[number]['id'];
+const PLATFORM_TABS: ReadonlyArray<{ id: PlatformId; label: string }> = [
+  { id: 'ALL', label: 'All' },
+  ...PLATFORMS.map((p) => ({ id: p.id, label: p.label })),
+];
 
 function iconFor(platform: string, type: string) {
   const t = (type || '').toLowerCase();
@@ -43,16 +31,7 @@ function iconFor(platform: string, type: string) {
   if (t.includes('subscrib') || t.includes('follow')) return Users;
   if (t.includes('view')) return Eye;
   const p = platform.toUpperCase();
-  if (p === 'YOUTUBE') return Youtube;
-  if (p === 'INSTAGRAM') return Instagram;
-  if (p === 'TIKTOK') return Music2;
-  if (p === 'TWITTER') return Twitter;
-  if (p === 'FACEBOOK') return Facebook;
-  return Eye;
-}
-
-function displayPrice(tier: LandingTierResponse): number {
-  return tier.priceOverride ?? tier.service.pricePer1000;
+  return PLATFORMS.find((meta) => meta.id === p)?.icon ?? Eye;
 }
 
 function findYoutubeViewsTier(tiers: LandingResponse['tiers']): LandingTierResponse | null {
@@ -74,57 +53,43 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
   const pendingHeroLink = useRef<string | null>(null);
 
   const cart = useCart({ defaultMinAmount });
-  // Keep a stable ref to cart.setLink to use inside the hero-link effect
+  // Keep a stable ref to the cart for deferred reads (setTimeout callbacks
+  // below need post-update items). Synced in an effect — writing refs during
+  // render is forbidden by the react-hooks/refs rule.
   const cartRef = useRef(cart);
-  cartRef.current = cart;
+  useEffect(() => {
+    cartRef.current = cart;
+  });
 
   // Pre-fill link from hero (sessionStorage on mount + custom event).
   // Prefer auto-adding the YouTube-views tier; otherwise fall back to filling
-  // the first empty-link item (or storing the link as pending).
-  useEffect(() => {
-    const applyHeroLink = (detail: string) => {
-      const ytTier = findYoutubeViewsTier(tiers);
-      if (ytTier) {
-        setPlatform('YOUTUBE');
-        setPage(1);
-        const existing = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
-        if (existing) {
-          cartRef.current.setLink(existing.id, detail);
-        } else {
-          cartRef.current.addItem(ytTier);
-          setTimeout(() => {
-            const added = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
-            if (added) cartRef.current.setLink(added.id, detail);
-          }, 0);
-        }
+  // the first empty-link item (or storing the link as pending). useHeroLink
+  // keeps the handler in a ref, so it always sees the current `tiers`.
+  useHeroLink((detail: string) => {
+    const ytTier = findYoutubeViewsTier(tiers);
+    if (ytTier) {
+      setPlatform('YOUTUBE');
+      setPage(1);
+      const existing = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
+      if (existing) {
+        cartRef.current.setLink(existing.id, detail);
       } else {
-        // Fallback: fill the first empty-link item, else store as pending.
-        const emptyItem = cartRef.current.items.find((i) => !i.link.trim());
-        if (emptyItem) cartRef.current.setLink(emptyItem.id, detail);
-        else pendingHeroLink.current = detail;
+        cartRef.current.addItem(ytTier);
+        setTimeout(() => {
+          const added = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
+          if (added) cartRef.current.setLink(added.id, detail);
+        }, 0);
       }
-      if (panelRef.current) {
-        panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    };
-
-    const stored = (() => {
-      try {
-        return sessionStorage.getItem(HERO_LINK_STORAGE_KEY);
-      } catch {
-        return null;
-      }
-    })();
-    if (stored) applyHeroLink(stored);
-
-    const onHeroLink = (e: Event) => {
-      const detail = (e as CustomEvent<string>).detail;
-      if (typeof detail === 'string') applyHeroLink(detail);
-    };
-    window.addEventListener('youboost:hero-link', onHeroLink);
-    return () => window.removeEventListener('youboost:hero-link', onHeroLink);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    } else {
+      // Fallback: fill the first empty-link item, else store as pending.
+      const emptyItem = cartRef.current.items.find((i) => !i.link.trim());
+      if (emptyItem) cartRef.current.setLink(emptyItem.id, detail);
+      else pendingHeroLink.current = detail;
+    }
+    if (panelRef.current) {
+      panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -138,13 +103,12 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
     });
   }, [tiers, platform, query]);
 
+  // `page` may exceed totalPages after a filter shrinks the list; rendering
+  // always clamps via safePage, and the filter handlers reset to page 1, so no
+  // state sync is needed.
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pagedTiers = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const handleAddToOrder = (tier: LandingTierResponse) => {
     cart.addItem(tier);
@@ -184,7 +148,7 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
               className="flex max-w-full items-center gap-1 overflow-x-auto rounded-[5px] border p-[5px] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               style={{ background: '#141414', borderColor: '#262626' }}
             >
-              {PLATFORMS.map((p) => {
+              {PLATFORM_TABS.map((p) => {
                 const active = platform === p.id;
                 return (
                   <button
@@ -274,7 +238,7 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
                       <div className="flex flex-col">
                         <div className="flex items-baseline gap-1">
                           <span className="text-[22px] font-bold leading-none text-white">
-                            ${displayPrice(tier).toFixed(2)}
+                            ${unitPrice(tier).toFixed(2)}
                           </span>
                           <span className="text-[11px] text-[#a2a2a2]">/ {tier.unit}</span>
                         </div>

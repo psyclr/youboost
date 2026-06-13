@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import { createAdminLanding } from '@/lib/api/admin-landings';
 import { getCatalog } from '@/lib/api/catalog';
 import { ApiError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   LandingForm,
@@ -21,7 +22,7 @@ import {
   tiersToPayload,
   type TierDraft,
 } from '@/components/admin/landing-tiers-editor';
-import type { LandingCreateInput } from '@/lib/api/types';
+import type { CatalogService, LandingCreateInput } from '@/lib/api/types';
 
 function buildDefaultTiers(services: Array<{ id: string }>): TierDraft[] {
   return services.slice(0, 4).map((svc, index) => ({
@@ -38,24 +39,51 @@ function buildDefaultTiers(services: Array<{ id: string }>): TierDraft[] {
 
 export default function NewLandingPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [tiers, setTiers] = useState<TierDraft[]>([]);
-  const [pendingContent, setPendingContent] = useState<LandingFormValues | null>(null);
-  const defaultsApplied = useRef(false);
 
+  // Wait for the catalog before mounting the editor so the tiers state can be
+  // seeded once from a useState initializer (no set-state-in-effect needed).
   const { data: catalog, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog', 'services', 'all'],
     queryFn: () => getCatalog({ limit: 100 }),
   });
 
-  const services = catalog?.services ?? [];
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/admin/landings">
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Back
+          </Link>
+        </Button>
+        <h1 className="text-2xl font-bold">New Landing</h1>
+      </div>
 
-  useEffect(() => {
-    if (!defaultsApplied.current && services.length > 0) {
-      setTiers(buildDefaultTiers(services));
-      defaultsApplied.current = true;
-    }
-  }, [services]);
+      {catalogLoading ? (
+        <Skeleton className="h-96 w-full" />
+      ) : (
+        <NewLandingEditor
+          router={router}
+          services={catalog?.services ?? []}
+          servicesLoading={catalogLoading}
+        />
+      )}
+    </div>
+  );
+}
+
+interface NewLandingEditorProps {
+  router: ReturnType<typeof useRouter>;
+  services: CatalogService[];
+  servicesLoading: boolean;
+}
+
+function NewLandingEditor({ router, services, servicesLoading }: Readonly<NewLandingEditorProps>) {
+  const queryClient = useQueryClient();
+  // Seeded once from the (already loaded) services; user edits are never
+  // clobbered because nothing rewrites this from an effect afterwards.
+  const [tiers, setTiers] = useState<TierDraft[]>(() => buildDefaultTiers(services));
+  const [pendingContent, setPendingContent] = useState<LandingFormValues | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (payload: LandingCreateInput) => createAdminLanding(payload),
@@ -85,44 +113,32 @@ export default function NewLandingPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin/landings">
-            <ArrowLeft className="h-4 w-4 mr-1.5" />
-            Back
-          </Link>
-        </Button>
-        <h1 className="text-2xl font-bold">New Landing</h1>
-      </div>
-
-      <Tabs defaultValue="content">
-        <TabsList>
-          <TabsTrigger value="content">Content</TabsTrigger>
-          <TabsTrigger value="tiers">Tiers ({tiers.length})</TabsTrigger>
-        </TabsList>
-        <TabsContent value="content" className="pt-4">
-          <LandingForm
-            mode="create"
-            initialValues={pendingContent ?? defaultLandingFormValues}
-            services={services}
-            servicesLoading={catalogLoading}
-            isSubmitting={createMutation.isPending}
-            submitLabel="Create Draft"
-            onSubmit={handleSubmit}
-            onCancel={() => router.push('/admin/landings')}
-          />
-        </TabsContent>
-        <TabsContent value="tiers" className="pt-4">
-          <LandingTiersEditor
-            value={tiers}
-            onChange={setTiers}
-            services={services}
-            servicesLoading={catalogLoading}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <Tabs defaultValue="content">
+      <TabsList>
+        <TabsTrigger value="content">Content</TabsTrigger>
+        <TabsTrigger value="tiers">Tiers ({tiers.length})</TabsTrigger>
+      </TabsList>
+      <TabsContent value="content" className="pt-4">
+        <LandingForm
+          mode="create"
+          initialValues={pendingContent ?? defaultLandingFormValues}
+          services={services}
+          servicesLoading={servicesLoading}
+          isSubmitting={createMutation.isPending}
+          submitLabel="Create Draft"
+          onSubmit={handleSubmit}
+          onCancel={() => router.push('/admin/landings')}
+        />
+      </TabsContent>
+      <TabsContent value="tiers" className="pt-4">
+        <LandingTiersEditor
+          value={tiers}
+          onChange={setTiers}
+          services={services}
+          servicesLoading={servicesLoading}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }
 

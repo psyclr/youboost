@@ -1,6 +1,7 @@
 'use client';
 import { Trash2, ChevronUp, ChevronDown } from 'lucide-react';
-import { formatUsd, estimatePrice } from '@/lib/landings/calculator';
+import { estimatePrice } from '@/lib/landings/calculator';
+import { formatCurrency } from '@/lib/utils';
 import type { CartItem as CartItemType } from '@/lib/landings/use-cart';
 
 interface CartItemProps {
@@ -25,7 +26,7 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[18px] font-bold text-white">{formatUsd(price)}</span>
+          <span className="text-[18px] font-bold text-white">{formatCurrency(price)}</span>
           <div className="flex flex-col gap-1">
             <button
               type="button"

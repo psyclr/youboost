@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminListCoupons, adminCreateCoupon, adminDeleteCoupon } from '@/lib/api/coupons';
 import type { CouponResponse, CreateCouponInput } from '@/lib/api/coupons';
@@ -11,9 +13,16 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
@@ -33,24 +42,11 @@ import {
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Trash2, Tag } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface CouponFormData {
-  code: string;
-  discountType: 'PERCENTAGE' | 'FIXED';
-  discountValue: string;
-  maxUses: string;
-  minOrderAmount: string;
-  expiresAt: string;
-}
-
-const defaultForm: CouponFormData = {
-  code: '',
-  discountType: 'PERCENTAGE',
-  discountValue: '',
-  maxUses: '',
-  minOrderAmount: '',
-  expiresAt: '',
-};
+import {
+  couponFormSchema,
+  defaultCouponFormValues,
+  type CouponFormValues,
+} from '@/lib/validation/admin-forms';
 
 function CouponDeleteCell({
   row,
@@ -133,7 +129,13 @@ export default function AdminCouponsPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [form, setForm] = useState<CouponFormData>(defaultForm);
+
+  const form = useForm<CouponFormValues>({
+    resolver: zodResolver(couponFormSchema),
+    defaultValues: defaultCouponFormValues,
+  });
+
+  const discountType = form.watch('discountType');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'coupons', { page }],
@@ -141,22 +143,21 @@ export default function AdminCouponsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (formData: CouponFormData) => {
+    mutationFn: (values: CouponFormValues) => {
       const input: CreateCouponInput = {
-        code: formData.code,
-        discountType: formData.discountType,
-        discountValue: Number.parseFloat(formData.discountValue),
+        code: values.code,
+        discountType: values.discountType,
+        discountValue: Number.parseFloat(values.discountValue),
       };
-      if (formData.maxUses) input.maxUses = Number.parseInt(formData.maxUses, 10);
-      if (formData.minOrderAmount)
-        input.minOrderAmount = Number.parseFloat(formData.minOrderAmount);
-      if (formData.expiresAt) input.expiresAt = new Date(formData.expiresAt).toISOString();
+      if (values.maxUses) input.maxUses = Number.parseInt(values.maxUses, 10);
+      if (values.minOrderAmount) input.minOrderAmount = Number.parseFloat(values.minOrderAmount);
+      if (values.expiresAt) input.expiresAt = new Date(values.expiresAt).toISOString();
       return adminCreateCoupon(input);
     },
     onSuccess: () => {
       toast.success('Coupon created');
       setCreateOpen(false);
-      setForm(defaultForm);
+      form.reset(defaultCouponFormValues);
       queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
     },
     onError: (err) => {
@@ -176,10 +177,6 @@ export default function AdminCouponsPage() {
     },
   });
 
-  const updateField = (key: keyof CouponFormData, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
   const columns = buildCouponColumns(setDeleteId);
 
   return (
@@ -193,7 +190,7 @@ export default function AdminCouponsPage() {
           open={createOpen}
           onOpenChange={(open) => {
             setCreateOpen(open);
-            if (!open) setForm(defaultForm);
+            if (!open) form.reset(defaultCouponFormValues);
           }}
         >
           <DialogTrigger asChild>
@@ -207,83 +204,127 @@ export default function AdminCouponsPage() {
               <DialogTitle>Create Coupon</DialogTitle>
               <DialogDescription>Create a new discount coupon</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Code</Label>
-                <Input
-                  placeholder="SUMMER2026"
-                  value={form.code}
-                  onChange={(e) => updateField('code', e.target.value.toUpperCase())}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Discount Type</Label>
-                  <Select
-                    value={form.discountType}
-                    onValueChange={(v) => updateField('discountType', v as 'PERCENTAGE' | 'FIXED')}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PERCENTAGE">Percentage (%)</SelectItem>
-                      <SelectItem value="FIXED">Fixed ($)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Discount Value {form.discountType === 'PERCENTAGE' ? '(%)' : '($)'}</Label>
-                  <Input
-                    type="number"
-                    step={form.discountType === 'PERCENTAGE' ? '1' : '0.01'}
-                    min="0"
-                    max={form.discountType === 'PERCENTAGE' ? '100' : undefined}
-                    value={form.discountValue}
-                    onChange={(e) => updateField('discountValue', e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Max Uses (optional)</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    placeholder="Unlimited"
-                    value={form.maxUses}
-                    onChange={(e) => updateField('maxUses', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Min Order Amount (optional)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="No minimum"
-                    value={form.minOrderAmount}
-                    onChange={(e) => updateField('minOrderAmount', e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Expiration Date (optional)</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.expiresAt}
-                  onChange={(e) => updateField('expiresAt', e.target.value)}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => createMutation.mutate(form)}
-                disabled={!form.code || !form.discountValue || createMutation.isPending}
+            <Form {...form}>
+              <form
+                noValidate
+                onSubmit={form.handleSubmit((values) => createMutation.mutate(values))}
+                className="space-y-4"
               >
-                {createMutation.isPending ? 'Creating…' : 'Create'}
-              </Button>
-            </DialogFooter>
+                <FormField
+                  control={form.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Code</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="SUMMER2026"
+                          {...field}
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="discountType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Discount Type</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="PERCENTAGE">Percentage (%)</SelectItem>
+                            <SelectItem value="FIXED">Fixed ($)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="discountValue"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Discount Value {discountType === 'PERCENTAGE' ? '(%)' : '($)'}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step={discountType === 'PERCENTAGE' ? '1' : '0.01'}
+                            min="0"
+                            max={discountType === 'PERCENTAGE' ? '100' : undefined}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="maxUses"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Uses (optional)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min="1" placeholder="Unlimited" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="minOrderAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Min Order Amount (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="No minimum"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="expiresAt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Expiration Date (optional)</FormLabel>
+                      <FormControl>
+                        <Input type="datetime-local" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="submit" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? 'Creating…' : 'Create'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
