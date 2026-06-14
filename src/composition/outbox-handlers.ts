@@ -21,6 +21,7 @@ import {
   createDepositFailedEmailHandler,
   createVerificationEmailHandler,
   createPasswordResetEmailHandler,
+  createAutoUserSetupEmailHandler,
 } from '../modules/notifications';
 import { createCouponUsedHandler } from '../modules/coupons';
 import { createReferralAppliedHandler } from '../modules/referrals';
@@ -110,6 +111,10 @@ export function buildOutboxHandlers(deps: OutboxHandlerDeps): OutboxHandler[] {
     createPasswordResetEmailHandler({
       emailProvider,
       logger: mk('outbox:password-reset-email'),
+    }),
+    createAutoUserSetupEmailHandler({
+      emailProvider,
+      logger: mk('outbox:auto-user-setup-email'),
     }),
     createCouponUsedHandler({ couponsService, logger: mk('outbox:coupon-used') }),
     createReferralAppliedHandler({

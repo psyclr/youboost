@@ -216,7 +216,13 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
   }
 
   async function linkGoogleId(userId: string, googleId: string): Promise<void> {
-    await prisma.user.update({ where: { id: userId }, data: { googleId } });
+    // Reached only after the caller has confirmed the Google email is verified,
+    // so ownership is proven: mark the email verified and clear the auto-created
+    // flag, claiming any pending guest account. Existing password is left intact.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { googleId, emailVerified: true, isAutoCreated: false },
+    });
   }
 
   return {

@@ -315,7 +315,7 @@ describe('Auth Service', () => {
   });
 
   describe('createAutoUser', () => {
-    it('creates fresh auto user + setup token + emits user.registered', async () => {
+    it('creates fresh auto user + setup token + emits user.auto_registered with setupUrl', async () => {
       const { service, userRepo, outbox, emailTokenRepo } = setup();
 
       const ticket = await service.createAutoUser('fresh@test.com');
@@ -327,17 +327,24 @@ describe('Auth Service', () => {
       expect(emailTokenRepo.calls.createEmailToken).toHaveLength(1);
       expect(emailTokenRepo.calls.createEmailToken[0]?.type).toBe('AUTO_USER_SETUP');
       expect(outbox.events).toHaveLength(1);
-      expect(outbox.events[0]?.event.type).toBe('user.registered');
+      const emitted = outbox.events[0]?.event;
+      expect(emitted?.type).toBe('user.auto_registered');
+      // The setup link must travel in the payload so the email handler can send it.
+      expect(emitted).toMatchObject({
+        type: 'user.auto_registered',
+        payload: { email: 'fresh@test.com', setupUrl: ticket.setupUrl },
+      });
     });
 
-    it('reuses existing auto user on repeat checkout — no extra register event', async () => {
+    it('re-emits user.auto_registered on repeat checkout so a returning guest can still claim', async () => {
       const { service, outbox } = setup();
 
       await service.createAutoUser('repeat@test.com');
       const second = await service.createAutoUser('repeat@test.com');
 
+      // Account is reused (not re-created) but the access email is re-sent each time.
       expect(second.fresh).toBe(false);
-      expect(outbox.events.filter((e) => e.event.type === 'user.registered')).toHaveLength(1);
+      expect(outbox.events.filter((e) => e.event.type === 'user.auto_registered')).toHaveLength(2);
     });
 
     it('rejects email that belongs to a real (non-auto) user', async () => {

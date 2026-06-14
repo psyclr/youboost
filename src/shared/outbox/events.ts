@@ -61,11 +61,14 @@ export type OutboxEvent =
     }
   // User lifecycle
   | {
-      type: 'user.registered';
+      // A guest checkout silently provisioned an account; the payload carries the
+      // set-password link so the customer can claim it. Distinct from normal
+      // registration (which emits user.email_verification_requested instead).
+      type: 'user.auto_registered';
       aggregateType: 'user';
       aggregateId: string;
       userId: string;
-      payload: { userId: string; email: string };
+      payload: { userId: string; email: string; setupUrl: string };
     }
   | {
       type: 'user.email_verification_requested';

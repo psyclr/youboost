@@ -6,7 +6,7 @@ export type { NotificationDispatcher } from './notification-dispatcher';
 export { createNotificationDispatcher } from './notification-dispatcher';
 export { createEmailProvider } from './utils/email-provider-factory';
 export type { EmailProvider } from './utils/email-provider';
-export { verificationEmail, passwordResetEmail } from './utils/email-templates';
+export { verificationEmail, passwordResetEmail, accountSetupEmail } from './utils/email-templates';
 
 export {
   createOrderCreatedEmailHandler,
@@ -21,3 +21,4 @@ export {
 } from './handlers/deposit-email.handler';
 export { createVerificationEmailHandler } from './handlers/verification-email.handler';
 export { createPasswordResetEmailHandler } from './handlers/password-reset-email.handler';
+export { createAutoUserSetupEmailHandler } from './handlers/auto-user-setup-email.handler';

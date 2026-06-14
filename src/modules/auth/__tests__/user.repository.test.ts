@@ -295,14 +295,16 @@ describe('UserRepository Google methods', () => {
     ).rejects.toThrow('connection lost');
   });
 
-  it('linkGoogleId sets googleId on an existing user', async () => {
+  it('linkGoogleId links googleId and marks the account verified + claimed', async () => {
     const { prisma, user } = makePrismaMock();
     user.update.mockResolvedValue({ id: 'u3', googleId: 'g-1' });
     const repo = createUserRepository(prisma);
     await repo.linkGoogleId('u3', 'g-1');
+    // A verified Google identity proves email ownership and claims an
+    // auto-created account, so linking flips emailVerified + clears isAutoCreated.
     expect(user.update).toHaveBeenCalledWith({
       where: { id: 'u3' },
-      data: { googleId: 'g-1' },
+      data: { googleId: 'g-1', emailVerified: true, isAutoCreated: false },
     });
   });
 });

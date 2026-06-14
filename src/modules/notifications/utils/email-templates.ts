@@ -39,6 +39,20 @@ export function verificationEmail(verifyUrl: string): { subject: string; body: s
   };
 }
 
+export function accountSetupEmail(setupUrl: string): { subject: string; body: string } {
+  return {
+    subject: 'Complete your YouBoost account',
+    body: baseTemplate(`
+      <h2>Your Account Is Ready</h2>
+      <p>We created an account for you so you can track your order. Set a password to access your dashboard.</p>
+      <p style="text-align:center"><a class="btn" href="${setupUrl}">Set Your Password</a></p>
+      <p>Or copy and paste this link into your browser:</p>
+      <div class="code">${setupUrl}</div>
+      <p>This link expires in 7 days.</p>
+    `),
+  };
+}
+
 export function passwordResetEmail(resetUrl: string): { subject: string; body: string } {
   return {
     subject: 'Reset your password — YouBoost',

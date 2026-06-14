@@ -42,7 +42,7 @@ export function createAuthAutoUserService(deps: AuthAutoUserServiceDeps): AuthAu
       throw new ConflictError('Account already exists for this email', 'ALREADY_REGISTERED');
     }
 
-    const { userId, fresh } = await prisma.$transaction(async (tx) => {
+    const { userId, setupToken, fresh } = await prisma.$transaction(async (tx) => {
       let user = existing;
       let isFresh = false;
       if (!user) {
@@ -54,26 +54,33 @@ export function createAuthAutoUserService(deps: AuthAutoUserServiceDeps): AuthAu
           tx,
         );
         isFresh = true;
-
-        await outbox.emit(
-          {
-            type: 'user.registered',
-            aggregateType: 'user',
-            aggregateId: user.id,
-            userId: user.id,
-            payload: { userId: user.id, email: user.email },
-          },
-          tx,
-        );
       }
-      return { userId: user.id, fresh: isFresh };
+
+      // Token + event live in the same transaction so the claim email is enqueued
+      // atomically with the account. Re-issued on every guest checkout so a
+      // returning, still-unclaimed customer always receives a fresh, valid link.
+      const token = await emailTokenRepo.createEmailToken({
+        userId: user.id,
+        type: 'AUTO_USER_SETUP',
+        ttlMs: AUTO_USER_SETUP_TOKEN_TTL_MS,
+        tx,
+      });
+      const url = `${appUrl}/set-password?token=${token}`;
+
+      await outbox.emit(
+        {
+          type: 'user.auto_registered',
+          aggregateType: 'user',
+          aggregateId: user.id,
+          userId: user.id,
+          payload: { userId: user.id, email: user.email, setupUrl: url },
+        },
+        tx,
+      );
+
+      return { userId: user.id, setupToken: token, fresh: isFresh };
     });
 
-    const setupToken = await emailTokenRepo.createEmailToken({
-      userId,
-      type: 'AUTO_USER_SETUP',
-      ttlMs: AUTO_USER_SETUP_TOKEN_TTL_MS,
-    });
     const setupUrl = `${appUrl}/set-password?token=${setupToken}`;
 
     logger.info({ userId, fresh }, 'Auto user ticket issued');
