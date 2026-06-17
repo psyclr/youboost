@@ -27,3 +27,22 @@
 Компоненты уже существуют (`hero.tsx`, `service-tiers.tsx`, `order-cart.tsx`,
 `cart-item.tsx`) — задача свести их в этот лэйаут на главной. Уточнить у владельца,
 отличается ли это от текущего вида и что именно поменять.
+
+## Аналитика — Yandex.Metrika (counter id 109942271)
+
+Подключить счётчик Яндекс.Метрики на сайт. Параметры init: `ssr:true`,
+`webvisor:true`, `clickmap:true`, `ecommerce:"dataLayer"`, `accurateTrackBounce:true`,
+`trackLinks:true`, плюс `referrer`/`url`.
+
+Подход для Next.js (App Router): грузить через `next/script` (strategy
+`afterInteractive`) в корневом `layout.tsx`, либо проверить `@next/third-parties`
+на поддержку Yandex Metrica. `<noscript>`-пиксель тоже добавить.
+
+Важно (ecommerce через dataLayer): раз включаем `ecommerce:"dataLayer"`, имеет смысл
+пушить ecommerce-события на ключевых шагах денежного флоу (просмотр услуги,
+добавление в корзину, purchase после оплаты) — иначе e-commerce отчёты будут пустыми.
+
+ВНИМАНИЕ: в присланном сниппете опечатки копипасты — корректные строки:
+`m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};`
+(в оригинале потерялись `||`). Брать официальный сниппет из кабинета Метрики, не
+присланный.
