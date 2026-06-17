@@ -39,6 +39,7 @@ export interface RouteRegistrationDeps {
   authEmailService: AuthEmailService;
   authGoogleService: AuthGoogleService;
   webUrl: string;
+  loginRateLimitMax: number;
   billingService: BillingRoutesDeps['service'];
   paymentProviderRegistry: BillingRoutesDeps['providerRegistry'];
   stripePayment: StripeRoutesDeps['service'];
@@ -67,6 +68,7 @@ export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void>
       authGoogleService: deps.authGoogleService,
       authenticate,
       webUrl: deps.webUrl,
+      loginRateLimitMax: deps.loginRateLimitMax,
     }),
     { prefix: '/auth' },
   );

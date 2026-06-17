@@ -28,6 +28,7 @@ function buildApp(over: Record<string, unknown> = {}) {
       authGoogleService: authGoogleService as never,
       authenticate: (async () => {}) as never,
       webUrl: 'http://web',
+      loginRateLimitMax: 10,
     }),
     { prefix: '/auth' },
   );

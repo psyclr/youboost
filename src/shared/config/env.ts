@@ -61,6 +61,13 @@ const envSchema = z.object({
     .string()
     .default('60000')
     .transform((val) => Number.parseInt(val, 10)),
+  // Max POST /auth/login attempts per 15-min window. Defaults to 10 (prod
+  // brute-force guard); raise in the dev/test backend so the e2e suite, which
+  // logs in many times, does not flake on the limit.
+  LOGIN_RATE_LIMIT_MAX: z
+    .string()
+    .default('10')
+    .transform((val) => Number.parseInt(val, 10)),
   CORS_ORIGIN: z.string().min(1),
 
   PROVIDER_ENCRYPTION_KEY: z.string().min(32),
@@ -141,6 +148,7 @@ export interface AppConfig {
     bcryptRounds: number;
     rateLimitMax: number;
     rateLimitWindowMs: number;
+    loginRateLimitMax: number;
     corsOrigin: string;
   };
   smtp: {
@@ -211,6 +219,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       bcryptRounds: parsed.BCRYPT_ROUNDS,
       rateLimitMax: parsed.RATE_LIMIT_MAX,
       rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
+      loginRateLimitMax: parsed.LOGIN_RATE_LIMIT_MAX,
       corsOrigin: parsed.CORS_ORIGIN,
     },
     smtp: {

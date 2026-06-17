@@ -75,6 +75,7 @@ describe('Auth Routes', () => {
         } as never,
         authenticate,
         webUrl: 'http://web',
+        loginRateLimitMax: 10,
       }),
       { prefix: '/auth' },
     );

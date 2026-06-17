@@ -255,6 +255,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     authEmailService,
     authGoogleService,
     webUrl: config.app.webUrl,
+    loginRateLimitMax: config.security.loginRateLimitMax,
     billingService,
     paymentProviderRegistry,
     stripePayment,
@@ -295,6 +296,5 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
       await statusPollWorker.stop();
     },
   };
-
   return { app, workers };
 }

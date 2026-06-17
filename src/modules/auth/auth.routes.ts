@@ -29,6 +29,8 @@ export interface AuthRoutesDeps {
   authGoogleService: AuthGoogleService;
   authenticate: preHandlerAsyncHookHandler;
   webUrl: string;
+  /** Max POST /login attempts per 15-min window (env-configurable; high in dev). */
+  loginRateLimitMax: number;
 }
 
 function validateBody<T>(
@@ -53,7 +55,8 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
 }
 
 export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
-  const { authService, authEmailService, authGoogleService, authenticate, webUrl } = deps;
+  const { authService, authEmailService, authGoogleService, authenticate, webUrl, loginRateLimitMax } =
+    deps;
 
   return async (app) => {
     // Register rate limit plugin
@@ -85,7 +88,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       {
         config: {
           rateLimit: {
-            max: 10,
+            max: loginRateLimitMax,
             timeWindow: '15 minutes',
           },
         },
