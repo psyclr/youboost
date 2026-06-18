@@ -48,7 +48,7 @@ import {
   createLandingServiceLookup,
   createAutoUserCreatorPort,
   createGuestOrderCreatorPort,
-  createGuestOrderPaymentPort,
+  selectGuestPaymentPort,
   createLateBoundOrderPaymentProcessor,
 } from './composition/landings-adapters';
 import { createHealthCheck } from './shared/health/health';
@@ -210,7 +210,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   orderPaymentProcessor.bind({ confirmOrderPayment: ordersService.confirmOrderPayment });
 
   // prettier-ignore
-  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(paymentRepo), payments: createGuestOrderPaymentPort(stripePayment, cryptomusPayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
+  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(paymentRepo), payments: selectGuestPaymentPort(config.payments.fake, stripePayment, cryptomusPayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
 
   // Admin module — fan-in consumer of every other module.
   const adminServices = buildAdminServices({

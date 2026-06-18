@@ -72,6 +72,13 @@ const envSchema = z.object({
 
   PROVIDER_ENCRYPTION_KEY: z.string().min(32),
   PROVIDER_MODE: z.enum(['stub', 'real']).default('stub'),
+  // Test-only: when 'true', guest checkout returns a deterministic provider
+  // checkout URL without calling Stripe/Cryptomus. For the isolated e2e stack —
+  // NEVER enable in prod. Default false.
+  PAYMENTS_FAKE: z
+    .string()
+    .default('false')
+    .transform((val) => val === 'true'),
 
   ORDER_POLL_INTERVAL_MS: z
     .string()
@@ -171,6 +178,9 @@ export interface AppConfig {
     encryptionKey: string;
     mode: 'stub' | 'real';
   };
+  payments: {
+    fake: boolean;
+  };
   polling: {
     intervalMs: number;
     batchSize: number;
@@ -237,6 +247,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       merchantId: parsed.CRYPTOMUS_MERCHANT_ID,
       paymentKey: parsed.CRYPTOMUS_PAYMENT_API_KEY,
       callbackUrl: parsed.CRYPTOMUS_CALLBACK_URL,
+    },
+    payments: {
+      fake: parsed.PAYMENTS_FAKE,
     },
     provider: {
       encryptionKey: parsed.PROVIDER_ENCRYPTION_KEY,
