@@ -1,0 +1,90 @@
+# Isolated e2e test stack — fully self-contained (own ephemeral Postgres + Redis,
+# no shared prod/dev instances, dummy secrets, PAYMENTS_FAKE so no real provider
+# calls). Run via scripts/e2e-stack.sh. Ports are offset (33xx) so it never
+# clashes with prod (30xx) or local dev (31xx).
+#
+#   docker compose -p youboost-e2e -f docker-compose.test.yml up -d --build
+#   E2E_REAL_BACKEND=1 E2E_BASE_URL=http://localhost:3301 npx playwright test
+#   docker compose -p youboost-e2e -f docker-compose.test.yml down -v
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: youboost
+      POSTGRES_USER: youboost
+      POSTGRES_PASSWORD: test
+    tmpfs:
+      - /var/lib/postgresql/data # ephemeral: wiped with the container
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U youboost -d youboost']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://youboost:test@postgres:5432/youboost
+    command: npx prisma migrate deploy
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://youboost:test@postgres:5432/youboost
+    entrypoint: npx ts-node prisma/seed.ts
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://youboost:test@postgres:5432/youboost
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: test_jwt_secret_0123456789_0123456789
+      JWT_REFRESH_SECRET: test_jwt_refresh_secret_0123456789_0123
+      PROVIDER_ENCRYPTION_KEY: test_provider_encryption_key_0123456789
+      CORS_ORIGIN: '*'
+      # Test seams: fake the external payment provider, stub email, lift login cap.
+      PAYMENTS_FAKE: 'true'
+      LOGIN_RATE_LIMIT_MAX: '500'
+      SMTP_HOST: ''
+      APP_URL: http://localhost:3301
+      WEB_URL: http://localhost:3301
+    ports:
+      - '3300:3000'
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      API_URL: http://backend:3000
+    ports:
+      - '3301:3001'
+    depends_on:
+      - backend
