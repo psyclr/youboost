@@ -40,6 +40,9 @@ Docker compose is **prod-only**. Dev runs locally on **separate ports** so it co
 
 - Config: `frontend/playwright.config.ts`, base URL: `http://localhost:3101` (dev frontend; override with `E2E_BASE_URL`)
 - Test dir: `frontend/e2e/`
+- **Mocked UI specs** run against the dev stack (3101 → dev backend → `youboost_dev`). They use `page.route()` to fake `/api` — fine because they never mutate real data.
+- **Real-backend specs** (money/state journeys, e.g. `landing-cart-checkout.spec.ts`) must NOT hit `youboost_dev` (it's shared with prod). They are guarded by `E2E_REAL_BACKEND=1` and run only against the **isolated Docker stack**: `scripts/e2e-stack.sh` (docker-compose.test.yml — own ephemeral pg+redis+backend+frontend on 33xx, `PAYMENTS_FAKE` stubs the external provider, seeded). One command: `scripts/e2e-stack.sh` (up --build → wait → playwright → down -v).
+- **Backend DB-mutating integration tests** (jest, `*.integration.test.ts`) gate on `TEST_DATABASE_URL` and run against `youboost_test` — never `youboost_dev`. See the `database-operations` skill.
 - Rate limiting: login endpoint has 10 req/15min in-memory limit. Total logins across all spec files must stay <= 10. Backend restart clears limits.
 - Use `test.describe.serial` with shared `BrowserContext` + `Page` to minimize logins (1 per spec file)
 - Use `page.route()` to mock API responses where needed (order creation, bulk orders)
