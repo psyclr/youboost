@@ -13,12 +13,13 @@ export function LandingPageView({ landing }: Readonly<{ landing: LandingResponse
       <SiteHeader />
       <main className="flex-1">
         <Hero hero={landing.hero} stats={landing.stats} />
-        <FeatureRow />
+        {/* Calculator sits directly under the hero — the fastest path to checkout. */}
         <ServiceTiers
           slug={landing.slug}
           tiers={landing.tiers}
           defaultMinAmount={landing.hero.minAmount}
         />
+        <FeatureRow />
         <Steps steps={landing.steps} />
         <FaqAccordion faq={landing.faq} />
       </main>
