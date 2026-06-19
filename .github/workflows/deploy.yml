@@ -1,0 +1,20 @@
+name: CI/CD
+
+# Runs on the self-hosted runner on THIS server: push to main → verify → deploy.
+# No cloud minutes; everything happens locally next to the running prod stack.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false # never interrupt a deploy mid-flight
+
+jobs:
+  verify-and-deploy:
+    runs-on: [self-hosted, youboost]
+    timeout-minutes: 30
+    steps:
+      - name: Verify and deploy
+        run: bash /root/smm/youboost/scripts/deploy.sh
