@@ -15,10 +15,10 @@ import { test, expect, type Page, type BrowserContext, type Route } from '@playw
  * would navigate to (PAYMENTS_FAKE returns a pay.cryptomus.com URL).
  */
 const CART_CHECKOUT = /\/api\/landing\/[^/]+\/checkout\/cart$/;
-const describeReal =
-  process.env['E2E_REAL_BACKEND'] === '1' ? test.describe.serial : test.describe.serial.skip;
+const RUN_REAL = process.env['E2E_REAL_BACKEND'] === '1';
 
-describeReal('Landing cart checkout (real backend, isolated stack)', () => {
+test.describe.serial('Landing cart checkout (real backend, isolated stack)', () => {
+  test.skip(!RUN_REAL, 'requires the isolated test stack (E2E_REAL_BACKEND=1)');
   let context: BrowserContext;
   let page: Page;
 

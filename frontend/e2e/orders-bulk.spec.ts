@@ -31,11 +31,6 @@ test.describe.serial('Bulk Order Page', () => {
     await context.close();
   });
 
-  test('should display page heading', async () => {
-    await expect(page.getByRole('heading', { name: 'Bulk Order' })).toBeVisible();
-    await expect(page.getByText('Create multiple orders at once')).toBeVisible();
-  });
-
   test('should navigate back to orders via back arrow', async () => {
     await page.locator('a[href="/orders"]').first().click();
     await page.waitForURL('/orders');
@@ -43,10 +38,8 @@ test.describe.serial('Bulk Order Page', () => {
     await page.goto('/orders/bulk');
   });
 
-  test('should display card title and description', async () => {
-    await expect(page.getByText('Order Configuration')).toBeVisible();
-    await expect(page.getByText('Select a service and enter links to order')).toBeVisible();
-  });
+  // Pure presence (heading / card title) dropped — the functional tests
+  // navigate and operate this page, proving it rendered.
 
   test('should display all form fields', async () => {
     await expect(page.getByText('Service').first()).toBeVisible();

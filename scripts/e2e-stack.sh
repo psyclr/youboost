@@ -16,7 +16,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PROJECT=youboost-e2e
-COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.test.yml)
+# Absolute -f path: the trap runs cleanup after we cd into frontend/, so a
+# relative compose path would not resolve and teardown would silently fail.
+COMPOSE=(docker compose -p "$PROJECT" -f "$ROOT/docker-compose.test.yml")
 BASE_URL=http://localhost:3301
 
 cleanup() {

@@ -10,10 +10,10 @@ import { test, expect, type Page, type BrowserContext, type Route } from '@playw
  *   scripts/e2e-stack.sh orders-create
  */
 const ORDERS = /\/api\/orders$/;
-const describeReal =
-  process.env['E2E_REAL_BACKEND'] === '1' ? test.describe.serial : test.describe.serial.skip;
+const RUN_REAL = process.env['E2E_REAL_BACKEND'] === '1';
 
-describeReal('Order creation (real backend, isolated stack)', () => {
+test.describe.serial('Order creation (real backend, isolated stack)', () => {
+  test.skip(!RUN_REAL, 'requires the isolated test stack (E2E_REAL_BACKEND=1)');
   let context: BrowserContext;
   let page: Page;
 
