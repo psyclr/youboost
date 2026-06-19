@@ -226,6 +226,19 @@ async function seed(): Promise<void> {
     });
     console.log(`Published landing: ${defaultLanding.slug} (${defaultLanding.id})`);
   }
+
+  // E2E-only: give the admin a funded wallet so the isolated test stack can
+  // exercise logged-in order creation (which holds funds). Gated so prod/dev
+  // seeds never fund an account.
+  if (process.env['SEED_E2E'] === '1') {
+    await prisma.wallet.upsert({
+      where: { userId_currency: { userId: admin.id, currency: 'USD' } },
+      update: { balance: 1000 },
+      create: { userId: admin.id, currency: 'USD', balance: 1000 },
+    });
+    console.log('E2E: funded admin wallet with $1000');
+  }
+
   console.log('Seeding complete!');
 }
 

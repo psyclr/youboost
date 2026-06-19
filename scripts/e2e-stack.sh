@@ -47,4 +47,5 @@ fi
 
 echo "--- running real-backend Playwright specs ---"
 cd frontend
-E2E_REAL_BACKEND=1 E2E_BASE_URL="$BASE_URL" npx playwright test "${@:-landing-cart-checkout}"
+if [ "$#" -gt 0 ]; then specs=("$@"); else specs=(landing-cart-checkout orders-create); fi
+E2E_REAL_BACKEND=1 E2E_BASE_URL="$BASE_URL" npx playwright test "${specs[@]}"

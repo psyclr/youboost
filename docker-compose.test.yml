@@ -46,6 +46,7 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql://youboost:test@postgres:5432/youboost
+      SEED_E2E: '1' # fund the admin wallet for logged-in order-creation e2e
     entrypoint: npx ts-node prisma/seed.ts
     depends_on:
       migrate:
