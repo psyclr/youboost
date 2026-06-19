@@ -23,7 +23,7 @@ git reset --hard origin/main
 git rev-parse --short HEAD
 
 step "backend: install + lint + types + tests"
-npm ci --no-audit --no-fund --silent
+npm install --no-audit --no-fund --silent
 npx tsc --noEmit
 npx eslint src --quiet
 TEST_DATABASE_URL="$TEST_DB" npx prisma migrate deploy >/dev/null
@@ -31,7 +31,7 @@ TEST_DATABASE_URL="$TEST_DB" npx jest --silent
 
 step "frontend: install + lint + types + tests"
 cd frontend
-npm ci --no-audit --no-fund --silent
+npm install --no-audit --no-fund --silent
 npx tsc --noEmit
 npx eslint src --quiet
 npx jest --silent
