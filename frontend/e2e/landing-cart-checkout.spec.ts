@@ -38,15 +38,18 @@ test.describe.serial('Landing cart checkout (real backend, isolated stack)', () 
     // the page navigates on success, which would discard the response body if we
     // read it post-hoc. route.fetch() hits the real test backend; we read the
     // real response, then fulfill so the frontend redirect proceeds.
-    let captured: {
+    type CheckoutResponse = {
       userId: string;
       paymentId: string;
       orderIds: string[];
       checkoutUrl: string;
-    } | null = null;
+    };
+    // Holder object: the closure assigns cap.value, and TS keeps the property's
+    // union type in the outer scope (unlike a `let` it would narrow to null).
+    const cap: { value: CheckoutResponse | null } = { value: null };
     await page.route(CART_CHECKOUT, async (route: Route) => {
       const response = await route.fetch();
-      captured = (await response.json()) as typeof captured;
+      cap.value = (await response.json()) as CheckoutResponse;
       await route.fulfill({ response });
     });
     // Stub only the external provider host the browser is redirected to.
@@ -73,8 +76,8 @@ test.describe.serial('Landing cart checkout (real backend, isolated stack)', () 
       .click();
 
     // The REAL backend created the entities and returned a real session URL.
-    await expect.poll(() => captured).not.toBeNull();
-    const json = captured as NonNullable<typeof captured>;
+    await expect.poll(() => cap.value).not.toBeNull();
+    const json = cap.value as CheckoutResponse;
     expect(json.userId).toMatch(/^[0-9a-f-]{36}$/); // real DB UUID, not a mock 'u'
     expect(json.paymentId).toMatch(/^[0-9a-f-]{36}$/);
     expect(json.orderIds.length).toBeGreaterThan(0);

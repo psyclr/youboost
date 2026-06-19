@@ -34,11 +34,13 @@ test.describe.serial('Order creation (real backend, isolated stack)', () => {
   test('creates a real order from the dashboard and lands on its detail page', async () => {
     // Forward POST /orders to the real backend, capturing the created order id
     // before the page navigates away to the detail route.
-    let created: { orderId: string } | null = null;
+    type OrderResponse = { orderId: string };
+    // Holder object so TS keeps the union in the outer scope (see landing-cart-checkout).
+    const cap: { value: OrderResponse | null } = { value: null };
     await page.route(ORDERS, async (route: Route) => {
       if (route.request().method() !== 'POST') return route.continue();
       const response = await route.fetch();
-      created = (await response.json()) as { orderId: string };
+      cap.value = (await response.json()) as OrderResponse;
       await route.fulfill({ response });
     });
 
@@ -60,8 +62,8 @@ test.describe.serial('Order creation (real backend, isolated stack)', () => {
 
     // The REAL backend created the order (held funds, submitted to the stub
     // provider) and returned a real DB id.
-    await expect.poll(() => created).not.toBeNull();
-    const orderId = (created as NonNullable<typeof created>).orderId;
+    await expect.poll(() => cap.value).not.toBeNull();
+    const orderId = (cap.value as OrderResponse).orderId;
     expect(orderId).toMatch(/^[0-9a-f-]{36}$/);
 
     await page.waitForURL(new RegExp(`/orders/${orderId}`), { timeout: 15_000 });
