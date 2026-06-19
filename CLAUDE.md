@@ -34,7 +34,7 @@ Docker compose is **prod-only**. Dev runs locally on **separate ports** so it co
   - E2E tests: `cd frontend && npx playwright test` (against the local dev stack on 3101)
 - **Deploy** — push, then rebuild prod containers without cache so they pick up the pushed code
   - `docker compose build --no-cache backend frontend && docker compose up -d`
-- **No CI:** there are no GitHub Actions and none are wanted — verify locally before pushing.
+- **CI/pipeline:** a Claude-Code-based deploy pipeline is being built. There is an isolated Docker e2e stack (`scripts/e2e-stack.sh` / `docker-compose.test.yml`) as its foundation. No GitHub Actions yet — verify locally before pushing (full local verify is the bar).
 
 ## E2E Tests (Playwright)
 
