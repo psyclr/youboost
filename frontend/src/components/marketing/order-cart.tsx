@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from './cart-item';
 import { formatCurrency } from '@/lib/utils';
+import { analytics } from '@/lib/analytics';
 import { isTrustedCheckoutHost } from '@/lib/payments/checkout-host';
 import { checkoutLandingCart } from '@/lib/api/landings';
 import { publicApiErrorMessage } from '@/lib/api/error-messages';
@@ -69,7 +70,10 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
 
   const onPay = () => {
     setError(null);
-    if (validate()) mutation.mutate();
+    if (validate()) {
+      analytics.checkoutStarted({ total: cart.total, itemCount: cart.count });
+      mutation.mutate();
+    }
   };
 
   if (cart.count === 0) {

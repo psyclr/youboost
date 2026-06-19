@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import type { LandingTierResponse } from '../api/types';
 import { estimatePrice, defaultQtyForTier } from './calculator';
+import { analytics } from '../analytics';
 
 const MAX_ITEMS = 20;
 
@@ -28,19 +29,17 @@ export function useCart({ defaultMinAmount }: { defaultMinAmount: number }): Use
 
   const addItem = useCallback(
     (tier: LandingTierResponse) => {
+      const quantity = defaultQtyForTier(tier, defaultMinAmount);
       setItems((prev) => {
         if (prev.length >= MAX_ITEMS) return prev;
         const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${prev.length}`;
-        return [
-          ...prev,
-          {
-            id,
-            tier,
-            link: '',
-            quantity: defaultQtyForTier(tier, defaultMinAmount),
-            collapsed: false,
-          },
-        ];
+        return [...prev, { id, tier, link: '', quantity, collapsed: false }];
+      });
+      analytics.addToCart({
+        id: tier.id,
+        name: tier.titleOverride ?? tier.service.name,
+        price: estimatePrice(tier, quantity),
+        quantity,
       });
     },
     [defaultMinAmount],
