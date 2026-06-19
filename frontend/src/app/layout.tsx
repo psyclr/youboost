@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Roboto, Roboto_Mono, Geologica } from 'next/font/google';
 import { Providers } from '@/components/providers';
+import { YandexMetrika } from '@/components/analytics/yandex-metrika';
 import './globals.css';
 
 const roboto = Roboto({
@@ -41,6 +42,7 @@ export default function RootLayout({
         className={`${roboto.variable} ${robotoMono.variable} ${geologica.variable} antialiased`}
       >
         <Providers>{children}</Providers>
+        <YandexMetrika />
       </body>
     </html>
   );
