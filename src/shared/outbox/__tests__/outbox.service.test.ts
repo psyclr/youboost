@@ -50,7 +50,13 @@ describe('OutboxService', () => {
       aggregateType: 'deposit',
       aggregateId: 'dep-1',
       userId: 'user-1',
-      payload: { depositId: 'dep-1', userId: 'user-1', amount: 25, provider: 'Stripe' },
+      payload: {
+        depositId: 'dep-1',
+        userId: 'user-1',
+        amount: 25,
+        provider: 'Stripe',
+        metrikaClientId: null,
+      },
     };
     const fakeTx = { marker: 'tx' } as unknown as Prisma.TransactionClient;
 

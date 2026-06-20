@@ -43,6 +43,8 @@ function buildRealRegistry(emailProvider: FakeEmailProvider): ReturnType<typeof 
     couponsService: {},
     referralsService: {},
     emailProvider,
+    metrikaClient: { isConfigured: () => false, uploadOfflineConversion: async () => undefined },
+    metrikaTargets: { purchase: 'purchase', deposit: 'deposit' },
   } as unknown as OutboxHandlerDeps;
   return createHandlerRegistry(buildOutboxHandlers(deps));
 }

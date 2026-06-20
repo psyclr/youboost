@@ -40,6 +40,13 @@ cd "$ROOT"
 step "e2e: isolated docker stack"
 bash scripts/e2e-stack.sh
 
+step "deploy: apply DB migrations to prod"
+# Additive migrations only run here, before the new backend starts, so the
+# running (old) backend keeps working and the new one finds its columns. The
+# migrate image must be rebuilt to include migrations added since last deploy.
+docker compose build migrate
+docker compose run --rm migrate
+
 step "deploy: rebuild + restart prod"
 docker compose build --no-cache backend frontend
 docker compose up -d backend frontend

@@ -112,7 +112,7 @@ export async function confirmOrderPayment(
   deps: ConfirmOrderPaymentDeps,
   paymentId: string,
 ): Promise<void> {
-  const { paymentRepo, logger } = deps;
+  const { prisma, paymentRepo, outbox, logger } = deps;
 
   const payment = await paymentRepo.findPaymentWithOrders(paymentId);
   if (!payment) {
@@ -121,9 +121,32 @@ export async function confirmOrderPayment(
 
   const wasAlreadyPaid = payment.status === 'PAID';
   if (!wasAlreadyPaid) {
-    // Settlement marker (idempotent). Result is intentionally not used to gate
-    // submission — per-order claims guarantee each order is submitted once.
-    await paymentRepo.claimPaymentForSettlement(paymentId);
+    // Settlement marker (idempotent). The claim result is not used to gate
+    // submission — per-order claims guarantee each order is submitted once — but
+    // it DOES gate the purchase analytics event: only the delivery that wins the
+    // atomic PENDING→PAID flip emits `payment.confirmed`, so a confirmed purchase
+    // is reported to analytics exactly once even under concurrent webhooks.
+    const claimed = await paymentRepo.claimPaymentForSettlement(paymentId);
+    if (claimed) {
+      await prisma.$transaction((tx) =>
+        outbox.emit(
+          {
+            type: 'payment.confirmed',
+            aggregateType: 'payment',
+            aggregateId: paymentId,
+            userId: payment.userId,
+            payload: {
+              paymentId,
+              userId: payment.userId,
+              amount: Number(payment.amount),
+              currency: 'USD',
+              metrikaClientId: payment.metrikaClientId,
+            },
+          },
+          tx,
+        ),
+      );
+    }
   }
 
   const pendingOrders = payment.orders.filter((o) => o.status === 'PENDING_PAYMENT');

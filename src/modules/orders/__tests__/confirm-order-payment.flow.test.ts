@@ -14,7 +14,11 @@ import {
 } from './fakes';
 
 interface MakeDepsOptions {
-  payment: PaymentWithOrders | null;
+  payment: Omit<PaymentWithOrders, 'amount' | 'metrikaClientId'> | null;
+  /** Payment amount in the snapshot (defaults to 0). */
+  amount?: number;
+  /** Metrika ClientID captured at checkout (defaults to null). */
+  metrikaClientId?: string | null;
   /**
    * Override the status an order has in the DB (repo), keyed by order id —
    * defaults to the status in the payment snapshot. Use to simulate an order
@@ -36,7 +40,11 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     createPaymentWithOrders: jest.Mock;
     attachSession: jest.Mock;
   };
+  outboxEvents: ReturnType<typeof createFakeOutbox>['events'];
 } {
+  const payment: PaymentWithOrders | null = opts.payment
+    ? { ...opts.payment, amount: opts.amount ?? 0, metrikaClientId: opts.metrikaClientId ?? null }
+    : null;
   const submitOrder = opts.submitOrderError
     ? jest.fn(async () => {
         throw opts.submitOrderError;
@@ -47,10 +55,10 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
 
   // Seed the repo with the payment's orders as they exist in the DB.
   const ordersRepo = createFakeOrdersRepository({
-    orders: (opts.payment?.orders ?? []).map((o) =>
+    orders: (payment?.orders ?? []).map((o) =>
       makeOrderRecord({
         id: o.id,
-        userId: opts.payment?.userId ?? 'u1',
+        userId: payment?.userId ?? 'u1',
         serviceId: o.serviceId,
         link: o.link,
         quantity: o.quantity,
@@ -77,7 +85,7 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   const outbox = createFakeOutbox();
 
   const paymentRepo = {
-    findPaymentWithOrders: jest.fn(async () => opts.payment),
+    findPaymentWithOrders: jest.fn(async () => payment),
     claimPaymentForSettlement: jest.fn(async () => true),
     createPaymentWithOrders: jest.fn(),
     attachSession: jest.fn(),
@@ -94,6 +102,7 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     servicesRepo,
     providerSelector,
     outbox: outbox.port,
+    outboxEvents: outbox.events,
     logger: silentLogger,
   };
 }
@@ -118,6 +127,48 @@ describe('confirmOrderPayment', () => {
     await confirmOrderPayment(deps, 'pay1');
     expect(deps.paymentRepo.claimPaymentForSettlement).toHaveBeenCalledWith('pay1');
     expect(deps.submitted).toEqual(['o1', 'o2']);
+  });
+
+  it('emits payment.confirmed once with amount + ClientID when it wins the settlement claim', async () => {
+    const deps = makeDeps({
+      amount: 24.5,
+      metrikaClientId: 'ym-client-1',
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+        ],
+      },
+    });
+    await confirmOrderPayment(deps, 'pay1');
+    const confirmed = deps.outboxEvents.filter((e) => e.event.type === 'payment.confirmed');
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]?.event.payload).toEqual(
+      expect.objectContaining({
+        paymentId: 'pay1',
+        amount: 24.5,
+        currency: 'USD',
+        metrikaClientId: 'ym-client-1',
+      }),
+    );
+  });
+
+  it('does NOT emit payment.confirmed when it loses the settlement claim (concurrent webhook)', async () => {
+    const deps = makeDeps({
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+        ],
+      },
+    });
+    deps.paymentRepo.claimPaymentForSettlement.mockResolvedValueOnce(false);
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.outboxEvents.some((e) => e.event.type === 'payment.confirmed')).toBe(false);
   });
 
   it('already-PAID payment with no pending orders is a no-op', async () => {

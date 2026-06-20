@@ -65,6 +65,12 @@ services:
       CRYPTOMUS_MERCHANT_ID: ${CRYPTOMUS_MERCHANT_ID:-}
       CRYPTOMUS_PAYMENT_API_KEY: ${CRYPTOMUS_PAYMENT_API_KEY:-}
       CRYPTOMUS_CALLBACK_URL: ${CRYPTOMUS_CALLBACK_URL:-}
+      # Yandex.Metrika server-side conversions — without the OAuth token the
+      # offline-conversion upload is a no-op (counter + targets have defaults).
+      YANDEX_METRIKA_COUNTER_ID: ${YANDEX_METRIKA_COUNTER_ID:-109942271}
+      YANDEX_METRIKA_OAUTH_TOKEN: ${YANDEX_METRIKA_OAUTH_TOKEN:-}
+      YANDEX_METRIKA_PURCHASE_TARGET: ${YANDEX_METRIKA_PURCHASE_TARGET:-purchase}
+      YANDEX_METRIKA_DEPOSIT_TARGET: ${YANDEX_METRIKA_DEPOSIT_TARGET:-deposit}
       # Email via self-hosted Postal (SMTP on host port 25, reached via host-gateway)
       # Host is fixed to host-gateway here; .env's SMTP_HOST (127.0.0.1) is for local dev only.
       SMTP_HOST: host.docker.internal

@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { AppConfig } from './env.types';
 
 const envSchema = z.object({
   DATABASE_URL: z.url(),
@@ -20,6 +21,12 @@ const envSchema = z.object({
   // Stripe (optional)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // Yandex.Metrika server-side conversions (optional — disabled when OAuth token unset)
+  YANDEX_METRIKA_COUNTER_ID: z.string().default('109942271'),
+  YANDEX_METRIKA_OAUTH_TOKEN: z.string().optional(),
+  YANDEX_METRIKA_PURCHASE_TARGET: z.string().default('purchase'),
+  YANDEX_METRIKA_DEPOSIT_TARGET: z.string().default('deposit'),
 
   // Cryptomus (optional)
   CRYPTOMUS_MERCHANT_ID: z.string().optional(),
@@ -130,76 +137,7 @@ const envSchema = z.object({
     .transform((val) => Number.parseInt(val, 10)),
 });
 
-export interface AppConfig {
-  db: { url: string };
-  redis: { url: string };
-  app: {
-    nodeEnv: 'development' | 'production' | 'test';
-    port: number;
-    logLevel: string;
-    url: string;
-    webUrl: string;
-  };
-  google: {
-    clientId: string;
-    clientSecret: string;
-    redirectUri: string;
-  };
-  jwt: {
-    secret: string;
-    expiresIn: string;
-    refreshSecret: string;
-    refreshExpiresIn: string;
-  };
-  security: {
-    bcryptRounds: number;
-    rateLimitMax: number;
-    rateLimitWindowMs: number;
-    loginRateLimitMax: number;
-    corsOrigin: string;
-  };
-  smtp: {
-    host: string | undefined;
-    port: number;
-    user: string | undefined;
-    pass: string | undefined;
-    from: string;
-  };
-  stripe: {
-    secretKey: string | undefined;
-    webhookSecret: string | undefined;
-  };
-  cryptomus: {
-    merchantId: string | undefined;
-    paymentKey: string | undefined;
-    callbackUrl: string | undefined;
-  };
-  provider: {
-    encryptionKey: string;
-    mode: 'stub' | 'real';
-  };
-  payments: {
-    fake: boolean;
-  };
-  polling: {
-    intervalMs: number;
-    batchSize: number;
-    circuitBreakerThreshold: number;
-    circuitBreakerCooldownMs: number;
-    orderTimeoutHours: number;
-  };
-  apiKeys: {
-    rateBasic: number;
-    ratePro: number;
-    rateEnterprise: number;
-  };
-  billing: {
-    minDeposit: number;
-    maxDeposit: number;
-    depositExpiryMs: number;
-    pendingPaymentTtlMinutes: number;
-  };
-}
+export type { AppConfig };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
   const parsed = envSchema.parse(env);
@@ -247,6 +185,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       merchantId: parsed.CRYPTOMUS_MERCHANT_ID,
       paymentKey: parsed.CRYPTOMUS_PAYMENT_API_KEY,
       callbackUrl: parsed.CRYPTOMUS_CALLBACK_URL,
+    },
+    analytics: {
+      yandexMetrika: {
+        counterId: parsed.YANDEX_METRIKA_COUNTER_ID,
+        oauthToken: parsed.YANDEX_METRIKA_OAUTH_TOKEN,
+        purchaseTarget: parsed.YANDEX_METRIKA_PURCHASE_TARGET,
+        depositTarget: parsed.YANDEX_METRIKA_DEPOSIT_TARGET,
+      },
     },
     payments: {
       fake: parsed.PAYMENTS_FAKE,

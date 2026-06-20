@@ -44,7 +44,7 @@ export interface CryptomusPaymentService {
   readonly provider: PaymentProvider;
   createCheckoutSession(
     userId: string,
-    input: { amount: number },
+    input: { amount: number; metrikaClientId?: string | null },
   ): Promise<CheckoutSessionResponse>;
   createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(rawBody: string): Promise<void>;
@@ -99,11 +99,15 @@ export function createCryptomusPaymentService(
 
   async function createCheckoutSession(
     userId: string,
-    input: { amount: number },
+    input: { amount: number; metrikaClientId?: string | null },
   ): Promise<CheckoutSessionResponse> {
     const creds = getCreds();
     const urlCallback = getCallbackBase();
-    const deposit = await lifecycle.prepareDepositCheckout(userId, input.amount);
+    const deposit = await lifecycle.prepareDepositCheckout(
+      userId,
+      input.amount,
+      input.metrikaClientId,
+    );
 
     const result = await createCryptomusPayment(
       creds,

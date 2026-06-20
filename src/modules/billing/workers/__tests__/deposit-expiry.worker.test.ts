@@ -33,6 +33,7 @@ function makeDeposit(overrides: Partial<DepositRecord> = {}): DepositRecord {
     cryptoCurrency: 'USDT',
     paymentAddress: 'addr-1',
     status: 'PENDING',
+    metrikaClientId: null,
     txHash: null,
     expiresAt: new Date('2025-01-01'),
     confirmedAt: null,

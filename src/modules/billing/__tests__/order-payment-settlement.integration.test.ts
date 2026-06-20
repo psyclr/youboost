@@ -158,6 +158,7 @@ describeDb('order-payment settlement (integration, real DB)', () => {
       provider: 'CRYPTOMUS',
       amount: 2,
       items: [{ serviceId: service.id, link: 'https://youtube.com/watch?v=abc', quantity: 1000, price: 1 }],
+      metrikaClientId: 'ym-int-client',
     });
     const firstOrderId = orderIds[0];
     if (!firstOrderId) throw new Error('seed: no order created');
@@ -187,6 +188,14 @@ describeDb('order-payment settlement (integration, real DB)', () => {
     const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
     expect(payment?.status).toBe('PAID');
     expect(capturedEvents.map((e) => e.type)).toContain('order.created');
+
+    // The confirmed purchase is reported once, carrying the captured ClientID so
+    // the analytics handler can attribute the server-side conversion.
+    const purchase = capturedEvents.filter((e) => e.type === 'payment.confirmed');
+    expect(purchase).toHaveLength(1);
+    expect(purchase[0]?.payload).toEqual(
+      expect.objectContaining({ paymentId, amount: 2, currency: 'USD', metrikaClientId: 'ym-int-client' }),
+    );
   });
 
   it('is idempotent: a replayed webhook does not resubmit the order', async () => {

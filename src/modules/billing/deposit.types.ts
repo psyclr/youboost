@@ -21,6 +21,7 @@ export interface DepositRecord {
   cryptoCurrency: string;
   paymentAddress: string;
   status: string;
+  metrikaClientId: string | null;
   txHash: string | null;
   expiresAt: Date;
   confirmedAt: Date | null;

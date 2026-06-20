@@ -6,7 +6,7 @@ import type { AppConfig } from './shared/config';
 import { createServiceLogger } from './shared/utils/logger';
 import { createRedisCache } from './shared/cache/redis-cache';
 import { setupFastifyApp } from './composition/setup-fastify';
-import { buildOutboxHandlers } from './composition/outbox-handlers';
+import { buildHandlerRegistry } from './composition/outbox-handlers';
 import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService, createAuthGoogleService } from './modules/auth';
@@ -14,7 +14,7 @@ import { createUserRepository, createTokenRepository, createEmailTokenRepository
 import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createPaymentRepository } from './modules/billing';
 import { createPaymentCompletionRouter } from './modules/billing/payment-completion.router';
 // prettier-ignore
-import { createOutboxRepository, createOutboxService, createOutboxWorker, createHandlerRegistry } from './shared/outbox';
+import { createOutboxRepository, createOutboxService, createOutboxWorker } from './shared/outbox';
 import { createSystemClock } from './shared/utils/clock';
 // prettier-ignore
 import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, stubProviderClient } from './modules/orders';
@@ -231,15 +231,14 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker, pendingPaymentExpiryWorker } = buildOrderWorkers({ prisma, ordersRepo, servicesRepo, ordersService, providerSelector, fundSettlement, circuitBreaker, outbox, depositRepo, depositLifecycle, config });
 
   // Outbox handler registry — wires domain events to side-effect producers.
-  const handlerRegistry = createHandlerRegistry(
-    buildOutboxHandlers({
-      webhookDispatcher,
-      notificationsService,
-      couponsService,
-      referralsService,
-      emailProvider,
-    }),
-  );
+  const handlerRegistry = buildHandlerRegistry({
+    webhookDispatcher,
+    notificationsService,
+    couponsService,
+    referralsService,
+    emailProvider,
+    metrika: config.analytics.yandexMetrika,
+  });
   const outboxWorker = createOutboxWorker({
     outboxRepo,
     handlers: handlerRegistry,

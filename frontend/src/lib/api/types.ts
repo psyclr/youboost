@@ -548,6 +548,8 @@ export interface LandingCartCheckoutBody {
   email: string;
   items: LandingCartCheckoutItem[];
   paymentProvider?: 'stripe' | 'cryptomus';
+  /** Yandex.Metrika ClientID for server-side purchase attribution. */
+  metrikaClientId?: string;
 }
 export interface LandingCartCheckoutResult {
   userId: string;

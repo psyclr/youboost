@@ -30,14 +30,14 @@ export const getTransactions = (params?: { page?: number; limit?: number; type?:
 export const getTransaction = (id: string) =>
   apiRequest<TransactionDetailed>(`/billing/transactions/${id}`);
 
-export const createStripeCheckout = (amount: number) =>
+export const createStripeCheckout = (amount: number, metrikaClientId?: string | null) =>
   apiRequest<{ sessionId: string; url: string }>('/billing/stripe/checkout', {
     method: 'POST',
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
   });
 
-export const createCryptomusCheckout = (amount: number) =>
+export const createCryptomusCheckout = (amount: number, metrikaClientId?: string | null) =>
   apiRequest<{ orderId: string; url: string }>('/billing/cryptomus/checkout', {
     method: 'POST',
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
   });

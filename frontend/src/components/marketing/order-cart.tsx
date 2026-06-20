@@ -20,10 +20,11 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (metrikaClientId: string | null) =>
       checkoutLandingCart(slug, {
         email: email.trim(),
         paymentProvider: provider,
+        metrikaClientId: metrikaClientId ?? undefined,
         items: cart.items.map((i) => ({
           tierId: i.tier.id,
           link: i.link.trim(),
@@ -68,11 +69,12 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
     return true;
   };
 
-  const onPay = () => {
+  const onPay = async () => {
     setError(null);
     if (validate()) {
       analytics.checkoutStarted({ total: cart.total, itemCount: cart.count });
-      mutation.mutate();
+      const metrikaClientId = await analytics.getClientId();
+      mutation.mutate(metrikaClientId);
     }
   };
 
@@ -160,7 +162,7 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
 
       <Button
         type="button"
-        onClick={onPay}
+        onClick={() => void onPay()}
         disabled={mutation.isPending}
         aria-label={`Pay ${formatCurrency(cart.total)}`}
         className="w-full"
