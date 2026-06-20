@@ -71,7 +71,8 @@ export interface UserProfile {
 export interface RegisterInput {
   email: string;
   password: string;
-  username: string;
+  // Optional: the fast sign-up form omits it and the backend derives one.
+  username?: string;
   referralCode?: string;
 }
 

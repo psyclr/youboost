@@ -16,7 +16,9 @@ const usernameSchema = z
 export const registerSchema = z.object({
   email: z.email(),
   password: passwordSchema,
-  username: usernameSchema,
+  // Optional: the fast sign-up form sends only email + password, and the service
+  // derives a unique username from the email (same as guest/Google accounts).
+  username: usernameSchema.optional(),
   referralCode: z.string().min(1).optional(),
 });
 
