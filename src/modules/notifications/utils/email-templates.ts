@@ -14,7 +14,7 @@ const BRAND = {
   soft: '#f4f4f5',
 } as const;
 
-const FONT = `'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+const FONT = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 function baseTemplate(content: string): string {
   return `<!DOCTYPE html>
