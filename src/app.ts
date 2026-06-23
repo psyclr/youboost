@@ -128,6 +128,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const notificationDispatcher = createNotificationDispatcher({
     notificationRepo,
     emailProvider,
+    resolveRecipientEmail: async (userId) => (await userRepo.findById(userId))?.email ?? null,
     logger: createServiceLogger('notification-dispatcher'),
   });
   const notificationsService = createNotificationsService({

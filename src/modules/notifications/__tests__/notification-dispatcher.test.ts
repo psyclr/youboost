@@ -114,6 +114,50 @@ describe('Notification Dispatcher', () => {
       expect(lastUpdate).toMatchObject({ id: 'notif-1', status: 'SENT' });
     });
 
+    it('resolves the "user-email" channel to the recipient address (the real bug)', async () => {
+      const record = makeRecord({ channel: 'user-email', userId: 'user-7' });
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        resolveRecipientEmail: async (userId) =>
+          userId === 'user-7' ? 'buyer@example.com' : null,
+        logger: silentLogger,
+      });
+
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
+      await processor(createJob('notif-1'));
+
+      expect(emailProvider.sent).toEqual([
+        { to: 'buyer@example.com', subject: 'Test Subject', body: 'Test body' },
+      ]);
+    });
+
+    it('marks FAILED without throwing when "user-email" cannot be resolved', async () => {
+      const record = makeRecord({ channel: 'user-email' });
+      const notificationRepo = createFakeNotificationRepository({ notifications: [record] });
+      const emailProvider = createFakeEmailProvider();
+      const dispatcher = createNotificationDispatcher({
+        notificationRepo,
+        emailProvider,
+        resolveRecipientEmail: async () => null,
+        logger: silentLogger,
+      });
+
+      await dispatcher.start();
+      const processor = mockStartNamedWorker.mock.calls[0][1] as (job: Job) => Promise<void>;
+      await processor(createJob('notif-1'));
+
+      expect(emailProvider.sent).toHaveLength(0);
+      const lastUpdate =
+        notificationRepo.calls.updateNotificationStatus[
+          notificationRepo.calls.updateNotificationStatus.length - 1
+        ];
+      expect(lastUpdate).toMatchObject({ id: 'notif-1', status: 'FAILED' });
+    });
+
     it('should skip if notification not found', async () => {
       const notificationRepo = createFakeNotificationRepository();
       const emailProvider = createFakeEmailProvider();
