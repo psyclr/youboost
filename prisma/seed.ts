@@ -94,6 +94,24 @@ async function seed(): Promise<void> {
     }
   }
 
+  // Failover reads panels from service_provider_mappings (not service.providerId).
+  // The schema migration seeds mappings for pre-existing services, but on a fresh
+  // DB the seed runs AFTER migrate, so create the mapping here too (idempotent).
+  for (const svc of seededServices) {
+    if (!svc.providerId || !svc.externalServiceId) continue;
+    await prisma.serviceProviderMapping.upsert({
+      where: { serviceId_providerId: { serviceId: svc.id, providerId: svc.providerId } },
+      update: { externalServiceId: svc.externalServiceId, isActive: true },
+      create: {
+        serviceId: svc.id,
+        providerId: svc.providerId,
+        externalServiceId: svc.externalServiceId,
+        priority: 0,
+      },
+    });
+  }
+  console.log(`Provider mappings ensured for ${seededServices.length} service(s)`);
+
   if (seededServices.length > 0) {
     const defaultLanding = await prisma.landing.upsert({
       where: { slug: 'youtube-growth' },
