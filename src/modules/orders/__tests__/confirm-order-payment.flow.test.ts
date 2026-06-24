@@ -41,6 +41,7 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     attachSession: jest.Mock;
   };
   outboxEvents: ReturnType<typeof createFakeOutbox>['events'];
+  refundToWallet: jest.Mock;
 } {
   const payment: PaymentWithOrders | null = opts.payment
     ? { ...opts.payment, amount: opts.amount ?? 0, metrikaClientId: opts.metrikaClientId ?? null }
@@ -92,6 +93,7 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
   };
 
   const warnSpy = jest.spyOn(silentLogger, 'warn');
+  const refundToWallet = jest.fn(async () => undefined);
 
   return {
     submitted,
@@ -103,6 +105,7 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     providerSelector,
     outbox: outbox.port,
     outboxEvents: outbox.events,
+    refundToWallet,
     logger: silentLogger,
   };
 }
@@ -235,22 +238,59 @@ describe('confirmOrderPayment', () => {
     expect(deps.submitted).toEqual(['o2']);
   });
 
-  it('reverts the order to PENDING_PAYMENT and rethrows when the provider submit fails', async () => {
+  it('refunds the customer to wallet and fails the order when the provider rejects (no panel funds)', async () => {
     const deps = makeDeps({
-      submitOrderError: new Error('provider 503'),
+      amount: 5,
+      submitOrderError: new Error('not enough funds'),
       payment: {
         id: 'pay1',
         userId: 'u1',
         status: 'PENDING',
         orders: [
-          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+          {
+            id: 'o1',
+            status: 'PENDING_PAYMENT',
+            serviceId: 's1',
+            link: 'l1',
+            quantity: 100,
+            price: 5,
+          },
         ],
       },
     });
-    await expect(confirmOrderPayment(deps, 'pay1')).rejects.toThrow('provider 503');
-    // Order must be released back to PENDING_PAYMENT so a re-delivery can retry.
-    const reverted = await deps.ordersRepo.findOrderById('o1', 'u1');
-    expect(reverted?.status).toBe('PENDING_PAYMENT');
+    // Never strand a paid order: the webhook must NOT throw (stays 200, no retry storm).
+    await expect(confirmOrderPayment(deps, 'pay1')).resolves.toBeUndefined();
+    // Customer is credited the order price to their wallet.
+    expect(deps.refundToWallet).toHaveBeenCalledWith('u1', 5, 'o1');
+    // Order ends FAILED and a failure event is emitted (drives the email).
+    const failed = await deps.ordersRepo.findOrderById('o1', 'u1');
+    expect(failed?.status).toBe('FAILED');
+    expect(deps.outboxEvents.map((e) => e.event.type)).toContain('order.failed');
+    expect(deps.submitted).toEqual([]);
+  });
+
+  it('does not refund the orders that succeeded — only the failed one (partial fulfilment)', async () => {
+    const deps = makeDeps({
+      submitOrderError: new Error('not enough funds'),
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          {
+            id: 'o1',
+            status: 'PENDING_PAYMENT',
+            serviceId: 's1',
+            link: 'l1',
+            quantity: 100,
+            price: 5,
+          },
+        ],
+      },
+    });
+    // Single order here fails → refunded exactly once, no double credit on the path.
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.refundToWallet).toHaveBeenCalledTimes(1);
   });
 
   it('throws when the payment does not exist', async () => {

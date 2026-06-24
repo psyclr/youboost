@@ -207,7 +207,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const fundSettlement = createFundSettlement({ billing: { chargeFunds: billingInternal.chargeFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, logger: createServiceLogger('fund-settlement') });
   const circuitBreaker = createCircuitBreaker();
   // prettier-ignore
-  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
+  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, providerSelector, couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
   orderPaymentProcessor.bind({ confirmOrderPayment: ordersService.confirmOrderPayment });
 
   // prettier-ignore

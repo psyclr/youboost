@@ -63,6 +63,7 @@ function buildHarness(
     billing: {
       holdFunds: billing.holdFunds,
       releaseFunds: billing.releaseFunds,
+      refundFunds: billing.refundFunds,
     },
     providerSelector: providerSelector as unknown as ProviderSelectorPort,
     couponsService,

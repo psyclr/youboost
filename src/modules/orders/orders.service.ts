@@ -38,6 +38,7 @@ export interface OrdersServiceDeps {
   billing: {
     holdFunds(userId: string, amount: number, orderId: string): Promise<void>;
     releaseFunds(userId: string, amount: number, orderId: string): Promise<void>;
+    refundFunds(userId: string, amount: number, orderId: string): Promise<void>;
   };
   providerSelector: ProviderSelectorPort;
   couponsService: CouponsService;
@@ -235,7 +236,16 @@ export function createOrdersService(deps: OrdersServiceDeps): OrdersService {
       );
     }
     await confirmOrderPaymentFlow(
-      { prisma, paymentRepo, ordersRepo, servicesRepo, providerSelector, outbox, logger },
+      {
+        prisma,
+        paymentRepo,
+        ordersRepo,
+        servicesRepo,
+        providerSelector,
+        outbox,
+        refundToWallet: billing.refundFunds,
+        logger,
+      },
       paymentId,
     );
   }

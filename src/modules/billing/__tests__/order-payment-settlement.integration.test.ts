@@ -17,6 +17,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../../generated/prisma';
 import { createWalletRepository } from '../wallet.repository';
 import { createLedgerRepository } from '../ledger.repository';
+import { createBillingInternalService } from '../billing-internal.service';
 import { createDepositRepository } from '../deposit.repository';
 import { createPaymentRepository } from '../payment.repository';
 import { createDepositLifecycleService } from '../deposit-lifecycle.service';
@@ -84,7 +85,22 @@ describeDb('order-payment settlement (integration, real DB)', () => {
       },
     };
 
-    const confirmDeps = { prisma, paymentRepo, ordersRepo, servicesRepo, providerSelector, outbox, logger: silentLogger };
+    const billingInternal = createBillingInternalService({
+      prisma,
+      walletRepo: createWalletRepository(prisma),
+      ledgerRepo: createLedgerRepository(prisma),
+      logger: silentLogger,
+    });
+    const confirmDeps = {
+      prisma,
+      paymentRepo,
+      ordersRepo,
+      servicesRepo,
+      providerSelector,
+      outbox,
+      refundToWallet: billingInternal.refundFunds,
+      logger: silentLogger,
+    };
 
     const cryptomus = createCryptomusPaymentService({
       depositRepo: createDepositRepository(prisma),
