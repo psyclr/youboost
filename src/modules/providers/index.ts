@@ -10,3 +10,12 @@ export { createSmmApiClient } from './utils/smm-api-client';
 export { requireAdmin } from './providers.middleware';
 export type { ProviderRoutesDeps } from './providers.routes';
 export { createProviderRoutes } from './providers.routes';
+export {
+  createServiceProviderMappingRepository,
+  type ServiceProviderMappingRepository,
+  type PanelCandidate,
+} from './service-provider-mapping.repository';
+export {
+  createProviderOrderAttemptRepository,
+  type ProviderOrderAttemptRepository,
+} from './provider-order-attempt.repository';

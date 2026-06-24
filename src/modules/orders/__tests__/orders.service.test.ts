@@ -63,9 +63,14 @@ function buildHarness(
     billing: {
       holdFunds: billing.holdFunds,
       releaseFunds: billing.releaseFunds,
-      refundFunds: billing.refundFunds,
     },
     providerSelector: providerSelector as unknown as ProviderSelectorPort,
+    mappingRepo: {
+      listActiveByServiceId: jest.fn(async () => [
+        { providerId: 'prov-1', externalServiceId: '101', priority: 0, providerCost: 0 },
+      ]),
+    },
+    attemptRepo: { record: jest.fn(async () => undefined) },
     couponsService,
     outbox: outbox.port,
     logger: silentLogger,

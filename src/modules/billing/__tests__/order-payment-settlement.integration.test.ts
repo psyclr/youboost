@@ -17,7 +17,6 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../../generated/prisma';
 import { createWalletRepository } from '../wallet.repository';
 import { createLedgerRepository } from '../ledger.repository';
-import { createBillingInternalService } from '../billing-internal.service';
 import { createDepositRepository } from '../deposit.repository';
 import { createPaymentRepository } from '../payment.repository';
 import { createDepositLifecycleService } from '../deposit-lifecycle.service';
@@ -26,8 +25,9 @@ import { createCryptomusRoutes } from '../cryptomus/cryptomus.routes';
 import { signRequestBody } from '../cryptomus/cryptomus.crypto';
 import { encodeRef } from '../payment-reference';
 import { createOrdersRepository } from '../../orders/orders.repository';
-import { createServicesRepository } from '../../orders/service.repository';
 import { confirmOrderPayment } from '../../orders/confirm-order-payment.flow';
+import { createServiceProviderMappingRepository } from '../../providers/service-provider-mapping.repository';
+import { createProviderOrderAttemptRepository } from '../../providers/provider-order-attempt.repository';
 import type { ProviderSelectorPort } from '../../orders/ports/provider-selector.port';
 import type { ProviderClient } from '../../orders/utils/provider-client';
 import type { OutboxEvent, OutboxPort } from '../../../shared/outbox';
@@ -57,7 +57,6 @@ describeDb('order-payment settlement (integration, real DB)', () => {
 
     const paymentRepo = createPaymentRepository(prisma);
     const ordersRepo = createOrdersRepository(prisma);
-    const servicesRepo = createServicesRepository(prisma);
     const emitted: OutboxEvent[] = [];
     capturedEvents = emitted;
     const outbox: OutboxPort = {
@@ -85,20 +84,14 @@ describeDb('order-payment settlement (integration, real DB)', () => {
       },
     };
 
-    const billingInternal = createBillingInternalService({
-      prisma,
-      walletRepo: createWalletRepository(prisma),
-      ledgerRepo: createLedgerRepository(prisma),
-      logger: silentLogger,
-    });
     const confirmDeps = {
       prisma,
       paymentRepo,
       ordersRepo,
-      servicesRepo,
       providerSelector,
+      mappingRepo: createServiceProviderMappingRepository(prisma),
+      attemptRepo: createProviderOrderAttemptRepository(prisma),
       outbox,
-      refundToWallet: billingInternal.refundFunds,
       logger: silentLogger,
     };
 
@@ -136,6 +129,11 @@ describeDb('order-payment settlement (integration, real DB)', () => {
 
   afterAll(async () => {
     if (created.userIds.length > 0) {
+      const orderIds = (
+        await prisma.order.findMany({ where: { userId: { in: created.userIds } }, select: { id: true } })
+      ).map((o) => o.id);
+      await prisma.providerOrderAttempt.deleteMany({ where: { orderId: { in: orderIds } } });
+      await prisma.serviceProviderMapping.deleteMany({ where: { serviceId: { in: created.serviceIds } } });
       await prisma.order.deleteMany({ where: { userId: { in: created.userIds } } });
       await prisma.payment.deleteMany({ where: { userId: { in: created.userIds } } });
       await prisma.service.deleteMany({ where: { id: { in: created.serviceIds } } });
@@ -169,6 +167,10 @@ describeDb('order-payment settlement (integration, real DB)', () => {
       },
     });
     created.serviceIds.push(service.id);
+    // Failover reads panels from service_provider_mappings, not service.providerId.
+    await prisma.serviceProviderMapping.create({
+      data: { serviceId: service.id, providerId: provider.id, externalServiceId: '2001', priority: 0 },
+    });
     const { paymentId, orderIds } = await repos.paymentRepo.createPaymentWithOrders({
       userId: user.id,
       provider: 'CRYPTOMUS',

@@ -19,7 +19,7 @@ import { createSystemClock } from './shared/utils/clock';
 // prettier-ignore
 import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, stubProviderClient } from './modules/orders';
 // prettier-ignore
-import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector } from './modules/providers';
+import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector, createServiceProviderMappingRepository, createProviderOrderAttemptRepository } from './modules/providers';
 import { buildAdminServices } from './composition/admin-services';
 import { buildOrderWorkers } from './composition/build-workers';
 import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
@@ -207,7 +207,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const fundSettlement = createFundSettlement({ billing: { chargeFunds: billingInternal.chargeFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, logger: createServiceLogger('fund-settlement') });
   const circuitBreaker = createCircuitBreaker();
   // prettier-ignore
-  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, providerSelector, couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
+  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, mappingRepo: createServiceProviderMappingRepository(prisma), attemptRepo: createProviderOrderAttemptRepository(prisma), couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
   orderPaymentProcessor.bind({ confirmOrderPayment: ordersService.confirmOrderPayment });
 
   // prettier-ignore

@@ -1,77 +1,69 @@
 import type { Logger } from 'pino';
 import type { PrismaClient } from '../../generated/prisma';
-import { NotFoundError, ValidationError } from '../../shared/errors';
+import { NotFoundError } from '../../shared/errors';
 import type { OutboxPort } from '../../shared/outbox';
 import type { PaymentRepository, PaymentWithOrders } from '../billing/payment.repository';
 import type { OrdersRepository } from './orders.repository';
-import type { ServicesRepository } from './service.repository';
 import type { ProviderSelectorPort } from './ports/provider-selector.port';
+import type { ServiceProviderMappingRepository } from '../providers/service-provider-mapping.repository';
+import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
+import { submitWithFailover } from './submit-with-failover';
 
 export interface ConfirmOrderPaymentDeps {
   prisma: PrismaClient;
   paymentRepo: PaymentRepository;
   ordersRepo: OrdersRepository;
-  servicesRepo: ServicesRepository;
   providerSelector: ProviderSelectorPort;
+  mappingRepo: ServiceProviderMappingRepository;
+  attemptRepo: ProviderOrderAttemptRepository;
   outbox: OutboxPort;
-  /**
-   * Credit the customer's wallet when a paid guest order cannot be fulfilled by
-   * the provider (no funds on the panel, unknown service, panel down). The guest
-   * paid directly (Stripe/Cryptomus), so the money is returned as wallet balance.
-   */
-  refundToWallet: (userId: string, amount: number, orderId: string) => Promise<void>;
   logger: Logger;
 }
 
 type PaymentOrder = PaymentWithOrders['orders'][number];
 
 /**
- * Submit a single order to its SMM provider. Concurrency-safe and idempotent:
- * atomically claims the order (PENDING_PAYMENT → PROCESSING) before contacting
- * the provider, so two concurrent settlements of the same Payment can never
- * double-submit the same order. Returns true iff THIS call submitted the order;
- * false if another delivery had already claimed it.
+ * Submit a single paid order, trying every panel mapped to its service in
+ * priority order (see {@link submitWithFailover}). Concurrency-safe and
+ * idempotent: atomically claims the order (PENDING_PAYMENT → PROCESSING) before
+ * the failover walk, so a re-delivered webhook sees PROCESSING/FAILED (not
+ * PENDING_PAYMENT), the claim returns false, and we never double-submit.
  *
- * On provider/persistence failure the order is reverted to PENDING_PAYMENT so a
- * later webhook re-delivery (or the expiry sweeper) can retry/cancel it, and the
- * error is rethrown so the webhook is retried.
+ * Returns true iff THIS call landed the order on a panel. When every panel fails
+ * the order ends FAILED (admin-only — the customer keeps seeing "In progress")
+ * and `order.fulfilment_exhausted` is emitted for the admin alert. No customer
+ * refund or "failed" email — that's the admin's decision.
  */
 export async function submitGuestOrder(
   deps: ConfirmOrderPaymentDeps,
   userId: string,
   order: PaymentOrder,
 ): Promise<boolean> {
-  const { prisma, ordersRepo, servicesRepo, providerSelector, outbox, refundToWallet, logger } =
-    deps;
+  const { prisma, ordersRepo, providerSelector, mappingRepo, attemptRepo, outbox, logger } = deps;
 
-  const service = await servicesRepo.findServiceById(order.serviceId);
-
-  // Atomic per-order claim: only one concurrent settlement proceeds to submit.
-  // It also makes failure handling exactly-once — a re-delivered webhook sees the
-  // order in PROCESSING/FAILED (not PENDING_PAYMENT) and the claim skips it, so we
-  // never double-submit or double-refund.
   const claimed = await ordersRepo.claimOrderForSubmission(order.id);
   if (!claimed) {
     logger.info({ orderId: order.id, userId }, 'Order already claimed for submission — skipping');
     return false;
   }
 
-  try {
-    if (!service?.providerId || !service?.externalServiceId) {
-      throw new ValidationError('Service provider info missing', 'SERVICE_PROVIDER_MISSING');
-    }
-    const { providerId, client } = await providerSelector.selectProviderById(service.providerId);
-    const submitResult = await client.submitOrder({
-      serviceId: service.externalServiceId,
+  const outcome = await submitWithFailover(
+    { providerSelector, mappingRepo, attemptRepo, logger },
+    {
+      orderId: order.id,
+      userId,
+      serviceId: order.serviceId,
       link: order.link,
       quantity: order.quantity,
-    });
+    },
+  );
 
+  if (outcome.ok) {
     await prisma.$transaction(async (tx) => {
       await ordersRepo.updateOrderStatus(order.id, {
         status: 'PROCESSING',
-        externalOrderId: submitResult.externalOrderId,
-        ...(providerId ? { providerId } : {}),
+        externalOrderId: outcome.externalOrderId,
+        providerId: outcome.providerId,
         remains: order.quantity,
       });
       await outbox.emit(
@@ -80,50 +72,39 @@ export async function submitGuestOrder(
           aggregateType: 'order',
           aggregateId: order.id,
           userId,
-          payload: {
-            orderId: order.id,
-            userId,
-            status: 'PROCESSING',
-            price: Number(order.price ?? 0),
-          },
+          payload: { orderId: order.id, userId, status: 'PROCESSING', price: Number(order.price ?? 0) },
         },
         tx,
       );
     });
-
     logger.info(
-      { orderId: order.id, userId, externalOrderId: submitResult.externalOrderId },
+      { orderId: order.id, userId, externalOrderId: outcome.externalOrderId },
       'Order confirmed + submitted',
     );
     return true;
-  } catch (err) {
-    // The provider could not accept this paid order (no funds on the panel,
-    // unknown service, panel down). Never strand a paid order: refund the
-    // customer to their wallet, mark the order FAILED, and notify. We don't
-    // rethrow — the webhook stays 200 and the remaining orders still settle.
-    // Refund first so a crash before the status flip errs toward refunding.
-    const amount = Number(order.price ?? 0);
-    const reason = err instanceof Error ? err.message : 'Provider submission failed';
-    logger.error(
-      { orderId: order.id, userId, amount, err },
-      'Provider submission failed — refunding to wallet and failing order',
-    );
-    await refundToWallet(userId, amount, order.id);
-    await prisma.$transaction(async (tx) => {
-      await ordersRepo.updateOrderStatus(order.id, { status: 'FAILED', completedAt: new Date() });
-      await outbox.emit(
-        {
-          type: 'order.failed',
-          aggregateType: 'order',
-          aggregateId: order.id,
-          userId,
-          payload: { orderId: order.id, userId, reason, refundAmount: amount },
-        },
-        tx,
-      );
-    });
-    return false;
   }
+
+  // Every panel failed — admin's problem. The order is FAILED internally; the
+  // customer still sees "In progress". Admin decides (retry / refund) from the
+  // exhausted alert. No auto-refund, no customer email.
+  await prisma.$transaction(async (tx) => {
+    await ordersRepo.updateOrderStatus(order.id, { status: 'FAILED', completedAt: new Date() });
+    await outbox.emit(
+      {
+        type: 'order.fulfilment_exhausted',
+        aggregateType: 'order',
+        aggregateId: order.id,
+        userId,
+        payload: { orderId: order.id, userId, attempts: outcome.attempts },
+      },
+      tx,
+    );
+  });
+  logger.error(
+    { orderId: order.id, userId, attempts: outcome.attempts },
+    'Order fulfilment exhausted — admin alerted',
+  );
+  return false;
 }
 
 /**
