@@ -1,7 +1,6 @@
 import type { Logger } from 'pino';
 import type { OutboxHandler } from '../../../shared/outbox';
 import type { NotificationsService } from '../notifications.service';
-import { orderFailedEmail } from '../utils/email-templates';
 
 interface HandlerDeps {
   notificationsService: NotificationsService;
@@ -74,34 +73,9 @@ export function createOrderCompletedEmailHandler(
     },
   };
 }
-
-export function createOrderFailedEmailHandler(deps: HandlerDeps): OutboxHandler<'order.failed'> {
-  const { notificationsService, logger } = deps;
-  return {
-    eventType: 'order.failed',
-    name: 'order-failed-email',
-    async handle(event): Promise<void> {
-      logger.debug({ orderId: event.payload.orderId }, 'sending order.failed email');
-      const { subject, body } = orderFailedEmail({
-        orderId: event.payload.orderId,
-        reason: event.payload.reason,
-        ...(typeof event.payload.refundAmount === 'number'
-          ? { refundAmount: event.payload.refundAmount }
-          : {}),
-      });
-      await notificationsService.sendNotification({
-        userId: event.userId,
-        type: 'EMAIL',
-        channel: 'user-email',
-        subject,
-        body,
-        eventType: 'order.failed',
-        referenceType: 'order',
-        referenceId: event.payload.orderId,
-      });
-    },
-  };
-}
+// NOTE: there is intentionally no customer "order failed" email. Customers never
+// see failures (see CustomerStatusBadge); when every panel fails the admin is
+// alerted via createAdminFulfilmentExhaustedHandler instead.
 
 export function createOrderPartialEmailHandler(deps: HandlerDeps): OutboxHandler<'order.partial'> {
   const { notificationsService, logger } = deps;

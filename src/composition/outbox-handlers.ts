@@ -15,13 +15,13 @@ import {
   createOrderCreatedEmailHandler,
   createOrderCancelledEmailHandler,
   createOrderCompletedEmailHandler,
-  createOrderFailedEmailHandler,
   createOrderPartialEmailHandler,
   createDepositConfirmedEmailHandler,
   createDepositFailedEmailHandler,
   createVerificationEmailHandler,
   createPasswordResetEmailHandler,
   createAutoUserSetupEmailHandler,
+  createAdminFulfilmentExhaustedHandler,
 } from '../modules/notifications';
 import { createCouponUsedHandler } from '../modules/coupons';
 import { createReferralAppliedHandler } from '../modules/referrals';
@@ -43,6 +43,7 @@ export interface OutboxHandlerDeps {
   emailProvider: EmailProvider;
   metrikaClient: YandexMetrikaClient;
   metrikaTargets: { purchase: string; deposit: string };
+  adminEmail: string | undefined;
 }
 
 export function buildOutboxHandlers(deps: OutboxHandlerDeps): OutboxHandler[] {
@@ -54,6 +55,7 @@ export function buildOutboxHandlers(deps: OutboxHandlerDeps): OutboxHandler[] {
     emailProvider,
     metrikaClient,
     metrikaTargets,
+    adminEmail,
   } = deps;
   const mk = (name: string): Logger => createServiceLogger(name);
 
@@ -98,10 +100,6 @@ export function buildOutboxHandlers(deps: OutboxHandlerDeps): OutboxHandler[] {
       notificationsService,
       logger: mk('outbox:order-completed-email'),
     }),
-    createOrderFailedEmailHandler({
-      notificationsService,
-      logger: mk('outbox:order-failed-email'),
-    }),
     createOrderPartialEmailHandler({
       notificationsService,
       logger: mk('outbox:order-partial-email'),
@@ -141,6 +139,11 @@ export function buildOutboxHandlers(deps: OutboxHandlerDeps): OutboxHandler[] {
       target: metrikaTargets.deposit,
       logger: mk('outbox:deposit-conversion'),
     }),
+    createAdminFulfilmentExhaustedHandler({
+      emailProvider,
+      adminEmail,
+      logger: mk('outbox:admin-fulfilment-exhausted'),
+    }),
   ] as OutboxHandler[];
 }
 
@@ -156,6 +159,7 @@ export interface HandlerRegistryDeps {
     purchaseTarget: string;
     depositTarget: string;
   };
+  adminEmail: string | undefined;
 }
 
 /**
@@ -177,6 +181,7 @@ export function buildHandlerRegistry(deps: HandlerRegistryDeps): HandlerRegistry
       emailProvider: deps.emailProvider,
       metrikaClient,
       metrikaTargets: { purchase: deps.metrika.purchaseTarget, deposit: deps.metrika.depositTarget },
+      adminEmail: deps.adminEmail,
     }),
   );
 }

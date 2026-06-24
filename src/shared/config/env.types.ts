@@ -55,6 +55,9 @@ export interface AppConfig {
       depositTarget: string;
     };
   };
+  alerts: {
+    adminEmail: string | undefined;
+  };
   provider: {
     encryptionKey: string;
     mode: 'stub' | 'real';

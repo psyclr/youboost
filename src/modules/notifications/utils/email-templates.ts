@@ -101,37 +101,6 @@ export function passwordResetEmail(resetUrl: string): { subject: string; body: s
   };
 }
 
-export function orderFailedEmail(params: {
-  orderId: string;
-  reason: string;
-  refundAmount?: number;
-}): { subject: string; body: string } {
-  const shortId = params.orderId.slice(0, 8);
-  // Only promise a refund when one actually happened (refundAmount set by the
-  // failure that credited the wallet). Other failures must not over-promise.
-  if (typeof params.refundAmount === 'number') {
-    return {
-      subject: "We couldn't start your order — refunded to your balance",
-      body: baseTemplate(`
-      <h2>We couldn't start your order</h2>
-      <p>Sorry — we weren't able to start your order <strong>#${shortId}</strong> right now.</p>
-      <p>We've returned <strong>$${params.refundAmount.toFixed(2)}</strong> to your YouBoost account balance, so you haven't lost anything. You can use it to place another order right away.</p>
-      <p style="text-align:center">${button('https://www.youboost.store/billing', 'View your balance')}</p>
-      <p style="color:${BRAND.muted};font-size:13px">If anything looks off, just reply to this email and we'll help.</p>
-    `),
-    };
-  }
-  const timedOut = params.reason === 'timeout';
-  return {
-    subject: timedOut ? 'Your order timed out' : 'Your order could not be completed',
-    body: baseTemplate(`
-      <h2>${timedOut ? 'Your order timed out' : 'Order could not be completed'}</h2>
-      <p>Unfortunately your order <strong>#${shortId}</strong> could not be completed.</p>
-      <p>If you were charged, the amount has been returned to your YouBoost balance. Need a hand? Just reply to this email.</p>
-    `),
-  };
-}
-
 export function orderCreatedEmail(params: {
   orderId: string;
   serviceName: string;

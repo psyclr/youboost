@@ -238,7 +238,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     couponsService,
     referralsService,
     emailProvider,
-    metrika: config.analytics.yandexMetrika,
+    metrika: config.analytics.yandexMetrika, adminEmail: config.alerts.adminEmail,
   });
   const outboxWorker = createOutboxWorker({
     outboxRepo,

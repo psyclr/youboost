@@ -22,6 +22,9 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  // Ops alerts (optional — exhausted-order alerts are logged but not emailed when unset)
+  ADMIN_ALERT_EMAIL: z.string().optional(),
+
   // Yandex.Metrika server-side conversions (optional — disabled when OAuth token unset)
   YANDEX_METRIKA_COUNTER_ID: z.string().default('109942271'),
   YANDEX_METRIKA_OAUTH_TOKEN: z.string().optional(),
@@ -193,6 +196,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         purchaseTarget: parsed.YANDEX_METRIKA_PURCHASE_TARGET,
         depositTarget: parsed.YANDEX_METRIKA_DEPOSIT_TARGET,
       },
+    },
+    alerts: {
+      adminEmail: parsed.ADMIN_ALERT_EMAIL,
     },
     payments: {
       fake: parsed.PAYMENTS_FAKE,
