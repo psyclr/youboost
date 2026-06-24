@@ -3,27 +3,16 @@
 import { Suspense } from 'react';
 import { useOrders } from '@/hooks/use-orders';
 import { usePagination } from '@/hooks/use-pagination';
-import { useSearchParams } from 'next/navigation';
 import { DataTable, type Column } from '@/components/shared/data-table';
-import { StatusBadge } from '@/components/shared/status-badge';
+import { CustomerStatusBadge } from '@/components/shared/customer-status-badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Layers } from 'lucide-react';
-import type { OrderResponse, OrderStatus } from '@/lib/api/types';
-import { ORDER_USER_FILTER_STATUSES } from '@/lib/constants/statuses';
+import type { OrderResponse } from '@/lib/api/types';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-const statuses = ORDER_USER_FILTER_STATUSES;
 
 const columns: Column<OrderResponse>[] = [
   {
@@ -32,7 +21,7 @@ const columns: Column<OrderResponse>[] = [
   },
   {
     header: 'Status',
-    cell: (row) => <StatusBadge status={row.status} />,
+    cell: (row) => <CustomerStatusBadge status={row.status} />,
   },
   { header: 'Quantity', accessorKey: 'quantity', className: 'tabular-nums' },
   {
@@ -52,27 +41,13 @@ const columns: Column<OrderResponse>[] = [
 ];
 
 function OrdersContent() {
-  const searchParams = useSearchParams();
-  const status = searchParams.get('status') ?? 'ALL';
   const { page, setPage } = usePagination();
   const router = useRouter();
 
-  const handleStatusChange = (value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === 'ALL') {
-      params.delete('status');
-    } else {
-      params.set('status', value);
-    }
-    params.delete('page');
-    router.push(`/orders?${params.toString()}`);
-  };
-
-  const { data, isLoading } = useOrders({
-    page,
-    limit: 20,
-    status: status === 'ALL' ? undefined : (status as OrderStatus),
-  });
+  // No status filter on the customer page: internal states (failed, partial,
+  // awaiting payment) are never surfaced — every order reads as "In progress"
+  // until it Completes (see CustomerStatusBadge).
+  const { data, isLoading } = useOrders({ page, limit: 20 });
 
   return (
     <div className="space-y-6">
@@ -95,21 +70,6 @@ function OrdersContent() {
             </Link>
           </Button>
         </div>
-      </div>
-
-      <div className="flex gap-4">
-        <Select value={status} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {statuses.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {!isLoading && data?.orders.length === 0 ? (
