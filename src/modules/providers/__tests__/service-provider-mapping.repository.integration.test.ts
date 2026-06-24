@@ -36,17 +36,24 @@ describeDb('failover repositories (integration, real DB)', () => {
     await prisma.$disconnect();
   });
 
-  async function makeProvider(name: string): Promise<string> {
+  async function makeProvider(name: string, priority = 0): Promise<string> {
     const p = await prisma.provider.create({
-      data: { name: `${TAG}-${name}`, apiEndpoint: 'https://example.test/v2', apiKeyEncrypted: 'x' },
+      data: {
+        name: `${TAG}-${name}`,
+        apiEndpoint: 'https://example.test/v2',
+        apiKeyEncrypted: 'x',
+        priority,
+      },
     });
     created.providerIds.push(p.id);
     return p.id;
   }
 
-  it('lists active panels for a service in priority order', async () => {
-    const provA = await makeProvider('A');
-    const provB = await makeProvider('B');
+  it('orders panels by the admin-set provider priority (desc), not the mapping', async () => {
+    // provA has the LOWER provider priority but its mapping is added first —
+    // ordering must follow provider.priority (admin), so provB comes first.
+    const provA = await makeProvider('A', 5);
+    const provB = await makeProvider('B', 10);
     const service = await prisma.service.create({
       data: {
         name: `${TAG}-svc`,
@@ -58,20 +65,18 @@ describeDb('failover repositories (integration, real DB)', () => {
       },
     });
     created.serviceIds.push(service.id);
-    // B added first but lower priority — repo must order by priority asc.
-    await prisma.serviceProviderMapping.create({
-      data: { serviceId: service.id, providerId: provB, externalServiceId: 'ext-B', priority: 1 },
-    });
     await prisma.serviceProviderMapping.create({
       data: { serviceId: service.id, providerId: provA, externalServiceId: 'ext-A', priority: 0 },
+    });
+    await prisma.serviceProviderMapping.create({
+      data: { serviceId: service.id, providerId: provB, externalServiceId: 'ext-B', priority: 0 },
     });
 
     const repo = createServiceProviderMappingRepository(prisma);
     const candidates = await repo.listActiveByServiceId(service.id);
 
-    expect(candidates.map((c) => c.priority)).toEqual([0, 1]);
-    expect(candidates[0]!.externalServiceId).toBe('ext-A');
-    expect(candidates[1]!.externalServiceId).toBe('ext-B');
+    expect(candidates.map((c) => c.externalServiceId)).toEqual(['ext-B', 'ext-A']);
+    expect(candidates.map((c) => c.priority)).toEqual([10, 5]); // provider priorities
   });
 
   it('excludes inactive mappings', async () => {

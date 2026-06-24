@@ -64,8 +64,9 @@ describeDb('order failover (integration, real DB)', () => {
   });
 
   async function seed(): Promise<{ orderId: string; userId: string; serviceId: string; provA: string; provB: string }> {
-    const provA = (await prisma.provider.create({ data: { name: `${TAG}-A-${Math.random()}`, apiEndpoint: 'https://a.test', apiKeyEncrypted: 'x' } })).id;
-    const provB = (await prisma.provider.create({ data: { name: `${TAG}-B-${Math.random()}`, apiEndpoint: 'https://b.test', apiKeyEncrypted: 'x' } })).id;
+    // A has the higher admin priority so it is tried first (ordering = provider.priority desc).
+    const provA = (await prisma.provider.create({ data: { name: `${TAG}-A-${Math.random()}`, apiEndpoint: 'https://a.test', apiKeyEncrypted: 'x', priority: 10 } })).id;
+    const provB = (await prisma.provider.create({ data: { name: `${TAG}-B-${Math.random()}`, apiEndpoint: 'https://b.test', apiKeyEncrypted: 'x', priority: 5 } })).id;
     created.providerIds.push(provA, provB);
     const service = await prisma.service.create({
       data: { name: `${TAG}-svc`, platform: 'YOUTUBE', type: 'VIEWS', pricePer1000: 1.5, minQuantity: 100, maxQuantity: 1_000_000 },
