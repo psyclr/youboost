@@ -46,6 +46,15 @@ export type OutboxEvent =
       userId: string;
       payload: { orderId: string; userId: string; remains: number };
     }
+  | {
+      // Every panel that can fulfil this paid order failed. Admin-only signal —
+      // drives an admin alert; the customer keeps seeing "In progress".
+      type: 'order.fulfilment_exhausted';
+      aggregateType: 'order';
+      aggregateId: string;
+      userId: string;
+      payload: { orderId: string; userId: string; attempts: number };
+    }
   // Payments (a settled checkout = one purchase; reported to analytics server-side)
   | {
       type: 'payment.confirmed';
