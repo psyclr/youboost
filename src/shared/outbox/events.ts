@@ -35,7 +35,9 @@ export type OutboxEvent =
       aggregateType: 'order';
       aggregateId: string;
       userId: string;
-      payload: { orderId: string; userId: string; reason: string };
+      // refundAmount is set when the failure refunded the customer to their wallet
+      // (e.g. a paid order the provider couldn't start); omitted otherwise.
+      payload: { orderId: string; userId: string; reason: string; refundAmount?: number };
     }
   | {
       type: 'order.partial';

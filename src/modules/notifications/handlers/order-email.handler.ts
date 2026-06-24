@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { OutboxHandler } from '../../../shared/outbox';
 import type { NotificationsService } from '../notifications.service';
+import { orderFailedEmail } from '../utils/email-templates';
 
 interface HandlerDeps {
   notificationsService: NotificationsService;
@@ -81,11 +82,13 @@ export function createOrderFailedEmailHandler(deps: HandlerDeps): OutboxHandler<
     name: 'order-failed-email',
     async handle(event): Promise<void> {
       logger.debug({ orderId: event.payload.orderId }, 'sending order.failed email');
-      const isTimeout = event.payload.reason === 'timeout';
-      const subject = isTimeout ? 'Order Timed Out' : 'Order Failed';
-      const body = isTimeout
-        ? `Your order ${event.payload.orderId} has been marked as failed due to timeout. Funds have been released back to your balance.`
-        : `Your order ${event.payload.orderId} status: FAILED.`;
+      const { subject, body } = orderFailedEmail({
+        orderId: event.payload.orderId,
+        reason: event.payload.reason,
+        ...(typeof event.payload.refundAmount === 'number'
+          ? { refundAmount: event.payload.refundAmount }
+          : {}),
+      });
       await notificationsService.sendNotification({
         userId: event.userId,
         type: 'EMAIL',

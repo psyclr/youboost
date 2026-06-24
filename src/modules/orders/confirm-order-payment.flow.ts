@@ -117,7 +117,7 @@ export async function submitGuestOrder(
           aggregateType: 'order',
           aggregateId: order.id,
           userId,
-          payload: { orderId: order.id, userId, reason },
+          payload: { orderId: order.id, userId, reason, refundAmount: amount },
         },
         tx,
       );
