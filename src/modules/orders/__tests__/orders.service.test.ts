@@ -237,13 +237,18 @@ describe('Orders Service', () => {
       });
     });
 
-    it('releases funds and marks order FAILED when provider submit throws', async () => {
+    it('releases funds and marks order FAILED when no panel can fulfil it', async () => {
       const h = buildHarness({
         clientOverrides: {
           submitOrder: jest.fn().mockRejectedValue(new Error('provider down')),
         },
       });
-      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow('provider down');
+      // Failover catches the provider error, exhausts the single panel, and the
+      // creation fails synchronously — the wallet hold is released and the order
+      // ends FAILED.
+      await expect(h.service.createOrder('user-1', validInput)).rejects.toThrow(
+        /could not be fulfilled/i,
+      );
       expect(h.billing.calls.releaseFunds.length).toBeGreaterThan(0);
       expect(h.ordersRepo.calls.updateOrderStatus.some((c) => c.data.status === 'FAILED')).toBe(
         true,
