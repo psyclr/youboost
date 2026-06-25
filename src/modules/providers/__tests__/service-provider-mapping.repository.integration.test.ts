@@ -100,6 +100,78 @@ describeDb('failover repositories (integration, real DB)', () => {
     expect(await repo.listActiveByServiceId(service.id)).toEqual([]);
   });
 
+  it('admin CRUD: create, list (with provider info), update active, delete; rejects duplicate', async () => {
+    const prov = await makeProvider('E', 7);
+    const service = await prisma.service.create({
+      data: {
+        name: `${TAG}-svc-crud`,
+        platform: 'YOUTUBE',
+        type: 'VIEWS',
+        pricePer1000: 1.5,
+        minQuantity: 100,
+        maxQuantity: 1_000_000,
+      },
+    });
+    created.serviceIds.push(service.id);
+    const repo = createServiceProviderMappingRepository(prisma);
+
+    const created1 = await repo.createMapping({
+      serviceId: service.id,
+      providerId: prov,
+      externalServiceId: 'ext-E',
+    });
+    expect(created1).toMatchObject({
+      providerId: prov,
+      providerName: `${TAG}-E`,
+      providerPriority: 7,
+      externalServiceId: 'ext-E',
+      isActive: true,
+    });
+
+    const list = await repo.listByServiceId(service.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.providerName).toBe(`${TAG}-E`);
+
+    // duplicate (same service + provider) is rejected by the unique constraint
+    await expect(
+      repo.createMapping({ serviceId: service.id, providerId: prov, externalServiceId: 'ext-E2' }),
+    ).rejects.toThrow();
+
+    const updated = await repo.updateMapping(created1.id, { isActive: false });
+    expect(updated.isActive).toBe(false);
+    expect(await repo.listActiveByServiceId(service.id)).toEqual([]); // inactive excluded from failover
+
+    expect(await repo.findMappingById(created1.id)).toMatchObject({ id: created1.id, serviceId: service.id });
+    await repo.deleteMapping(created1.id);
+    expect(await repo.listByServiceId(service.id)).toEqual([]);
+  });
+
+  it('upsertPrimary creates then updates the service primary panel', async () => {
+    const prov = await makeProvider('F', 3);
+    const service = await prisma.service.create({
+      data: {
+        name: `${TAG}-svc-primary`,
+        platform: 'YOUTUBE',
+        type: 'VIEWS',
+        pricePer1000: 1.5,
+        minQuantity: 100,
+        maxQuantity: 1_000_000,
+      },
+    });
+    created.serviceIds.push(service.id);
+    const repo = createServiceProviderMappingRepository(prisma);
+
+    await repo.upsertPrimary({ serviceId: service.id, providerId: prov, externalServiceId: '111' });
+    let panels = await repo.listByServiceId(service.id);
+    expect(panels).toHaveLength(1);
+    expect(panels[0]!.externalServiceId).toBe('111');
+
+    await repo.upsertPrimary({ serviceId: service.id, providerId: prov, externalServiceId: '222' });
+    panels = await repo.listByServiceId(service.id);
+    expect(panels).toHaveLength(1); // upsert, not insert
+    expect(panels[0]!.externalServiceId).toBe('222');
+  });
+
   it('records a provider attempt against an order', async () => {
     const prov = await makeProvider('D');
     const service = await prisma.service.create({
