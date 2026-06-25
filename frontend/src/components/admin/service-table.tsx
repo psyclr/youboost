@@ -14,6 +14,8 @@ interface ServiceTableProps {
   onEdit: (service: AdminServiceResponse) => void;
   onToggleStatus: (service: AdminServiceResponse) => void;
   onManagePanels: (service: AdminServiceResponse) => void;
+  isError?: boolean;
+  onRetry?: () => void;
   pagination?: {
     page: number;
     totalPages: number;
@@ -127,11 +129,20 @@ export function ServiceTable({
   onEdit,
   onToggleStatus,
   onManagePanels,
+  isError,
+  onRetry,
   pagination,
 }: Readonly<ServiceTableProps>) {
   const columns = buildColumns(onEdit, onToggleStatus, onManagePanels);
 
   return (
-    <DataTable columns={columns} data={services} isLoading={isLoading} pagination={pagination} />
+    <DataTable
+      columns={columns}
+      data={services}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
+      pagination={pagination}
+    />
   );
 }

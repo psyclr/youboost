@@ -9,6 +9,7 @@ export function useCatalog(params?: {
   limit?: number;
   platform?: string;
   type?: string;
+  search?: string;
 }) {
   return useQuery({
     queryKey: queryKeys.catalog.list(params),

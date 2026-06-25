@@ -47,7 +47,7 @@ function OrdersContent() {
   // No status filter on the customer page: internal states (failed, partial,
   // awaiting payment) are never surfaced — every order reads as "In progress"
   // until it Completes (see CustomerStatusBadge).
-  const { data, isLoading } = useOrders({ page, limit: 20 });
+  const { data, isLoading, isError, refetch } = useOrders({ page, limit: 20 });
 
   return (
     <div className="space-y-6">
@@ -84,6 +84,8 @@ function OrdersContent() {
           columns={columns}
           data={data?.orders ?? []}
           isLoading={isLoading}
+          isError={isError}
+          onRetry={() => void refetch()}
           onRowClick={(row) => router.push(`/orders/${row.orderId}`)}
           pagination={
             data

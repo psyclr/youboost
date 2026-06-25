@@ -30,6 +30,13 @@ it('adds an item (expanded) and computes total from local estimate', () => {
   expect(result.current.total).toBeGreaterThan(0);
 });
 
+it('seeds the link from opts when provided', () => {
+  const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
+  act(() => result.current.addItem(tier('1', 1), { link: 'https://x' }));
+  expect(result.current.items).toHaveLength(1);
+  expect(result.current.items[0]!.link).toBe('https://x');
+});
+
 it('allows the same service twice as independent items', () => {
   const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
   act(() => {

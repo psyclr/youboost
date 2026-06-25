@@ -28,7 +28,7 @@ export default function TransactionsPage() {
   const [type, setType] = useState('ALL');
   const { page, setPage } = usePagination();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.transactions.list({ page, type }),
     queryFn: () =>
       getTransactions({
@@ -71,6 +71,8 @@ export default function TransactionsPage() {
         columns={columns}
         data={data?.transactions ?? []}
         isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
         pagination={
           data
             ? {

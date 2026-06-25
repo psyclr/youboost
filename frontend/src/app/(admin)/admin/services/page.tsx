@@ -56,7 +56,7 @@ export default function AdminServicesPage() {
   // that provider's services. Each dialog reports its provider up via the form.
   const [activeProviderId, setActiveProviderId] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.adminServices.list({ page }),
     queryFn: () => getAdminServices({ page, limit: 20 }),
   });
@@ -220,6 +220,8 @@ export default function AdminServicesPage() {
         onEdit={openEdit}
         onToggleStatus={(service) => toggleStatusMutation.mutate(service)}
         onManagePanels={setPanelsService}
+        isError={isError}
+        onRetry={() => void refetch()}
         pagination={
           data
             ? {

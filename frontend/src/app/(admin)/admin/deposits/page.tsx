@@ -34,7 +34,7 @@ export default function AdminDepositsPage() {
     deposit: AdminDepositResponse;
   } | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.adminDeposits.list(page, statusFilter),
     queryFn: () =>
       getAdminDeposits({
@@ -159,6 +159,8 @@ export default function AdminDepositsPage() {
         columns={columns}
         data={data?.deposits ?? []}
         isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
         pagination={
           data
             ? {

@@ -26,6 +26,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Accepted risk: the refresh token is persisted in localStorage, so any XSS on
+// the site can read and exfiltrate it. This is tolerated for now and tracked as
+// a separate task to migrate it to an httpOnly, Secure cookie set by the backend.
 export const REFRESH_TOKEN_KEY = 'youboost_refresh_token';
 
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {

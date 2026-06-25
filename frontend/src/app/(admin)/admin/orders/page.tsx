@@ -12,6 +12,7 @@ import {
 import { getErrorMessage } from '@/lib/api/error-messages';
 import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
+import { useUrlParam } from '@/hooks/use-url-param';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -149,8 +150,9 @@ function buildOrderColumns(callbacks: OrderActionCallbacks): Column<AdminOrderRe
 }
 
 export default function AdminOrdersPage() {
-  const [status, setStatus] = useState('ALL');
-  const [dripFeedOnly, setDripFeedOnly] = useState(false);
+  const [status, setStatus] = useUrlParam('status', 'ALL');
+  const [dripParam, setDripParam] = useUrlParam('drip', '');
+  const dripFeedOnly = dripParam === '1';
   const { page, setPage } = usePagination();
   const queryClient = useQueryClient();
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderResponse | null>(null);
@@ -159,7 +161,7 @@ export default function AdminOrdersPage() {
 
   const apiStatus = status === 'STUCK' ? 'PROCESSING' : status;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.adminOrders.list({ page, status, dripFeedOnly }),
     queryFn: () =>
       getAdminOrders({
@@ -258,7 +260,10 @@ export default function AdminOrdersPage() {
           </SelectContent>
         </Select>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Switch checked={dripFeedOnly} onCheckedChange={setDripFeedOnly} />
+          <Switch
+            checked={dripFeedOnly}
+            onCheckedChange={(next) => setDripParam(next ? '1' : '')}
+          />
           Drip-feed only
         </label>
       </div>
@@ -267,6 +272,8 @@ export default function AdminOrdersPage() {
         columns={columns}
         data={data?.orders ?? []}
         isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
         pagination={
           data
             ? {

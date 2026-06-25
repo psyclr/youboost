@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAdminUsers } from '@/lib/api/admin';
 import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
+import { useUrlParam } from '@/hooks/use-url-param';
 import { DataTable, type Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -52,12 +52,12 @@ const statuses = [
 ];
 
 export default function AdminUsersPage() {
-  const [role, setRole] = useState('ALL');
-  const [status, setStatus] = useState('ALL');
+  const [role, setRole] = useUrlParam('role', 'ALL');
+  const [status, setStatus] = useUrlParam('status', 'ALL');
   const { page, setPage } = usePagination();
   const router = useRouter();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.adminUsers.list({ page, role, status }),
     queryFn: () =>
       getAdminUsers({
@@ -106,6 +106,8 @@ export default function AdminUsersPage() {
         columns={columns}
         data={data?.users ?? []}
         isLoading={isLoading}
+        isError={isError}
+        onRetry={() => void refetch()}
         onRowClick={(row) => router.push(`/admin/users/${row.userId}`)}
         pagination={
           data

@@ -17,7 +17,7 @@ export interface UseCart {
   items: CartItem[];
   count: number;
   total: number;
-  addItem: (tier: LandingTierResponse) => void;
+  addItem: (tier: LandingTierResponse, opts?: { link?: string }) => void;
   removeItem: (id: string) => void;
   setLink: (id: string, link: string) => void;
   setQuantity: (id: string, quantity: number) => void;
@@ -28,12 +28,12 @@ export function useCart({ defaultMinAmount }: { defaultMinAmount: number }): Use
   const [items, setItems] = useState<CartItem[]>([]);
 
   const addItem = useCallback(
-    (tier: LandingTierResponse) => {
+    (tier: LandingTierResponse, opts?: { link?: string }) => {
       const quantity = defaultQtyForTier(tier, defaultMinAmount);
       setItems((prev) => {
         if (prev.length >= MAX_ITEMS) return prev;
         const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${prev.length}`;
-        return [...prev, { id, tier, link: '', quantity, collapsed: false }];
+        return [...prev, { id, tier, link: opts?.link ?? '', quantity, collapsed: false }];
       });
       analytics.addToCart({
         id: tier.id,
