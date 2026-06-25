@@ -33,16 +33,8 @@ type OrderFilterValue = 'ALL' | OrderStatus | 'STUCK';
 export const ORDER_ADMIN_FILTER_STATUSES: StatusOption<OrderFilterValue>[] = [
   { value: 'ALL', label: 'All Statuses' },
   ...ORDER_STATUSES.flatMap((s): StatusOption<OrderFilterValue>[] =>
-    s.value === 'PROCESSING'
-      ? [s, { value: 'STUCK', label: 'Stuck (>24h)' }]
-      : [s],
+    s.value === 'PROCESSING' ? [s, { value: 'STUCK', label: 'Stuck (>24h)' }] : [s],
   ),
-];
-
-// User orders filter: leading ALL sentinel, then the standard statuses (no STUCK).
-export const ORDER_USER_FILTER_STATUSES: StatusOption<'ALL' | OrderStatus>[] = [
-  { value: 'ALL', label: 'All Statuses' },
-  ...ORDER_STATUSES,
 ];
 
 // ============================================

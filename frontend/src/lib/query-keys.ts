@@ -66,6 +66,8 @@ export const queryKeys = {
     list: (filters: { page: number }) => ['admin', 'services', filters] as const,
   },
 
+  adminServicePanels: (serviceId: string) => ['admin', 'services', serviceId, 'panels'] as const,
+
   adminProviders: {
     all: ['admin', 'providers'] as const,
     list: (filters: { page: number }) => ['admin', 'providers', filters] as const,
