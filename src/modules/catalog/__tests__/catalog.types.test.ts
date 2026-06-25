@@ -87,6 +87,24 @@ describe('Catalog Types', () => {
       }
     });
 
+    it('should accept a search term', () => {
+      const result = catalogQuerySchema.safeParse({ search: 'views' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.search).toBe('views');
+      }
+    });
+
+    it('should trim and reject a whitespace-only search', () => {
+      const result = catalogQuerySchema.safeParse({ search: '   ' });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject a search term longer than 100 chars', () => {
+      const result = catalogQuerySchema.safeParse({ search: 'a'.repeat(101) });
+      expect(result.success).toBe(false);
+    });
+
     it('should reject invalid platform', () => {
       const result = catalogQuerySchema.safeParse({ platform: 'INVALID' });
       expect(result.success).toBe(false);

@@ -36,7 +36,7 @@ export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
   const { catalogRepo, cache, logger } = deps;
 
   async function listServices(query: CatalogQuery): Promise<PaginatedCatalog> {
-    const cacheKey = `catalog:list:${query.platform ?? 'all'}:${query.type ?? 'all'}:${query.page}:${query.limit}`;
+    const cacheKey = `catalog:list:${query.platform ?? 'all'}:${query.type ?? 'all'}:${query.page}:${query.limit}:${query.search ?? 'all'}`;
 
     const cached = await cache.get(cacheKey);
     if (cached) {
@@ -47,6 +47,7 @@ export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
     const { services, total } = await catalogRepo.findActiveServices({
       platform: query.platform,
       type: query.type,
+      search: query.search,
       page: query.page,
       limit: query.limit,
     });

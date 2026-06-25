@@ -5,6 +5,7 @@ export const catalogQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   platform: z.enum(['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'TWITTER', 'FACEBOOK']).optional(),
   type: z.enum(['VIEWS', 'SUBSCRIBERS', 'LIKES', 'COMMENTS', 'SHARES']).optional(),
+  search: z.string().trim().min(1).max(100).optional(),
 });
 
 export const catalogServiceIdSchema = z.object({

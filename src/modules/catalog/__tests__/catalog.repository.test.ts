@@ -100,6 +100,62 @@ describe('Catalog Repository', () => {
       );
     });
 
+    it('filters by name with case-insensitive contains when search is set', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([mockService]);
+      mocks.count.mockResolvedValue(1);
+      const repo = createCatalogRepository(prisma);
+
+      await repo.findActiveServices({ search: 'views', page: 1, limit: 20 });
+
+      const expectedWhere = {
+        isActive: true,
+        name: { contains: 'views', mode: 'insensitive' },
+      };
+      expect(mocks.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere }),
+      );
+      expect(mocks.count).toHaveBeenCalledWith({ where: expectedWhere });
+    });
+
+    it('combines search with platform and type filters', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
+
+      await repo.findActiveServices({
+        platform: 'YOUTUBE',
+        type: 'VIEWS',
+        search: 'premium',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mocks.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            isActive: true,
+            platform: 'YOUTUBE',
+            type: 'VIEWS',
+            name: { contains: 'premium', mode: 'insensitive' },
+          },
+        }),
+      );
+    });
+
+    it('does not add a name filter when search is absent', async () => {
+      const { prisma, mocks } = createFakePrisma();
+      mocks.findMany.mockResolvedValue([]);
+      mocks.count.mockResolvedValue(0);
+      const repo = createCatalogRepository(prisma);
+
+      await repo.findActiveServices({ page: 1, limit: 20 });
+
+      const passedWhere = mocks.findMany.mock.calls[0][0].where as Record<string, unknown>;
+      expect(passedWhere).not.toHaveProperty('name');
+    });
+
     it('calculates skip based on page', async () => {
       const { prisma, mocks } = createFakePrisma();
       mocks.findMany.mockResolvedValue([]);
