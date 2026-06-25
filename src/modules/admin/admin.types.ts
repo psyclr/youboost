@@ -99,6 +99,23 @@ export const adminServiceIdSchema = z.object({
   serviceId: z.uuid(),
 });
 
+export const adminAddPanelSchema = z.object({
+  providerId: z.uuid(),
+  externalServiceId: z.string().min(1).max(255),
+});
+
+export const adminUpdatePanelSchema = z.object({
+  externalServiceId: z.string().min(1).max(255).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const adminMappingIdSchema = z.object({
+  mappingId: z.uuid(),
+});
+
+export type AdminAddPanelInput = z.infer<typeof adminAddPanelSchema>;
+export type AdminUpdatePanelInput = z.infer<typeof adminUpdatePanelSchema>;
+
 export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
 export type AdminUserIdParam = z.infer<typeof adminUserIdSchema>;
 export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;

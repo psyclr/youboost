@@ -10,6 +10,7 @@ import type {
 } from '../modules/billing';
 import type { OrdersRepository, ServicesRepository } from '../modules/orders';
 import type { ProvidersRepository } from '../modules/providers';
+import { createServiceProviderMappingRepository } from '../modules/providers';
 import type { OutboxRepository } from '../shared/outbox';
 import { createAdminDashboardRepository } from '../modules/admin/admin-dashboard.repository';
 import {
@@ -97,6 +98,7 @@ export function buildAdminServices(deps: BuildAdminServicesDeps): AdminServices 
     servicesService: createAdminServicesService({
       servicesRepo: deps.servicesRepo,
       providersRepo: deps.providersRepo,
+      mappingRepo: createServiceProviderMappingRepository(deps.prisma),
       logger: logger('admin-services'),
     }),
     usersService: createAdminUsersService({

@@ -1,4 +1,8 @@
 import { createAdminServicesService } from '../admin-services.service';
+import type {
+  ServiceProviderMappingRepository,
+  ServicePanel,
+} from '../../providers/service-provider-mapping.repository';
 import {
   createFakeServicesRepo,
   createFakeProvidersRepo,
@@ -7,6 +11,75 @@ import {
   silentLogger,
   type ServiceWithProviderRecord,
 } from './fakes';
+
+/** In-memory mapping repo for the admin-services tests. */
+function createFakeMappingRepo(): ServiceProviderMappingRepository & {
+  rows: ServicePanel[];
+  serviceIdById: Map<string, string>;
+} {
+  const rows: ServicePanel[] = [];
+  const serviceIdById = new Map<string, string>();
+  let seq = 0;
+  return {
+    rows,
+    serviceIdById,
+    async listActiveByServiceId() {
+      return [];
+    },
+    async listByServiceId(serviceId) {
+      return rows.filter((r) => serviceIdById.get(r.id) === serviceId);
+    },
+    async createMapping(input) {
+      const panel: ServicePanel = {
+        id: `map-${++seq}`,
+        providerId: input.providerId,
+        providerName: 'p',
+        providerPriority: 0,
+        providerActive: true,
+        externalServiceId: input.externalServiceId,
+        isActive: true,
+      };
+      rows.push(panel);
+      serviceIdById.set(panel.id, input.serviceId);
+      return panel;
+    },
+    async updateMapping(id, data) {
+      const row = rows.find((r) => r.id === id)!;
+      if (data.externalServiceId !== undefined) row.externalServiceId = data.externalServiceId;
+      if (data.isActive !== undefined) row.isActive = data.isActive;
+      return row;
+    },
+    async deleteMapping(id) {
+      const i = rows.findIndex((r) => r.id === id);
+      if (i >= 0) rows.splice(i, 1);
+    },
+    async findMappingById(id) {
+      const sid = serviceIdById.get(id);
+      return sid ? { id, serviceId: sid } : null;
+    },
+    async upsertPrimary(input) {
+      const existing = rows.find(
+        (r) => serviceIdById.get(r.id) === input.serviceId && r.providerId === input.providerId,
+      );
+      if (existing) {
+        existing.externalServiceId = input.externalServiceId;
+        existing.isActive = true;
+        return;
+      }
+      const panel: ServicePanel = {
+        id: `map-${++seq}`,
+        providerId: input.providerId,
+        providerName: 'p',
+        providerPriority: 0,
+        providerActive: true,
+        externalServiceId: input.externalServiceId,
+        isActive: true,
+      };
+      rows.push(panel);
+      serviceIdById.set(panel.id, input.serviceId);
+    },
+  };
+}
 
 function build(
   options: {
@@ -17,6 +90,7 @@ function build(
   service: ReturnType<typeof createAdminServicesService>;
   servicesRepo: ReturnType<typeof createFakeServicesRepo>;
   providersRepo: ReturnType<typeof createFakeProvidersRepo>;
+  mappingRepo: ReturnType<typeof createFakeMappingRepo>;
 } {
   const servicesRepo = createFakeServicesRepo(
     options.services ? { services: options.services } : {},
@@ -24,12 +98,14 @@ function build(
   const providersRepo = createFakeProvidersRepo(
     options.providers ? { providers: options.providers } : {},
   );
+  const mappingRepo = createFakeMappingRepo();
   const service = createAdminServicesService({
     servicesRepo,
     providersRepo,
+    mappingRepo,
     logger: silentLogger,
   });
-  return { service, servicesRepo, providersRepo };
+  return { service, servicesRepo, providersRepo, mappingRepo };
 }
 
 describe('Admin Services Service', () => {
@@ -156,6 +232,74 @@ describe('Admin Services Service', () => {
         providerId: 'prov-1',
         externalServiceId: '101',
       });
+    });
+
+    it('creates a primary panel mapping so the service has a failover panel', async () => {
+      const { service, servicesRepo, mappingRepo } = build({
+        providers: [makeProviderRecord({ id: 'prov-1', name: 'TestProvider' })],
+      });
+
+      await service.createService(input);
+      const serviceId = servicesRepo.services[0]!.id;
+
+      const panels = await mappingRepo.listByServiceId(serviceId);
+      expect(panels).toHaveLength(1);
+      expect(panels[0]).toMatchObject({ providerId: 'prov-1', externalServiceId: '101' });
+    });
+  });
+
+  describe('service panels', () => {
+    function buildWithService() {
+      return build({
+        services: [makeServiceRecord({ id: 'svc-1', providerId: 'prov-1', externalServiceId: '101' })],
+        providers: [
+          makeProviderRecord({ id: 'prov-1', name: 'Panel A' }),
+          makeProviderRecord({ id: 'prov-2', name: 'Panel B' }),
+        ],
+      });
+    }
+
+    it('attaches a second panel and lists it', async () => {
+      const { service } = buildWithService();
+      const panel = await service.addServicePanel('svc-1', {
+        providerId: 'prov-2',
+        externalServiceId: '202',
+      });
+      expect(panel).toMatchObject({ providerId: 'prov-2', externalServiceId: '202', isActive: true });
+      expect(await service.listServicePanels('svc-1')).toHaveLength(1);
+    });
+
+    it('rejects attaching the same panel twice', async () => {
+      const { service } = buildWithService();
+      await service.addServicePanel('svc-1', { providerId: 'prov-2', externalServiceId: '202' });
+      await expect(
+        service.addServicePanel('svc-1', { providerId: 'prov-2', externalServiceId: '999' }),
+      ).rejects.toThrow(/already attached/i);
+    });
+
+    it('rejects an unknown provider', async () => {
+      const { service } = buildWithService();
+      await expect(
+        service.addServicePanel('svc-1', { providerId: 'nope', externalServiceId: '1' }),
+      ).rejects.toThrow(/provider not found/i);
+    });
+
+    it('toggles and removes a panel', async () => {
+      const { service } = buildWithService();
+      const panel = await service.addServicePanel('svc-1', {
+        providerId: 'prov-2',
+        externalServiceId: '202',
+      });
+      const updated = await service.updateServicePanel(panel.id, { isActive: false });
+      expect(updated.isActive).toBe(false);
+      await service.removeServicePanel(panel.id);
+      expect(await service.listServicePanels('svc-1')).toHaveLength(0);
+    });
+
+    it('404s on unknown service / panel', async () => {
+      const { service } = buildWithService();
+      await expect(service.listServicePanels('missing')).rejects.toThrow(/not found/i);
+      await expect(service.removeServicePanel('map-999')).rejects.toThrow(/not found/i);
     });
   });
 
