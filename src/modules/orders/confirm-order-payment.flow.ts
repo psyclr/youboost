@@ -5,7 +5,7 @@ import type { OutboxPort } from '../../shared/outbox';
 import type { PaymentRepository, PaymentWithOrders } from '../billing/payment.repository';
 import type { OrdersRepository } from './orders.repository';
 import type { ProviderSelectorPort } from './ports/provider-selector.port';
-import type { ServiceProviderMappingRepository } from '../providers/service-provider-mapping.repository';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
 import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
 import { submitWithFailover } from './submit-with-failover';
 
@@ -14,7 +14,7 @@ export interface ConfirmOrderPaymentDeps {
   paymentRepo: PaymentRepository;
   ordersRepo: OrdersRepository;
   providerSelector: ProviderSelectorPort;
-  mappingRepo: ServiceProviderMappingRepository;
+  mappingRepo: ServicePanelReader;
   attemptRepo: ProviderOrderAttemptRepository;
   outbox: OutboxPort;
   logger: Logger;
@@ -72,7 +72,12 @@ export async function submitGuestOrder(
           aggregateType: 'order',
           aggregateId: order.id,
           userId,
-          payload: { orderId: order.id, userId, status: 'PROCESSING', price: Number(order.price ?? 0) },
+          payload: {
+            orderId: order.id,
+            userId,
+            status: 'PROCESSING',
+            price: Number(order.price ?? 0),
+          },
         },
         tx,
       );

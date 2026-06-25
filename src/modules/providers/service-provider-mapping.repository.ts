@@ -19,7 +19,13 @@ export interface ServicePanel {
   isActive: boolean;
 }
 
-export interface ServiceProviderMappingRepository {
+/**
+ * Read-only slice used by the order-submission/failover path. Order creation
+ * only needs to read the active panels for a service in priority order — it
+ * never manages mappings — so it depends on this narrow port rather than the
+ * full CRUD repository (interface segregation).
+ */
+export interface ServicePanelReader {
   /**
    * Active panels for a service, ordered by the admin-managed panel priority
    * (`provider.priority`, DESC — higher = preferred), cost as tiebreaker. Only
@@ -27,6 +33,9 @@ export interface ServiceProviderMappingRepository {
    * provider record the admin edits.
    */
   listActiveByServiceId(serviceId: string): Promise<PanelCandidate[]>;
+}
+
+export interface ServiceProviderMappingRepository extends ServicePanelReader {
   /** All mappings for a service (active + inactive), for the admin UI. */
   listByServiceId(serviceId: string): Promise<ServicePanel[]>;
   createMapping(input: {

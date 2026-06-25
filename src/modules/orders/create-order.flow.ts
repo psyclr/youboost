@@ -6,7 +6,7 @@ import type { CouponsService } from '../coupons';
 import type { OrdersRepository } from './orders.repository';
 import type { ServicesRepository } from './service.repository';
 import type { ProviderSelectorPort } from './ports/provider-selector.port';
-import type { ServiceProviderMappingRepository } from '../providers/service-provider-mapping.repository';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
 import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
 import { submitWithFailover } from './submit-with-failover';
 import {
@@ -29,7 +29,7 @@ export interface CreateOrderFlowDeps {
     releaseFunds(userId: string, amount: number, orderId: string): Promise<void>;
   };
   providerSelector: ProviderSelectorPort;
-  mappingRepo: ServiceProviderMappingRepository;
+  mappingRepo: ServicePanelReader;
   attemptRepo: ProviderOrderAttemptRepository;
   couponsService: CouponsService;
   outbox: OutboxPort;
@@ -135,7 +135,13 @@ export async function executeCreateOrder(
       isDripFeed && dripFeedRuns ? Math.ceil(input.quantity / dripFeedRuns) : input.quantity;
     const outcome = await submitWithFailover(
       { providerSelector, mappingRepo, attemptRepo, logger },
-      { orderId: order.id, userId, serviceId: input.serviceId, link: input.link, quantity: submitQuantity },
+      {
+        orderId: order.id,
+        userId,
+        serviceId: input.serviceId,
+        link: input.link,
+        quantity: submitQuantity,
+      },
     );
 
     if (!outcome.ok) {

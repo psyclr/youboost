@@ -1,11 +1,11 @@
 import type { Logger } from 'pino';
 import type { ProviderSelectorPort } from './ports/provider-selector.port';
-import type { ServiceProviderMappingRepository } from '../providers/service-provider-mapping.repository';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
 import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
 
 export interface FailoverDeps {
   providerSelector: ProviderSelectorPort;
-  mappingRepo: ServiceProviderMappingRepository;
+  mappingRepo: ServicePanelReader;
   attemptRepo: ProviderOrderAttemptRepository;
   logger: Logger;
 }
@@ -44,7 +44,9 @@ export async function submitWithFailover(
   for (const candidate of candidates) {
     attempts += 1;
     try {
-      const { providerId, client } = await providerSelector.selectProviderById(candidate.providerId);
+      const { providerId, client } = await providerSelector.selectProviderById(
+        candidate.providerId,
+      );
       const result = await client.submitOrder({
         serviceId: candidate.externalServiceId,
         link: args.link,

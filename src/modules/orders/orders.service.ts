@@ -6,7 +6,7 @@ import type { ProviderSelectorPort } from './ports/provider-selector.port';
 import type { CouponsService } from '../coupons';
 import type { OrdersRepository } from './orders.repository';
 import type { ServicesRepository } from './service.repository';
-import type { ServiceProviderMappingRepository } from '../providers/service-provider-mapping.repository';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
 import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
 import { mapOrderToDetailed, mapOrderToResponse } from './orders.helpers';
 import { executeCreateOrder } from './create-order.flow';
@@ -42,7 +42,7 @@ export interface OrdersServiceDeps {
     releaseFunds(userId: string, amount: number, orderId: string): Promise<void>;
   };
   providerSelector: ProviderSelectorPort;
-  mappingRepo: ServiceProviderMappingRepository;
+  mappingRepo: ServicePanelReader;
   attemptRepo: ProviderOrderAttemptRepository;
   couponsService: CouponsService;
   outbox: OutboxPort;

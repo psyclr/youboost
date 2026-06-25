@@ -13,6 +13,7 @@ export { createProviderRoutes } from './providers.routes';
 export {
   createServiceProviderMappingRepository,
   type ServiceProviderMappingRepository,
+  type ServicePanelReader,
   type PanelCandidate,
 } from './service-provider-mapping.repository';
 export {
