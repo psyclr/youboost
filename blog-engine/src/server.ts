@@ -9,8 +9,10 @@ import { logger } from './shared/logger';
 async function main() {
   const config = loadConfig();
 
+  // The driver adapter ignores the `?schema=` URL param, so pass it explicitly.
+  const schema = new URL(config.databaseUrl).searchParams.get('schema') ?? undefined;
   const pool = new Pool({ connectionString: config.databaseUrl });
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
   const prisma = new PrismaClient({ adapter });
 
   const app = await createApp(prisma, config);

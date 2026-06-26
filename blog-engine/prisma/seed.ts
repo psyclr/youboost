@@ -4,8 +4,14 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { randomBytes } from 'crypto';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
+const databaseUrl = process.env.DATABASE_URL;
+// The driver adapter ignores the `?schema=` URL param (that's a Prisma-engine
+// param), so pass it explicitly or all queries hit `public`.
+const schema = databaseUrl
+  ? (new URL(databaseUrl).searchParams.get('schema') ?? undefined)
+  : undefined;
+const pool = new Pool({ connectionString: databaseUrl });
+const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
