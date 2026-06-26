@@ -70,6 +70,51 @@ it('coerces a NaN quantity to 0 so the total never becomes NaN', () => {
   expect(result.current.total).toBe(0);
 });
 
+it('flags an item below its tier minimum and clears the flag at/above min', () => {
+  // Tier min is 1000; defaultMinAmount seeds a valid (>= min) quantity.
+  const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
+  act(() => result.current.addItem(tier('1', 1, 1000)));
+  const id = result.current.items[0]!.id;
+  // Default-added quantity meets the minimum.
+  expect(result.current.items[0]!.belowMin).toBe(false);
+  expect(result.current.hasBelowMin).toBe(false);
+
+  // Drop below the tier minimum -> flagged.
+  act(() => result.current.setQuantity(id, 999));
+  expect(result.current.items[0]!.belowMin).toBe(true);
+  expect(result.current.hasBelowMin).toBe(true);
+
+  // Exactly at the minimum is acceptable.
+  act(() => result.current.setQuantity(id, 1000));
+  expect(result.current.items[0]!.belowMin).toBe(false);
+  expect(result.current.hasBelowMin).toBe(false);
+});
+
+it('hasBelowMin is true if ANY item is below its minimum', () => {
+  const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
+  act(() => {
+    result.current.addItem(tier('1', 1, 1000));
+    result.current.addItem(tier('2', 1, 1000));
+  });
+  act(() => {
+    result.current.setQuantity(result.current.items[0]!.id, 1000); // ok
+    result.current.setQuantity(result.current.items[1]!.id, 10); // below min
+  });
+  expect(result.current.items[0]!.belowMin).toBe(false);
+  expect(result.current.items[1]!.belowMin).toBe(true);
+  expect(result.current.hasBelowMin).toBe(true);
+});
+
+it('a NaN-coerced (0) quantity counts as below min', () => {
+  const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
+  act(() => result.current.addItem(tier('1', 1, 1000)));
+  const id = result.current.items[0]!.id;
+  act(() => result.current.setQuantity(id, Number.NaN));
+  expect(result.current.items[0]!.quantity).toBe(0);
+  expect(result.current.items[0]!.belowMin).toBe(true);
+  expect(result.current.hasBelowMin).toBe(true);
+});
+
 it('removes an item; empty cart has total 0 and count 0', () => {
   const { result } = renderHook(() => useCart({ defaultMinAmount: 5 }));
   act(() => result.current.addItem(tier('1', 1)));

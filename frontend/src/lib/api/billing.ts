@@ -1,5 +1,10 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestValidated } from './client';
 import { buildQuery } from './query';
+import {
+  balanceResponseSchema,
+  cryptomusCheckoutResponseSchema,
+  stripeCheckoutResponseSchema,
+} from './schemas';
 import type {
   BalanceResponse,
   PaginatedDeposits,
@@ -7,7 +12,8 @@ import type {
   TransactionDetailed,
 } from './types';
 
-export const getBalance = () => apiRequest<BalanceResponse>('/billing/balance');
+export const getBalance = () =>
+  apiRequestValidated<BalanceResponse>('/billing/balance', balanceResponseSchema);
 
 export const getDeposits = (params?: { page?: number; limit?: number; status?: string }) =>
   apiRequest<PaginatedDeposits>(
@@ -31,13 +37,21 @@ export const getTransaction = (id: string) =>
   apiRequest<TransactionDetailed>(`/billing/transactions/${id}`);
 
 export const createStripeCheckout = (amount: number, metrikaClientId?: string | null) =>
-  apiRequest<{ sessionId: string; url: string }>('/billing/stripe/checkout', {
-    method: 'POST',
-    body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
-  });
+  apiRequestValidated<{ sessionId: string; url: string }>(
+    '/billing/stripe/checkout',
+    stripeCheckoutResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
+    },
+  );
 
 export const createCryptomusCheckout = (amount: number, metrikaClientId?: string | null) =>
-  apiRequest<{ orderId: string; url: string }>('/billing/cryptomus/checkout', {
-    method: 'POST',
-    body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
-  });
+  apiRequestValidated<{ orderId: string; url: string }>(
+    '/billing/cryptomus/checkout',
+    cryptomusCheckoutResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ amount, metrikaClientId: metrikaClientId ?? undefined }),
+    },
+  );

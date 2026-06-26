@@ -1,5 +1,6 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestValidated } from './client';
 import { buildQuery } from './query';
+import { orderDetailedSchema, orderResponseSchema } from './schemas';
 import type {
   BulkOrderInput,
   BulkOrderResult,
@@ -11,7 +12,7 @@ import type {
 } from './types';
 
 export const createOrder = (data: CreateOrderInput) =>
-  apiRequest<OrderResponse>('/orders', {
+  apiRequestValidated<OrderResponse>('/orders', orderResponseSchema, {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -31,7 +32,8 @@ export const getOrders = (params?: {
     })}`,
   );
 
-export const getOrder = (orderId: string) => apiRequest<OrderDetailed>(`/orders/${orderId}`);
+export const getOrder = (orderId: string) =>
+  apiRequestValidated<OrderDetailed>(`/orders/${orderId}`, orderDetailedSchema);
 
 export const cancelOrder = (orderId: string) =>
   apiRequest<CancelOrderResponse>(`/orders/${orderId}/cancel`, {
@@ -39,7 +41,7 @@ export const cancelOrder = (orderId: string) =>
   });
 
 export const refillOrder = (orderId: string) =>
-  apiRequest<OrderDetailed>(`/orders/${orderId}/refill`, {
+  apiRequestValidated<OrderDetailed>(`/orders/${orderId}/refill`, orderDetailedSchema, {
     method: 'POST',
   });
 

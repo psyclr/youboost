@@ -1,3 +1,5 @@
+import type { ZodType } from 'zod';
+import { ZodError } from 'zod';
 import type { ApiErrorResponse } from './types';
 
 export class ApiError extends Error {
@@ -108,4 +110,31 @@ export function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 /** For endpoints that respond with no content (e.g. DELETE -> 204). */
 export async function apiRequestVoid(path: string, options?: RequestInit): Promise<void> {
   await rawRequest(path, options);
+}
+
+/**
+ * Like apiRequest, but validates the response against a zod schema at runtime.
+ * Reserved for MONEY-CRITICAL responses (balances, prices, checkout URLs): a
+ * backend/frontend contract drift fails closed with a clear error instead of
+ * silently rendering NaN/undefined totals. Schemas are loose (passthrough), so
+ * only the money fields the UI renders are validated — extra/new backend fields
+ * never throw.
+ */
+export async function apiRequestValidated<T>(
+  path: string,
+  schema: ZodType,
+  options?: RequestInit,
+): Promise<T> {
+  const data = await rawRequest(path, options);
+  try {
+    // Schemas are a loose money SUBSET of the response, so the parsed shape is
+    // narrower than T (it omits non-money fields). The cast restores the full
+    // response type — only the money fields the UI renders are guaranteed valid.
+    return schema.parse(data) as T;
+  } catch (err) {
+    if (err instanceof ZodError) {
+      throw new ApiError('INVALID_RESPONSE', 'Unexpected server response', 502, err.issues);
+    }
+    throw err;
+  }
 }

@@ -16,6 +16,7 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
   const { tier } = item;
   const name = tier.titleOverride ?? tier.service.name;
   const price = estimatePrice(tier, item.quantity);
+  const belowMin = item.quantity < tier.service.minQuantity;
   return (
     <div className="overflow-hidden rounded-[3px] border" style={{ borderColor: '#363636' }}>
       <div className="flex items-start justify-between gap-2 p-3">
@@ -88,6 +89,11 @@ export function CartItem({ item, onRemove, onToggle, onLink, onQuantity }: CartI
               className="w-full min-w-0 rounded-[3px] border px-3 py-2.5 text-[13px] text-white focus:outline-none"
               style={{ background: '#0a0a0a', borderColor: '#363636' }}
             />
+            {belowMin ? (
+              <span className="text-[11px] text-red-300" role="alert">
+                Minimum {tier.service.minQuantity.toLocaleString()}
+              </span>
+            ) : null}
           </label>
         </div>
       )}

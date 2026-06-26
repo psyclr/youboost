@@ -13,15 +13,32 @@ export interface CartItem {
   collapsed: boolean;
 }
 
+/**
+ * A cart item enriched with derived UI state. `belowMin` is true when the typed
+ * quantity is under the tier's service minimum — the same threshold the
+ * checkout `validate()` enforces server-side (`tier.service.minQuantity`). The
+ * panel uses it to flag the item and disable Pay without re-deriving the rule.
+ */
+export interface CartItemView extends CartItem {
+  belowMin: boolean;
+}
+
 export interface UseCart {
-  items: CartItem[];
+  items: CartItemView[];
   count: number;
   total: number;
+  /** True when any item's quantity is below its tier minimum. */
+  hasBelowMin: boolean;
   addItem: (tier: LandingTierResponse, opts?: { link?: string }) => void;
   removeItem: (id: string) => void;
   setLink: (id: string, link: string) => void;
   setQuantity: (id: string, quantity: number) => void;
   toggleCollapse: (id: string) => void;
+}
+
+/** Minimum quantity a tier accepts — the single source of truth for "below min". */
+export function tierMinQuantity(tier: LandingTierResponse): number {
+  return tier.service.minQuantity;
 }
 
 export function useCart({ defaultMinAmount }: { defaultMinAmount: number }): UseCart {
@@ -72,10 +89,21 @@ export function useCart({ defaultMinAmount }: { defaultMinAmount: number }): Use
     [items],
   );
 
+  // Enrich each item with a derived `belowMin` flag (below the tier minimum) so
+  // the panel can flag it and gate Pay. We don't clamp the typed value — only
+  // surface the state — to avoid fighting the quantity input.
+  const views = useMemo<CartItemView[]>(
+    () => items.map((i) => ({ ...i, belowMin: i.quantity < tierMinQuantity(i.tier) })),
+    [items],
+  );
+
+  const hasBelowMin = useMemo(() => views.some((i) => i.belowMin), [views]);
+
   return {
-    items,
-    count: items.length,
+    items: views,
+    count: views.length,
     total,
+    hasBelowMin,
     addItem,
     removeItem,
     setLink,

@@ -163,7 +163,7 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
       <Button
         type="button"
         onClick={() => void onPay()}
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || cart.hasBelowMin}
         aria-label={`Pay ${formatCurrency(cart.total)}`}
         className="w-full"
       >
