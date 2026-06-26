@@ -274,7 +274,6 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     landingService,
     adminServices,
   });
-
   const workers: AppWorkers = {
     async start(): Promise<void> {
       await statusPollWorker.start();
