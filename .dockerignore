@@ -1,14 +1,19 @@
-node_modules
+# Monorepo (npm workspaces): both images build from the repo-root context, so
+# exclude build artifacts / deps / secrets at ANY depth.
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.next
+**/.next-test
+**/.turbo
+**/.env
+**/.env.local
+**/src/generated
+
 npm-debug.log
-dist
-build
-coverage
 .git
 .gitignore
-.env
-.env.local
-*.md
-!README.md
 .vscode
 .idea
 .DS_Store
@@ -18,3 +23,5 @@ coverage
 scripts
 docs
 tests
+*.md
+!README.md
