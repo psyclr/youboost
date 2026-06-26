@@ -3,6 +3,10 @@
   "version": "0.1.0-alpha",
   "description": "youboost SMM Marketplace Platform",
   "main": "dist/index.js",
+  "workspaces": [
+    "frontend",
+    "blog-engine"
+  ],
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",

@@ -10,9 +10,14 @@
       "entry": ["src/app/**/page.tsx", "src/app/**/layout.tsx"],
       "project": ["src/**/*.{ts,tsx}"],
       "ignoreDependencies": ["@testing-library/*", "tw-animate-css", "shadcn", "tailwindcss"]
+    },
+    "blog-engine": {
+      "entry": ["src/server.ts"],
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@prisma/client", "ioredis", "@anthropic-ai/sdk", "openai"]
     }
   },
-  "ignore": ["frontend/src/components/ui/**"],
+  "ignore": ["frontend/src/components/ui/**", "blog-engine/src/ai/**"],
   "ignoreExportsUsedInFile": true,
   "ignoreIssues": {
     "src/modules/**/*.types.ts": ["exports", "types"],
