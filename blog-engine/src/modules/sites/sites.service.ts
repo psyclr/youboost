@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import { ConflictError, NotFoundError } from '../../shared/errors';
-import type { SitesRepository, UpdateSiteData } from './sites.repository';
+import type { SitesRepository } from './sites.repository';
 import type {
   CreateSiteInput,
   UpdateSiteInput,
@@ -26,9 +26,10 @@ function presentSite(site: BlogSite, baseUrl: string): SiteResponse {
     topics: site.topics,
     autoPublish: site.autoPublish,
     planTier: site.planTier,
-    blogUrl: site.domain && site.domainVerified
-      ? `https://${site.domain}`
-      : `https://${site.subdomain}.${baseUrl}`,
+    blogUrl:
+      site.domain && site.domainVerified
+        ? `https://${site.domain}`
+        : `https://${site.subdomain}.${baseUrl}`,
     createdAt: site.createdAt.toISOString(),
   };
 }

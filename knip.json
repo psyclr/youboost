@@ -1,7 +1,7 @@
 {
   "workspaces": {
     ".": {
-      "entry": ["src/shared/health/index.ts"],
+      "entry": ["src/shared/health/index.ts", "eslint.base.mjs"],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@prisma/client", "pino-pretty"],
       "ignoreBinaries": ["docker-compose"]

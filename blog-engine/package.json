@@ -9,7 +9,9 @@
     "start": "node dist/server.js",
     "db:migrate": "NODE_OPTIONS=--experimental-require-module npx prisma migrate deploy",
     "db:generate": "NODE_OPTIONS=--experimental-require-module npx prisma generate",
-    "db:seed": "NODE_OPTIONS=--experimental-require-module ts-node prisma/seed.ts"
+    "db:seed": "NODE_OPTIONS=--experimental-require-module ts-node prisma/seed.ts",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
