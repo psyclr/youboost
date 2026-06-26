@@ -22,20 +22,25 @@ git fetch --quiet origin main
 git reset --hard origin/main
 git rev-parse --short HEAD
 
-step "backend: install + lint + types + tests"
+step "install all workspaces"
+# Single workspace-aware install (root + frontend + blog-engine).
 npm install --no-audit --no-fund --silent
+
+step "backend: lint + types + tests"
 npx tsc --noEmit
 npx eslint src --quiet
 TEST_DATABASE_URL="$TEST_DB" npx prisma migrate deploy >/dev/null
 TEST_DATABASE_URL="$TEST_DB" npx jest --silent
 
-step "frontend: install + lint + types + tests"
-cd frontend
-npm install --no-audit --no-fund --silent
-npx tsc --noEmit
-npx eslint src --quiet
-npx jest --silent
-cd "$ROOT"
+step "frontend: lint + types + tests"
+npm run --workspace frontend typecheck
+npm run --workspace frontend lint
+npm run --workspace frontend test -- --silent
+
+step "blog-engine: generate client + lint + types"
+npm run --workspace blog-engine db:generate >/dev/null
+npm run --workspace blog-engine typecheck
+npm run --workspace blog-engine lint
 
 step "e2e: isolated docker stack"
 bash scripts/e2e-stack.sh
