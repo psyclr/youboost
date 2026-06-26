@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { getBlogSitemap } from '@/lib/blog/api';
 
 export const revalidate = 3600;
 
@@ -25,19 +26,10 @@ async function fetchPublishedLandingSlugs(): Promise<string[]> {
   }
 }
 
+// Blog slugs come directly from blog-engine (GET /v1/posts/sitemap via the
+// server-only blog API client), keyed by the BLOG_ENGINE_API_KEY.
 async function fetchPublishedBlogSlugs(): Promise<{ slug: string; updatedAt: string }[]> {
-  try {
-    const siteId = process.env.BLOG_SITE_ID;
-    if (!siteId) return [];
-    const res = await fetch(`${getApiBaseUrl()}/blog/sitemap?siteId=${siteId}`, {
-      next: { revalidate: 3600 },
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return [];
-    return (await res.json()) as { slug: string; updatedAt: string }[];
-  } catch {
-    return [];
-  }
+  return getBlogSitemap();
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
