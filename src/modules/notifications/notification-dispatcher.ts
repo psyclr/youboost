@@ -19,13 +19,37 @@ export interface NotificationDispatcher {
 export interface NotificationDispatcherDeps {
   notificationRepo: NotificationRepository;
   emailProvider: EmailProvider;
+  /**
+   * Resolve the logical `user-email` channel to the recipient's actual address
+   * (by the notification's userId). Handlers store `channel: 'user-email'` rather
+   * than the address, so delivery must resolve it here. Optional for tests that
+   * pass an explicit address as the channel.
+   */
+  resolveRecipientEmail?: (userId: string) => Promise<string | null>;
   logger: Logger;
 }
 
 export function createNotificationDispatcher(
   deps: NotificationDispatcherDeps,
 ): NotificationDispatcher {
-  const { notificationRepo, emailProvider, logger } = deps;
+  const { notificationRepo, emailProvider, resolveRecipientEmail, logger } = deps;
+
+  /**
+   * The destination address for a notification. An explicit address (contains
+   * `@`) is used as-is; the logical `user-email` channel is resolved to the
+   * user's address. Returns null when it can't be resolved (caller fails the
+   * notification instead of sending to a bogus recipient).
+   */
+  async function resolveRecipient(notification: {
+    channel: string;
+    userId: string;
+  }): Promise<string | null> {
+    if (notification.channel.includes('@')) return notification.channel;
+    if (notification.channel === 'user-email' && resolveRecipientEmail) {
+      return resolveRecipientEmail(notification.userId);
+    }
+    return null;
+  }
 
   async function enqueueNotification(notificationId: string): Promise<void> {
     try {
@@ -60,9 +84,19 @@ export function createNotificationDispatcher(
       return;
     }
 
+    const to = await resolveRecipient(notification);
+    if (!to) {
+      // Unresolvable recipient is permanent — fail without throwing so the job
+      // is not retried forever.
+      const reason = `No recipient for channel '${notification.channel}'`;
+      await notificationRepo.updateNotificationStatus(notificationId, 'FAILED', reason);
+      logger.error({ notificationId, channel: notification.channel }, reason);
+      return;
+    }
+
     try {
       await emailProvider.send({
-        to: notification.channel,
+        to,
         subject: notification.subject ?? '',
         body: notification.body,
       });

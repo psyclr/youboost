@@ -58,6 +58,36 @@ export function createGuestOrderPaymentPort(
 }
 
 /**
+ * Pick the real or fake guest payment port based on the PAYMENTS_FAKE flag.
+ * Keeps the composition root a single call (no env branching inline).
+ */
+export function selectGuestPaymentPort(
+  fake: boolean,
+  stripe: StripePaymentService,
+  cryptomus: CryptomusPaymentService,
+): GuestOrderPaymentPort {
+  return fake ? createFakeGuestPaymentPort() : createGuestOrderPaymentPort(stripe, cryptomus);
+}
+
+/**
+ * Test-only guest payment port: returns a deterministic checkout URL on the
+ * provider's real (trusted) host WITHOUT calling Stripe/Cryptomus. Lets the
+ * isolated e2e stack exercise the real checkout flow (auto-user, Payment,
+ * orders, session attach) up to the redirect, with no external dependency.
+ * Wired only when PAYMENTS_FAKE is set — never in prod.
+ */
+export function createFakeGuestPaymentPort(): GuestOrderPaymentPort {
+  return {
+    createPaymentSession: (i): Promise<{ sessionId: string; url: string }> => {
+      const sessionId = `fake-${i.reference.kind}-${Date.now()}`;
+      const host =
+        i.provider === 'cryptomus' ? 'https://pay.cryptomus.com' : 'https://checkout.stripe.com';
+      return Promise.resolve({ sessionId, url: `${host}/fake/${sessionId}` });
+    },
+  };
+}
+
+/**
  * Late-binding settlement port for the new multi-service Payment path —
  * `ordersService.confirmOrderPayment` is created after the billing services,
  * so the composition root binds it once available. Used by the

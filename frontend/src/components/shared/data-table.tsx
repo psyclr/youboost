@@ -31,6 +31,8 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
   getRowId?: (row: T, index: number) => string;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 function getColumnKey<T>(col: Column<T>, index: number): string {
@@ -66,8 +68,44 @@ export function DataTable<T>({
   onRowClick,
   emptyMessage = 'No data found',
   getRowId,
+  isError,
+  onRetry,
 }: Readonly<DataTableProps<T>>) {
   const resolveRowId = getRowId ?? defaultGetRowId;
+  if (isError && !isLoading) {
+    return (
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((col, i) => (
+                <TableHead key={getColumnKey(col, i)} className={col.className}>
+                  {col.header}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="h-24 text-center text-muted-foreground"
+              >
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <span>Couldn&apos;t load data.</span>
+                  {onRetry && (
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                      Try again
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
   if (isLoading) {
     return (
       <div className="rounded-md border">

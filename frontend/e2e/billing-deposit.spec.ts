@@ -118,15 +118,10 @@ test.describe.serial('Billing deposit (Stripe + Cryptomus)', () => {
     ]);
   });
 
-  test('6. Stripe non-stripe URL is rejected, no navigation', async () => {
-    await mockJson(STRIPE_CHECKOUT, 200, {
-      sessionId: 'cs_test_2',
-      url: 'https://evil.example.com/phish',
-    });
-    await stripeForm().getByRole('button', { name: /^Pay \$/ }).click();
-    await expect(page.getByText(/Invalid payment URL/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/billing\/deposit/);
-  });
+  // Host-allowlist rejection (stripe + cryptomus lookalikes) is covered by the
+  // unit suite src/lib/payments/__tests__/checkout-host.test.ts — no need to
+  // re-prove it through the browser. The success-redirect tests below keep the
+  // frontend wiring honest.
 
   test('7. Cryptomus success redirects to cryptomus.com', async () => {
     await mockJson(CRYPTO_CHECKOUT, 200, {
@@ -138,16 +133,6 @@ test.describe.serial('Billing deposit (Stripe + Cryptomus)', () => {
       page.waitForURL(/cryptomus\.com/, { timeout: 10_000 }),
       cryptoForm().getByRole('button', { name: /in Crypto$/i }).click(),
     ]);
-  });
-
-  test('8. Cryptomus non-cryptomus URL is rejected, no navigation', async () => {
-    await mockJson(CRYPTO_CHECKOUT, 200, {
-      orderId: 'ord_2',
-      url: 'https://evil.example.com/phish',
-    });
-    await cryptoForm().getByRole('button', { name: /in Crypto$/i }).click();
-    await expect(page.getByText(/Invalid payment URL/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/billing\/deposit/);
   });
 
   test('9. CRYPTOMUS_NOT_CONFIGURED maps to friendly unavailable message', async () => {

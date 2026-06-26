@@ -46,7 +46,7 @@ describe('Catalog Service', () => {
         services: [expectedResponse],
         pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
       };
-      await cache.setex('catalog:list:all:all:1:20', 300, JSON.stringify(cachedData));
+      await cache.setex('catalog:list:all:all:1:20:all', 300, JSON.stringify(cachedData));
       cache.calls.setex.length = 0; // Reset after priming
       const service = createCatalogService({ catalogRepo, cache, logger: silentLogger });
 
@@ -54,7 +54,7 @@ describe('Catalog Service', () => {
 
       expect(result).toEqual(cachedData);
       expect(catalogRepo.calls.findActiveServices).toHaveLength(0);
-      expect(cache.calls.get).toEqual(['catalog:list:all:all:1:20']);
+      expect(cache.calls.get).toEqual(['catalog:list:all:all:1:20:all']);
     });
 
     it('queries repo and caches on cache miss', async () => {
@@ -70,11 +70,12 @@ describe('Catalog Service', () => {
       expect(catalogRepo.calls.findActiveServices[0]).toEqual({
         platform: undefined,
         type: undefined,
+        search: undefined,
         page: 1,
         limit: 20,
       });
       expect(cache.calls.setex[0]).toEqual({
-        key: 'catalog:list:all:all:1:20',
+        key: 'catalog:list:all:all:1:20:all',
         ttl: 300,
         value: JSON.stringify(result),
       });
@@ -87,7 +88,7 @@ describe('Catalog Service', () => {
 
       await service.listServices({ page: 1, limit: 20, platform: 'YOUTUBE' });
 
-      expect(cache.calls.get).toEqual(['catalog:list:YOUTUBE:all:1:20']);
+      expect(cache.calls.get).toEqual(['catalog:list:YOUTUBE:all:1:20:all']);
     });
 
     it('uses correct cache key with type filter', async () => {
@@ -97,7 +98,7 @@ describe('Catalog Service', () => {
 
       await service.listServices({ page: 1, limit: 20, type: 'VIEWS' });
 
-      expect(cache.calls.get).toEqual(['catalog:list:all:VIEWS:1:20']);
+      expect(cache.calls.get).toEqual(['catalog:list:all:VIEWS:1:20:all']);
     });
 
     it('uses correct cache key with both filters', async () => {
@@ -107,7 +108,45 @@ describe('Catalog Service', () => {
 
       await service.listServices({ page: 2, limit: 10, platform: 'INSTAGRAM', type: 'LIKES' });
 
-      expect(cache.calls.get).toEqual(['catalog:list:INSTAGRAM:LIKES:2:10']);
+      expect(cache.calls.get).toEqual(['catalog:list:INSTAGRAM:LIKES:2:10:all']);
+    });
+
+    it('uses a distinct cache key when search is set vs not', async () => {
+      const catalogRepo = createFakeCatalogRepository();
+      const cache = createFakeCache();
+      const service = createCatalogService({ catalogRepo, cache, logger: silentLogger });
+
+      await service.listServices({ page: 1, limit: 20 });
+      await service.listServices({ page: 1, limit: 20, search: 'views' });
+
+      // Search query must not collide with the unfiltered list key.
+      expect(cache.calls.get).toEqual([
+        'catalog:list:all:all:1:20:all',
+        'catalog:list:all:all:1:20:views',
+      ]);
+    });
+
+    it('passes search down to the repository and filters by name (case-insensitive)', async () => {
+      const catalogRepo = createFakeCatalogRepository({
+        services: [
+          makeServiceRecord({ id: 'svc-1', name: 'YouTube Views' }),
+          makeServiceRecord({ id: 'svc-2', name: 'Instagram Likes' }),
+        ],
+      });
+      const cache = createFakeCache();
+      const service = createCatalogService({ catalogRepo, cache, logger: silentLogger });
+
+      const result = await service.listServices({ page: 1, limit: 20, search: 'VIEWS' });
+
+      expect(catalogRepo.calls.findActiveServices[0]).toEqual({
+        platform: undefined,
+        type: undefined,
+        search: 'VIEWS',
+        page: 1,
+        limit: 20,
+      });
+      expect(result.services).toHaveLength(1);
+      expect(result.services[0]?.name).toBe('YouTube Views');
     });
 
     it('caches with 300 second TTL', async () => {

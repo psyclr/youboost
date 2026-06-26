@@ -5,7 +5,7 @@ import { PlatformBadge } from '@/components/shared/platform-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
-import { Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Layers, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { AdminServiceResponse } from '@/lib/api/types';
 
 interface ServiceTableProps {
@@ -13,6 +13,9 @@ interface ServiceTableProps {
   isLoading: boolean;
   onEdit: (service: AdminServiceResponse) => void;
   onToggleStatus: (service: AdminServiceResponse) => void;
+  onManagePanels: (service: AdminServiceResponse) => void;
+  isError?: boolean;
+  onRetry?: () => void;
   pagination?: {
     page: number;
     totalPages: number;
@@ -23,6 +26,7 @@ interface ServiceTableProps {
 function buildColumns(
   onEdit: (service: AdminServiceResponse) => void,
   onToggleStatus: (service: AdminServiceResponse) => void,
+  onManagePanels: (service: AdminServiceResponse) => void,
 ): Column<AdminServiceResponse>[] {
   return [
     {
@@ -96,6 +100,14 @@ function buildColumns(
           <Button
             variant="ghost"
             size="icon"
+            onClick={() => onManagePanels(row)}
+            aria-label="Manage panels"
+          >
+            <Layers className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => onToggleStatus(row)}
             aria-label="Toggle service status"
           >
@@ -116,11 +128,21 @@ export function ServiceTable({
   isLoading,
   onEdit,
   onToggleStatus,
+  onManagePanels,
+  isError,
+  onRetry,
   pagination,
 }: Readonly<ServiceTableProps>) {
-  const columns = buildColumns(onEdit, onToggleStatus);
+  const columns = buildColumns(onEdit, onToggleStatus, onManagePanels);
 
   return (
-    <DataTable columns={columns} data={services} isLoading={isLoading} pagination={pagination} />
+    <DataTable
+      columns={columns}
+      data={services}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
+      pagination={pagination}
+    />
   );
 }

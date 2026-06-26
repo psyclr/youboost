@@ -71,7 +71,8 @@ export interface UserProfile {
 export interface RegisterInput {
   email: string;
   password: string;
-  username: string;
+  // Optional: the fast sign-up form omits it and the backend derives one.
+  username?: string;
   referralCode?: string;
 }
 
@@ -350,6 +351,21 @@ export type AdminServiceUpdateInput = Partial<AdminServiceCreateInput> & {
   isActive?: boolean;
 };
 
+/**
+ * A panel (provider) attached to a service for failover. `providerPriority` is
+ * set on the Providers page and is read-only here — it dictates the order in
+ * which panels are tried.
+ */
+export interface AdminServicePanel {
+  id: string;
+  providerId: string;
+  providerName: string;
+  providerPriority: number;
+  providerActive: boolean;
+  externalServiceId: string;
+  isActive: boolean;
+}
+
 export interface DashboardStats {
   totalUsers: number;
   totalOrders: number;
@@ -547,6 +563,8 @@ export interface LandingCartCheckoutBody {
   email: string;
   items: LandingCartCheckoutItem[];
   paymentProvider?: 'stripe' | 'cryptomus';
+  /** Yandex.Metrika ClientID for server-side purchase attribution. */
+  metrikaClientId?: string;
 }
 export interface LandingCartCheckoutResult {
   userId: string;

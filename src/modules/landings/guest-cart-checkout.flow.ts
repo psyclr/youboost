@@ -117,6 +117,7 @@ export async function executeGuestCartCheckout(
     provider,
     amount: total,
     items: priced,
+    metrikaClientId: input.metrikaClientId ?? null,
   });
 
   const session = await payments.createPaymentSession({

@@ -74,11 +74,7 @@ export function ServiceTiers({ slug, tiers, defaultMinAmount }: ServiceTiersProp
       if (existing) {
         cartRef.current.setLink(existing.id, detail);
       } else {
-        cartRef.current.addItem(ytTier);
-        setTimeout(() => {
-          const added = cartRef.current.items.find((i) => i.tier.id === ytTier.id);
-          if (added) cartRef.current.setLink(added.id, detail);
-        }, 0);
+        cartRef.current.addItem(ytTier, { link: detail });
       }
     } else {
       // Fallback: fill the first empty-link item, else store as pending.

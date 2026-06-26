@@ -12,7 +12,6 @@ export {
   createOrderCreatedEmailHandler,
   createOrderCancelledEmailHandler,
   createOrderCompletedEmailHandler,
-  createOrderFailedEmailHandler,
   createOrderPartialEmailHandler,
 } from './handlers/order-email.handler';
 export {
@@ -22,3 +21,4 @@ export {
 export { createVerificationEmailHandler } from './handlers/verification-email.handler';
 export { createPasswordResetEmailHandler } from './handlers/password-reset-email.handler';
 export { createAutoUserSetupEmailHandler } from './handlers/auto-user-setup-email.handler';
+export { createAdminFulfilmentExhaustedHandler } from './handlers/admin-alert.handler';

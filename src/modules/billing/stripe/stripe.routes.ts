@@ -19,6 +19,7 @@ declare module 'fastify' {
 
 const checkoutSchema = z.object({
   amount: z.coerce.number().min(5).max(10_000),
+  metrikaClientId: z.string().max(64).optional(),
 });
 
 function validateBody<T>(
@@ -72,7 +73,10 @@ export function createStripeRoutes(deps: StripeRoutesDeps): FastifyPluginAsync {
       async (request: FastifyRequest, reply: FastifyReply) => {
         const user = getAuthUser(request);
         const input = validateBody(checkoutSchema, request.body);
-        const result = await service.createCheckoutSession(user.userId, input);
+        const result = await service.createCheckoutSession(user.userId, {
+          amount: input.amount,
+          metrikaClientId: input.metrikaClientId ?? null,
+        });
         return reply.status(StatusCodes.OK).send(result);
       },
     );

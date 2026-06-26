@@ -85,33 +85,9 @@ test.describe.serial('Landing cart', () => {
     await expect(panel().getByRole('alert')).toContainText(/minimum/i);
   });
 
-  test('rejects a checkout redirect to an untrusted host', async () => {
-    await page.route(CART_CHECKOUT, (route: Route) =>
-      route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          userId: 'u',
-          paymentId: 'p',
-          orderIds: ['o1'],
-          checkoutUrl: 'https://evilstripe.com/pay', // ends with "stripe.com" textually
-        }),
-      }),
-    );
-    await cards().nth(0).getByRole('button', { name: /^pay$/i }).click();
-    await panel()
-      .getByLabel(/add a link/i)
-      .first()
-      .fill('https://youtube.com/watch?v=abc');
-    await panel()
-      .getByPlaceholder(/you@example/i)
-      .fill('a@b.com');
-    await panel()
-      .getByRole('button', { name: /pay \$/i })
-      .click();
-    await expect(panel().getByRole('alert')).toContainText(/invalid payment url/i);
-    expect(new URL(page.url()).pathname).toBe('/'); // must not have navigated away
-  });
+  // Untrusted-host rejection is covered by the unit suite
+  // src/lib/payments/__tests__/checkout-host.test.ts (incl. evilstripe.com /
+  // evilcryptomus.com lookalikes) — no need to re-prove it through the browser.
 
   test('crypto provider posts paymentProvider=cryptomus and follows a valid cryptomus redirect', async () => {
     const captured: { body: unknown } = { body: null };

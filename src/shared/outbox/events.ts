@@ -35,7 +35,9 @@ export type OutboxEvent =
       aggregateType: 'order';
       aggregateId: string;
       userId: string;
-      payload: { orderId: string; userId: string; reason: string };
+      // refundAmount is set when the failure refunded the customer to their wallet
+      // (e.g. a paid order the provider couldn't start); omitted otherwise.
+      payload: { orderId: string; userId: string; reason: string; refundAmount?: number };
     }
   | {
       type: 'order.partial';
@@ -44,13 +46,43 @@ export type OutboxEvent =
       userId: string;
       payload: { orderId: string; userId: string; remains: number };
     }
+  | {
+      // Every panel that can fulfil this paid order failed. Admin-only signal —
+      // drives an admin alert; the customer keeps seeing "In progress".
+      type: 'order.fulfilment_exhausted';
+      aggregateType: 'order';
+      aggregateId: string;
+      userId: string;
+      payload: { orderId: string; userId: string; attempts: number };
+    }
+  // Payments (a settled checkout = one purchase; reported to analytics server-side)
+  | {
+      type: 'payment.confirmed';
+      aggregateType: 'payment';
+      aggregateId: string;
+      userId: string;
+      payload: {
+        paymentId: string;
+        userId: string;
+        amount: number;
+        currency: string;
+        /** Metrika ClientID captured at checkout; null when the visitor blocked it. */
+        metrikaClientId: string | null;
+      };
+    }
   // Deposits
   | {
       type: 'deposit.confirmed';
       aggregateType: 'deposit';
       aggregateId: string;
       userId: string;
-      payload: { depositId: string; userId: string; amount: number; provider: string };
+      payload: {
+        depositId: string;
+        userId: string;
+        amount: number;
+        provider: string;
+        metrikaClientId: string | null;
+      };
     }
   | {
       type: 'deposit.failed';

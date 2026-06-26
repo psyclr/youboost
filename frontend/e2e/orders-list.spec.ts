@@ -33,31 +33,10 @@ test.describe.serial('Orders List Page', () => {
     await expect(page.getByRole('link', { name: /Bulk Order/ })).toBeVisible();
   });
 
-  test('should display status filter with All Statuses default', async () => {
-    const trigger = page.locator('[data-slot="select-trigger"]').first();
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toContainText('All Statuses');
-  });
-
-  test('should open status filter and show all options', async () => {
-    const trigger = page.locator('[data-slot="select-trigger"]').first();
-    await trigger.click();
-
-    const options = [
-      'All Statuses',
-      'Pending',
-      'Processing',
-      'Completed',
-      'Partial',
-      'Cancelled',
-      'Failed',
-      'Refunded',
-    ];
-    for (const option of options) {
-      await expect(page.getByRole('option', { name: option })).toBeVisible();
-    }
-
-    await page.keyboard.press('Escape');
+  test('does not expose an internal status filter to the customer', async () => {
+    // The customer page intentionally has no status filter — internal states
+    // (failed, partial, awaiting payment) are never surfaced.
+    await expect(page.locator('[data-slot="select-trigger"]')).toHaveCount(0);
   });
 
   test('should show empty state with Browse Catalog link', async () => {
@@ -129,6 +108,13 @@ test.describe.serial('Orders List Page', () => {
 
     await expect(page.getByText('abc12345…')).toBeVisible();
     await expect(page.getByText('def67890…')).toBeVisible();
+
+    // Customer-facing statuses are collapsed: in-flight states (here PENDING)
+    // read as "In progress"; raw internal labels never appear. ("Completed" is
+    // also a column header, so it's not a reliable status assertion here.)
+    await expect(page.getByText('In progress')).toBeVisible();
+    await expect(page.getByText('PENDING', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('FAILED', { exact: true })).toHaveCount(0);
   });
 
   test('should navigate to order detail on row click', async () => {

@@ -6,7 +6,7 @@ import type { AppConfig } from './shared/config';
 import { createServiceLogger } from './shared/utils/logger';
 import { createRedisCache } from './shared/cache/redis-cache';
 import { setupFastifyApp } from './composition/setup-fastify';
-import { buildOutboxHandlers } from './composition/outbox-handlers';
+import { buildHandlerRegistry } from './composition/outbox-handlers';
 import { registerRoutes } from './composition/register-routes';
 // prettier-ignore
 import { createUserRepository, createTokenRepository, createEmailTokenRepository, createAuthenticate, createAuthService, createAuthAutoUserService, createAuthEmailService, createAuthGoogleService } from './modules/auth';
@@ -14,12 +14,12 @@ import { createUserRepository, createTokenRepository, createEmailTokenRepository
 import { createWalletRepository, createLedgerRepository, createDepositRepository, createBillingService, createBillingInternalService, createDepositLifecycleService, createStripePaymentService, createCryptomusPaymentService, createPaymentProviderRegistry, createPaymentRepository } from './modules/billing';
 import { createPaymentCompletionRouter } from './modules/billing/payment-completion.router';
 // prettier-ignore
-import { createOutboxRepository, createOutboxService, createOutboxWorker, createHandlerRegistry } from './shared/outbox';
+import { createOutboxRepository, createOutboxService, createOutboxWorker } from './shared/outbox';
 import { createSystemClock } from './shared/utils/clock';
 // prettier-ignore
 import { createOrdersRepository, createServicesRepository, createOrdersService, createFundSettlement, createCircuitBreaker, stubProviderClient } from './modules/orders';
 // prettier-ignore
-import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector } from './modules/providers';
+import { createProvidersRepository, createProvidersService, createEncryptionService, createProviderSelector, createServiceProviderMappingRepository, createProviderOrderAttemptRepository } from './modules/providers';
 import { buildAdminServices } from './composition/admin-services';
 import { buildOrderWorkers } from './composition/build-workers';
 import { createApiKeysRepository } from './modules/api-keys/api-keys.repository';
@@ -48,7 +48,7 @@ import {
   createLandingServiceLookup,
   createAutoUserCreatorPort,
   createGuestOrderCreatorPort,
-  createGuestOrderPaymentPort,
+  selectGuestPaymentPort,
   createLateBoundOrderPaymentProcessor,
 } from './composition/landings-adapters';
 import { createHealthCheck } from './shared/health/health';
@@ -128,6 +128,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const notificationDispatcher = createNotificationDispatcher({
     notificationRepo,
     emailProvider,
+    resolveRecipientEmail: async (userId) => (await userRepo.findById(userId))?.email ?? null,
     logger: createServiceLogger('notification-dispatcher'),
   });
   const notificationsService = createNotificationsService({
@@ -206,11 +207,11 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const fundSettlement = createFundSettlement({ billing: { chargeFunds: billingInternal.chargeFunds, releaseFunds: billingInternal.releaseFunds, refundFunds: billingInternal.refundFunds }, logger: createServiceLogger('fund-settlement') });
   const circuitBreaker = createCircuitBreaker();
   // prettier-ignore
-  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
+  const ordersService = createOrdersService({ prisma, ordersRepo, servicesRepo, billing: { holdFunds: billingInternal.holdFunds, releaseFunds: billingInternal.releaseFunds }, providerSelector, mappingRepo: createServiceProviderMappingRepository(prisma), attemptRepo: createProviderOrderAttemptRepository(prisma), couponsService, outbox, paymentRepo, logger: createServiceLogger('orders') });
   orderPaymentProcessor.bind({ confirmOrderPayment: ordersService.confirmOrderPayment });
 
   // prettier-ignore
-  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(paymentRepo), payments: createGuestOrderPaymentPort(stripePayment, cryptomusPayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
+  const landingService = createLandingService({ prisma, landingRepo, serviceLookup: createLandingServiceLookup(catalogService), autoUserCreator: createAutoUserCreatorPort(authAutoUserService), orderCreator: createGuestOrderCreatorPort(paymentRepo), payments: selectGuestPaymentPort(config.payments.fake, stripePayment, cryptomusPayment), outbox, clock: createSystemClock(), appUrl: config.app.url, logger: createServiceLogger('landings') });
 
   // Admin module — fan-in consumer of every other module.
   const adminServices = buildAdminServices({
@@ -231,15 +232,15 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
   const { orderTimeoutWorker, statusPollWorker, dripFeedWorker, depositExpiryWorker, pendingPaymentExpiryWorker } = buildOrderWorkers({ prisma, ordersRepo, servicesRepo, ordersService, providerSelector, fundSettlement, circuitBreaker, outbox, depositRepo, depositLifecycle, config });
 
   // Outbox handler registry — wires domain events to side-effect producers.
-  const handlerRegistry = createHandlerRegistry(
-    buildOutboxHandlers({
-      webhookDispatcher,
-      notificationsService,
-      couponsService,
-      referralsService,
-      emailProvider,
-    }),
-  );
+  const handlerRegistry = buildHandlerRegistry({
+    webhookDispatcher,
+    notificationsService,
+    couponsService,
+    referralsService,
+    emailProvider,
+    metrika: config.analytics.yandexMetrika,
+    adminEmail: config.alerts.adminEmail,
+  });
   const outboxWorker = createOutboxWorker({
     outboxRepo,
     handlers: handlerRegistry,
@@ -247,7 +248,6 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     logger: createServiceLogger('outbox-worker'),
   });
 
-  // Route registration — delegated to registerRoutes to keep this file lean.
   await registerRoutes({
     app,
     authenticate,
@@ -255,6 +255,8 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     authEmailService,
     authGoogleService,
     webUrl: config.app.webUrl,
+    loginRateLimitMax: config.security.loginRateLimitMax,
+    cookieSecure: config.app.nodeEnv === 'production',
     billingService,
     paymentProviderRegistry,
     stripePayment,
@@ -272,7 +274,6 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     landingService,
     adminServices,
   });
-
   const workers: AppWorkers = {
     async start(): Promise<void> {
       await statusPollWorker.start();
@@ -295,6 +296,5 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
       await statusPollWorker.stop();
     },
   };
-
   return { app, workers };
 }

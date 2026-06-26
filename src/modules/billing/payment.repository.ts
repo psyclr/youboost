@@ -12,12 +12,15 @@ export interface CreatePaymentWithOrdersInput {
   provider: 'STRIPE' | 'CRYPTOMUS';
   amount: number;
   items: PaymentOrderItemInput[];
+  metrikaClientId?: string | null;
 }
 
 export interface PaymentWithOrders {
   id: string;
   userId: string;
   status: 'PENDING' | 'PAID' | 'FAILED';
+  amount: number;
+  metrikaClientId: string | null;
   orders: {
     id: string;
     status: string;
@@ -54,6 +57,7 @@ export function createPaymentRepository(prisma: PrismaClient): PaymentRepository
             amount: input.amount,
             provider: input.provider,
             status: 'PENDING',
+            metrikaClientId: input.metrikaClientId ?? null,
           },
         });
         const orderIds: string[] = [];

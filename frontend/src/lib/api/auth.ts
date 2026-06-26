@@ -1,8 +1,18 @@
 import { apiRequest, apiRequestVoid } from './client';
-import type { LoginInput, RegisterInput, TokenPair, UserProfile } from './types';
+import type { LoginInput, RegisterInput, UserProfile } from './types';
+
+/**
+ * Auth responses no longer carry a refresh token: the backend issues it as an
+ * httpOnly `youboost_rt` cookie. Only the in-memory access token is returned.
+ */
+export interface AccessTokenResponse {
+  accessToken: string;
+  expiresIn: number;
+  tokenType: string;
+}
 
 export const login = (data: LoginInput) =>
-  apiRequest<TokenPair>('/auth/login', {
+  apiRequest<AccessTokenResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -13,11 +23,23 @@ export const register = (data: RegisterInput) =>
     body: JSON.stringify(data),
   });
 
-export const refreshToken = (refreshToken: string) =>
-  apiRequest<TokenPair>('/auth/refresh', {
+/**
+ * Refreshes the access token using the httpOnly `youboost_rt` cookie (no body).
+ *
+ * Deliberately uses a direct `fetch` rather than the shared `apiRequest`: the
+ * client's `rawRequest` retries 401s by calling the refresh handler, so routing
+ * the refresh through it would let a 401 from `/auth/refresh` re-enter the
+ * in-flight refresh promise — a promise awaiting itself — and hang. The cookie
+ * rides along on the same-origin proxy via `credentials: 'same-origin'`.
+ */
+export const refreshToken = async (): Promise<AccessTokenResponse | null> => {
+  const response = await fetch('/api/auth/refresh', {
     method: 'POST',
-    body: JSON.stringify({ refreshToken }),
+    credentials: 'same-origin',
   });
+  if (!response.ok) return null;
+  return (await response.json()) as AccessTokenResponse;
+};
 
 export const getMe = () => apiRequest<UserProfile>('/auth/me');
 

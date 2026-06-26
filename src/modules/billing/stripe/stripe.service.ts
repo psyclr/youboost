@@ -31,7 +31,7 @@ export interface StripePaymentService {
   readonly provider: PaymentProvider;
   createCheckoutSession(
     userId: string,
-    input: { amount: number },
+    input: { amount: number; metrikaClientId?: string | null },
   ): Promise<CheckoutSessionResponse>;
   createPaymentSession(input: PaymentSessionInput): Promise<GuestOrderSessionResponse>;
   handleWebhookEvent(payload: string, signature: string): Promise<void>;
@@ -63,11 +63,15 @@ export function createStripePaymentService(deps: StripePaymentServiceDeps): Stri
 
   async function createCheckoutSession(
     userId: string,
-    input: { amount: number },
+    input: { amount: number; metrikaClientId?: string | null },
   ): Promise<CheckoutSessionResponse> {
     const stripe = getStripe();
 
-    const deposit = await lifecycle.prepareDepositCheckout(userId, input.amount);
+    const deposit = await lifecycle.prepareDepositCheckout(
+      userId,
+      input.amount,
+      input.metrikaClientId,
+    );
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],

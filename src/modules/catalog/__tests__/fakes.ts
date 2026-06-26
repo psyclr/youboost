@@ -23,6 +23,10 @@ export function createFakeCatalogRepository(
       let filtered = services;
       if (filters.platform) filtered = filtered.filter((s) => s.platform === filters.platform);
       if (filters.type) filtered = filtered.filter((s) => s.type === filters.type);
+      if (filters.search) {
+        const needle = filters.search.toLowerCase();
+        filtered = filtered.filter((s) => s.name.toLowerCase().includes(needle));
+      }
       const total = filtered.length;
       const start = (filters.page - 1) * filters.limit;
       return { services: filtered.slice(start, start + filters.limit), total };

@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-youboost}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-youboost_dev_password}
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     container_name: youboost-redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -38,7 +38,7 @@ services:
     container_name: youboost-backend
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       # Overridden: inside Docker network, hosts are service names, not localhost
       DATABASE_URL: postgresql://${POSTGRES_USER:-youboost}:${POSTGRES_PASSWORD:-youboost_dev_password}@postgres:5432/${POSTGRES_DB:-youboost_dev}
@@ -65,6 +65,12 @@ services:
       CRYPTOMUS_MERCHANT_ID: ${CRYPTOMUS_MERCHANT_ID:-}
       CRYPTOMUS_PAYMENT_API_KEY: ${CRYPTOMUS_PAYMENT_API_KEY:-}
       CRYPTOMUS_CALLBACK_URL: ${CRYPTOMUS_CALLBACK_URL:-}
+      # Yandex.Metrika server-side conversions — without the OAuth token the
+      # offline-conversion upload is a no-op (counter + targets have defaults).
+      YANDEX_METRIKA_COUNTER_ID: ${YANDEX_METRIKA_COUNTER_ID:-109942271}
+      YANDEX_METRIKA_OAUTH_TOKEN: ${YANDEX_METRIKA_OAUTH_TOKEN:-}
+      YANDEX_METRIKA_PURCHASE_TARGET: ${YANDEX_METRIKA_PURCHASE_TARGET:-purchase}
+      YANDEX_METRIKA_DEPOSIT_TARGET: ${YANDEX_METRIKA_DEPOSIT_TARGET:-deposit}
       # Email via self-hosted Postal (SMTP on host port 25, reached via host-gateway)
       # Host is fixed to host-gateway here; .env's SMTP_HOST (127.0.0.1) is for local dev only.
       SMTP_HOST: host.docker.internal
@@ -119,7 +125,7 @@ services:
     container_name: youboost-frontend
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '127.0.0.1:3001:3001'
     environment:
       API_URL: http://backend:3000
     depends_on:

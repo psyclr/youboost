@@ -6,6 +6,8 @@ import type { ProviderSelectorPort } from './ports/provider-selector.port';
 import type { CouponsService } from '../coupons';
 import type { OrdersRepository } from './orders.repository';
 import type { ServicesRepository } from './service.repository';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
+import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
 import { mapOrderToDetailed, mapOrderToResponse } from './orders.helpers';
 import { executeCreateOrder } from './create-order.flow';
 import { confirmOrderPayment as confirmOrderPaymentFlow } from './confirm-order-payment.flow';
@@ -40,6 +42,8 @@ export interface OrdersServiceDeps {
     releaseFunds(userId: string, amount: number, orderId: string): Promise<void>;
   };
   providerSelector: ProviderSelectorPort;
+  mappingRepo: ServicePanelReader;
+  attemptRepo: ProviderOrderAttemptRepository;
   couponsService: CouponsService;
   outbox: OutboxPort;
   /**
@@ -235,7 +239,16 @@ export function createOrdersService(deps: OrdersServiceDeps): OrdersService {
       );
     }
     await confirmOrderPaymentFlow(
-      { prisma, paymentRepo, ordersRepo, servicesRepo, providerSelector, outbox, logger },
+      {
+        prisma,
+        paymentRepo,
+        ordersRepo,
+        providerSelector,
+        mappingRepo: deps.mappingRepo,
+        attemptRepo: deps.attemptRepo,
+        outbox,
+        logger,
+      },
       paymentId,
     );
   }

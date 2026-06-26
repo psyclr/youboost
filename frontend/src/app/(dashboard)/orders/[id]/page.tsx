@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrder, useCancelOrder, useRefillOrder } from '@/hooks/use-orders';
-import { StatusBadge } from '@/components/shared/status-badge';
+import { CustomerStatusBadge } from '@/components/shared/customer-status-badge';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -115,7 +115,7 @@ export default function OrderDetailPage({ params }: Readonly<{ params: Promise<{
             <CardTitle>Order Information</CardTitle>
             <div className="flex items-center gap-2">
               {order.isDripFeed && <Badge variant="secondary">Drip-feed</Badge>}
-              <StatusBadge status={order.status} />
+              <CustomerStatusBadge status={order.status} />
             </div>
           </div>
         </CardHeader>

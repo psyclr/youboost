@@ -5,7 +5,7 @@ import type {
   preHandlerAsyncHookHandler,
 } from 'fastify';
 import { StatusCodes } from 'http-status-codes';
-import { ValidationError } from '../../shared/errors';
+import { validateBody, validateQuery, validateParams } from '../../shared/middleware/validation';
 import type { AdminDashboardService } from './admin-dashboard.service';
 import type { AdminBillingService } from './admin-billing.service';
 import type { AdminDepositsService } from './admin-deposits.service';
@@ -25,48 +25,12 @@ import {
   adminServiceCreateSchema,
   adminServiceUpdateSchema,
   adminServiceIdSchema,
+  adminAddPanelSchema,
+  adminUpdatePanelSchema,
+  adminMappingIdSchema,
   adminDepositsQuerySchema,
   adminDepositIdSchema,
 } from './admin.types';
-
-function validateBody<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  body: unknown,
-): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
-
-function validateQuery<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  query: unknown,
-): T {
-  const result = schema.safeParse(query);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
-
-function validateParams<T>(
-  schema: {
-    safeParse: (data: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } };
-  },
-  params: unknown,
-): T {
-  const result = schema.safeParse(params);
-  if (!result.success) {
-    throw new ValidationError('Validation failed', 'VALIDATION_ERROR', result.error?.issues);
-  }
-  return result.data as T;
-}
 
 export interface AdminRoutesDeps {
   dashboardService: AdminDashboardService;
@@ -220,6 +184,46 @@ export function createAdminRoutes(deps: AdminRoutesDeps): FastifyPluginAsync {
       await servicesService.deactivateService(params.serviceId);
       return reply.status(StatusCodes.NO_CONTENT).send();
     });
+
+    // Service panels (failover mappings; ordering comes from provider.priority)
+    app.get('/services/:serviceId/panels', async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireAdmin(request);
+      const params = validateParams(adminServiceIdSchema, request.params);
+      const result = await servicesService.listServicePanels(params.serviceId);
+      return reply.status(StatusCodes.OK).send({ panels: result });
+    });
+
+    app.post(
+      '/services/:serviceId/panels',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        await requireAdmin(request);
+        const params = validateParams(adminServiceIdSchema, request.params);
+        const body = validateBody(adminAddPanelSchema, request.body);
+        const result = await servicesService.addServicePanel(params.serviceId, body);
+        return reply.status(StatusCodes.CREATED).send(result);
+      },
+    );
+
+    app.patch(
+      '/services/panels/:mappingId',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        await requireAdmin(request);
+        const params = validateParams(adminMappingIdSchema, request.params);
+        const body = validateBody(adminUpdatePanelSchema, request.body);
+        const result = await servicesService.updateServicePanel(params.mappingId, body);
+        return reply.status(StatusCodes.OK).send(result);
+      },
+    );
+
+    app.delete(
+      '/services/panels/:mappingId',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        await requireAdmin(request);
+        const params = validateParams(adminMappingIdSchema, request.params);
+        await servicesService.removeServicePanel(params.mappingId);
+        return reply.status(StatusCodes.NO_CONTENT).send();
+      },
+    );
 
     // Deposits
     app.get('/deposits', async (request: FastifyRequest, reply: FastifyReply) => {

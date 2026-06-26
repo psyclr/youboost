@@ -121,11 +121,11 @@ export function Hero({ hero, stats }: HeroProps) {
             </p>
           ) : null}
 
-          <div className="mt-10 flex flex-wrap items-stretch gap-0 border-t border-white/10 pt-7">
+          <div className="mt-10 grid grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-7 sm:flex sm:flex-wrap sm:items-stretch sm:gap-0">
             {stats.map((stat, i) => (
               <div
                 key={stat.label}
-                className={`flex flex-col pr-6 ${i < stats.length - 1 ? 'border-r border-white/15' : ''} ${i > 0 ? 'pl-6' : ''}`}
+                className={`flex flex-col sm:pr-6 ${i < stats.length - 1 ? 'sm:border-r sm:border-white/15' : ''} ${i > 0 ? 'sm:pl-6' : ''}`}
               >
                 <strong className="text-xl font-medium text-white" style={{ fontWeight: 500 }}>
                   {stat.value}
@@ -138,7 +138,9 @@ export function Hero({ hero, stats }: HeroProps) {
           </div>
         </div>
 
-        <div className="relative flex items-center justify-center">
+        {/* The 3D render belongs beside the text in the 2-column desktop layout.
+            Below xl it would stack and overflow a narrow screen, so hide it. */}
+        <div className="relative hidden items-center justify-center xl:flex">
           <Image
             src="/brand/hero-play-3d.png"
             alt=""

@@ -4,6 +4,7 @@ import type { ServiceRecord } from '../orders';
 interface CatalogFilters {
   platform?: string | undefined;
   type?: string | undefined;
+  search?: string | undefined;
   page: number;
   limit: number;
 }
@@ -25,6 +26,10 @@ export function createCatalogRepository(prisma: PrismaClient): CatalogRepository
     }
     if (filters.type) {
       where.type = filters.type;
+    }
+    if (filters.search) {
+      // Case-insensitive substring match on service name.
+      where.name = { contains: filters.search, mode: 'insensitive' };
     }
 
     const [services, total] = await Promise.all([

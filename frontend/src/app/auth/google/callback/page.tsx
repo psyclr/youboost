@@ -3,11 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-context';
-import {
-  ROUTES,
-  OAUTH_ERROR_QUERY_PARAM,
-  GOOGLE_OAUTH_ERROR,
-} from '@/lib/constants/routes';
+import { ROUTES, OAUTH_ERROR_QUERY_PARAM, GOOGLE_OAUTH_ERROR } from '@/lib/constants/routes';
 
 const GOOGLE_ERROR_REDIRECT = `${ROUTES.login}?${OAUTH_ERROR_QUERY_PARAM}=${GOOGLE_OAUTH_ERROR}`;
 
@@ -23,17 +19,16 @@ export default function GoogleCallbackPage() {
     const hash = window.location.hash.replace(/^#/, '');
     const params = new URLSearchParams(hash);
     const accessToken = params.get('accessToken');
-    const refreshToken = params.get('refreshToken');
 
-    // Strip tokens from the URL so they don't linger in history.
+    // Strip the token from the URL so it doesn't linger in history.
     window.history.replaceState(null, '', window.location.pathname);
 
-    if (!accessToken || !refreshToken) {
+    if (!accessToken) {
       router.replace(GOOGLE_ERROR_REDIRECT);
       return;
     }
 
-    setSession({ accessToken, refreshToken })
+    setSession({ accessToken })
       .then(() => router.replace(ROUTES.dashboard))
       .catch(() => {
         router.replace(GOOGLE_ERROR_REDIRECT);

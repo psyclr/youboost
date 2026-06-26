@@ -73,32 +73,9 @@ export function createOrderCompletedEmailHandler(
     },
   };
 }
-
-export function createOrderFailedEmailHandler(deps: HandlerDeps): OutboxHandler<'order.failed'> {
-  const { notificationsService, logger } = deps;
-  return {
-    eventType: 'order.failed',
-    name: 'order-failed-email',
-    async handle(event): Promise<void> {
-      logger.debug({ orderId: event.payload.orderId }, 'sending order.failed email');
-      const isTimeout = event.payload.reason === 'timeout';
-      const subject = isTimeout ? 'Order Timed Out' : 'Order Failed';
-      const body = isTimeout
-        ? `Your order ${event.payload.orderId} has been marked as failed due to timeout. Funds have been released back to your balance.`
-        : `Your order ${event.payload.orderId} status: FAILED.`;
-      await notificationsService.sendNotification({
-        userId: event.userId,
-        type: 'EMAIL',
-        channel: 'user-email',
-        subject,
-        body,
-        eventType: 'order.failed',
-        referenceType: 'order',
-        referenceId: event.payload.orderId,
-      });
-    },
-  };
-}
+// NOTE: there is intentionally no customer "order failed" email. Customers never
+// see failures (see CustomerStatusBadge); when every panel fails the admin is
+// alerted via createAdminFulfilmentExhaustedHandler instead.
 
 export function createOrderPartialEmailHandler(deps: HandlerDeps): OutboxHandler<'order.partial'> {
   const { notificationsService, logger } = deps;

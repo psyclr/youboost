@@ -11,6 +11,7 @@ export interface DepositRepository {
     cryptoCurrency: string;
     paymentAddress: string;
     expiresAt: Date;
+    metrikaClientId?: string | null;
   }): Promise<DepositRecord>;
   findDepositById(
     depositId: string,
@@ -57,6 +58,7 @@ export function createDepositRepository(prisma: PrismaClient): DepositRepository
     cryptoCurrency: string;
     paymentAddress: string;
     expiresAt: Date;
+    metrikaClientId?: string | null;
   }): Promise<DepositRecord> {
     return prisma.deposit.create({
       data: {
@@ -67,6 +69,7 @@ export function createDepositRepository(prisma: PrismaClient): DepositRepository
         paymentAddress: data.paymentAddress,
         status: 'PENDING',
         expiresAt: data.expiresAt,
+        metrikaClientId: data.metrikaClientId ?? null,
       },
     });
   }

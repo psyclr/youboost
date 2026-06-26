@@ -25,6 +25,7 @@ export interface GuestOrderCreatorPort {
     provider: 'STRIPE' | 'CRYPTOMUS';
     amount: number;
     items: { serviceId: string; link: string; quantity: number; price: number }[];
+    metrikaClientId?: string | null;
   }): Promise<{ paymentId: string; orderIds: string[] }>;
   /** Attach the provider session id to the Payment. */
   attachPaymentSession(paymentId: string, providerSessionId: string): Promise<void>;

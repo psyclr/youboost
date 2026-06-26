@@ -29,24 +29,27 @@ Monorepo with modular services under `src/modules/`:
 Docker compose is **prod-only**. Dev runs locally on **separate ports** so it coexists with the running prod stack — never run dev servers in Docker, never stop prod to develop.
 
 - **Development and tests** — run locally on dev ports (prod stays up on 3000/3001)
-  - Backend: `PORT=3100 npm run start:dev` (dev port 3100)
+  - Backend: `LOGIN_RATE_LIMIT_MAX=500 PORT=3100 npm run start:dev` (dev port 3100; high login limit so the e2e suite, which logs in per spec, doesn't hit the 10/15min `/login` cap — prod default stays 10)
   - Frontend: `cd frontend && API_URL=http://localhost:3100 npx next dev -p 3101` (dev port 3101; its `/api` proxy targets the dev backend)
   - E2E tests: `cd frontend && npx playwright test` (against the local dev stack on 3101)
 - **Deploy** — push, then rebuild prod containers without cache so they pick up the pushed code
   - `docker compose build --no-cache backend frontend && docker compose up -d`
-- **No CI:** there are no GitHub Actions and none are wanted — verify locally before pushing.
+- **CI/pipeline:** a Claude-Code-based deploy pipeline is being built. There is an isolated Docker e2e stack (`scripts/e2e-stack.sh` / `docker-compose.test.yml`) as its foundation. No GitHub Actions yet — verify locally before pushing (full local verify is the bar).
 
 ## E2E Tests (Playwright)
 
 - Config: `frontend/playwright.config.ts`, base URL: `http://localhost:3101` (dev frontend; override with `E2E_BASE_URL`)
 - Test dir: `frontend/e2e/`
+- **Mocked UI specs** run against the dev stack (3101 → dev backend → `youboost_dev`). They use `page.route()` to fake `/api` — fine because they never mutate real data.
+- **Real-backend specs** (money/state journeys, e.g. `landing-cart-checkout.spec.ts`) must NOT hit `youboost_dev` (it's shared with prod). They are guarded by `E2E_REAL_BACKEND=1` and run only against the **isolated Docker stack**: `scripts/e2e-stack.sh` (docker-compose.test.yml — own ephemeral pg+redis+backend+frontend on 33xx, `PAYMENTS_FAKE` stubs the external provider, seeded). One command: `scripts/e2e-stack.sh` (up --build → wait → playwright → down -v).
+- **Backend DB-mutating integration tests** (jest, `*.integration.test.ts`) gate on `TEST_DATABASE_URL` and run against `youboost_test` — never `youboost_dev`. See the `database-operations` skill.
 - Rate limiting: login endpoint has 10 req/15min in-memory limit. Total logins across all spec files must stay <= 10. Backend restart clears limits.
 - Use `test.describe.serial` with shared `BrowserContext` + `Page` to minimize logins (1 per spec file)
 - Use `page.route()` to mock API responses where needed (order creation, bulk orders)
 - Selectors: prefer `getByRole('combobox')` over `[data-slot="select-trigger"]` — data-slot causes 30s timeouts
 - **IMPORTANT:** Run `npx playwright test` from `frontend/` dir, NOT from project root — root dir picks up Jest test files from `src/`
 - **IMPORTANT:** Run against the local dev stack on dev ports (frontend 3101 → backend 3100). No need to stop the prod Docker stack — dev ports don't clash with it.
-- If rate limited: restart the dev backend (kill + `PORT=3100 npm run start:dev`) — clears the in-memory limits
+- If rate limited: restart the dev backend (kill + `LOGIN_RATE_LIMIT_MAX=500 PORT=3100 npm run start:dev`) — clears the in-memory limits and raises the login cap
 - Unicode: use actual `…` character in JSX, NOT `\u2026` — JSX attribute strings and JSX text do NOT interpret JS escape sequences
 
 ## Ports

@@ -94,6 +94,15 @@ describe('Auth Service', () => {
       expect(result.userId).toMatch(/^user-/);
     });
 
+    it('derives the username from the email when the form omits it', async () => {
+      const { service, userRepo } = setup();
+      const result = await service.register({ email: 'newuser@test.com', password: 'Password1' });
+
+      expect(result.email).toBe('newuser@test.com');
+      expect(result.username).toBe('newuser');
+      expect(userRepo.calls.createUser[0]?.username).toBe('newuser');
+    });
+
     it('should throw ConflictError if email taken', async () => {
       const { service } = setup({ users: [mockUser] });
       await expect(

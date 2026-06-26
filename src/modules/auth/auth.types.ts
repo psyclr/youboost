@@ -16,17 +16,15 @@ const usernameSchema = z
 export const registerSchema = z.object({
   email: z.email(),
   password: passwordSchema,
-  username: usernameSchema,
+  // Optional: the fast sign-up form sends only email + password, and the service
+  // derives a unique username from the email (same as guest/Google accounts).
+  username: usernameSchema.optional(),
   referralCode: z.string().min(1).optional(),
 });
 
 export const loginSchema = z.object({
   email: z.email(),
   password: z.string().min(1),
-});
-
-export const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
 });
 
 export const verifyEmailSchema = z.object({
@@ -60,7 +58,6 @@ export const updateProfileSchema = z
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type RefreshInput = z.infer<typeof refreshSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

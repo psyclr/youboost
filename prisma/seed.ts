@@ -94,6 +94,24 @@ async function seed(): Promise<void> {
     }
   }
 
+  // Failover reads panels from service_provider_mappings (not service.providerId).
+  // The schema migration seeds mappings for pre-existing services, but on a fresh
+  // DB the seed runs AFTER migrate, so create the mapping here too (idempotent).
+  for (const svc of seededServices) {
+    if (!svc.providerId || !svc.externalServiceId) continue;
+    await prisma.serviceProviderMapping.upsert({
+      where: { serviceId_providerId: { serviceId: svc.id, providerId: svc.providerId } },
+      update: { externalServiceId: svc.externalServiceId, isActive: true },
+      create: {
+        serviceId: svc.id,
+        providerId: svc.providerId,
+        externalServiceId: svc.externalServiceId,
+        priority: 0,
+      },
+    });
+  }
+  console.log(`Provider mappings ensured for ${seededServices.length} service(s)`);
+
   if (seededServices.length > 0) {
     const defaultLanding = await prisma.landing.upsert({
       where: { slug: 'youtube-growth' },
@@ -226,6 +244,19 @@ async function seed(): Promise<void> {
     });
     console.log(`Published landing: ${defaultLanding.slug} (${defaultLanding.id})`);
   }
+
+  // E2E-only: give the admin a funded wallet so the isolated test stack can
+  // exercise logged-in order creation (which holds funds). Gated so prod/dev
+  // seeds never fund an account.
+  if (process.env['SEED_E2E'] === '1') {
+    await prisma.wallet.upsert({
+      where: { userId_currency: { userId: admin.id, currency: 'USD' } },
+      update: { balance: 1000 },
+      create: { userId: admin.id, currency: 'USD', balance: 1000 },
+    });
+    console.log('E2E: funded admin wallet with $1000');
+  }
+
   console.log('Seeding complete!');
 }
 

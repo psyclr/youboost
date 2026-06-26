@@ -8,7 +8,11 @@ import type { DepositRepository } from './deposit.repository';
 import type { DepositRecord } from './deposit.types';
 
 export interface DepositLifecycleService {
-  prepareDepositCheckout(userId: string, amount: number): Promise<DepositRecord>;
+  prepareDepositCheckout(
+    userId: string,
+    amount: number,
+    metrikaClientId?: string | null,
+  ): Promise<DepositRecord>;
   confirmDepositTransaction(
     depositId: string,
     userId: string,
@@ -37,7 +41,11 @@ export function createDepositLifecycleService(
    * exists, and create a PENDING deposit row. Shared by payment providers
    * (Stripe, Cryptomus, ...) so min/max and expiry stay centralized.
    */
-  async function prepareDepositCheckout(userId: string, amount: number): Promise<DepositRecord> {
+  async function prepareDepositCheckout(
+    userId: string,
+    amount: number,
+    metrikaClientId?: string | null,
+  ): Promise<DepositRecord> {
     if (amount < billingConfig.minDeposit) {
       throw new ValidationError(
         `Minimum deposit is $${billingConfig.minDeposit.toFixed(2)}`,
@@ -60,6 +68,7 @@ export function createDepositLifecycleService(
       cryptoCurrency: '',
       paymentAddress: '',
       expiresAt: new Date(Date.now() + billingConfig.depositExpiryMs),
+      metrikaClientId: metrikaClientId ?? null,
     });
   }
 
@@ -134,7 +143,13 @@ export function createDepositLifecycleService(
           aggregateType: 'deposit',
           aggregateId: depositId,
           userId,
-          payload: { depositId, userId, amount, provider: providerLabel },
+          payload: {
+            depositId,
+            userId,
+            amount,
+            provider: providerLabel,
+            metrikaClientId: deposit.metrikaClientId ?? null,
+          },
         },
         tx,
       );

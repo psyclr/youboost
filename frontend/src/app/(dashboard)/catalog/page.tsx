@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCatalog } from '@/hooks/use-catalog';
 import { usePagination } from '@/hooks/use-pagination';
+import { useUrlParam } from '@/hooks/use-url-param';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { QueryError } from '@/components/shared/query-error';
 import { PlatformBadge } from '@/components/shared/platform-badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
@@ -30,19 +33,30 @@ const serviceTypeLabels: Record<ServiceType, string> = {
 };
 
 export default function CatalogPage() {
-  const [platform, setPlatform] = useState('ALL');
-  const [search, setSearch] = useState('');
+  const [platform, setPlatform] = useUrlParam('platform', 'ALL');
+  // Local mirror so the input updates instantly; the debounced value drives the query.
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const { page, setPage } = usePagination();
 
-  const { data, isLoading } = useCatalog({
+  const { data, isLoading, isError, refetch } = useCatalog({
     page,
     limit: 12,
     platform: platform === 'ALL' ? undefined : platform,
+    search: debouncedSearch || undefined,
   });
 
-  const filteredServices =
-    data?.services.filter((s) => !search || s.name.toLowerCase().includes(search.toLowerCase())) ??
-    [];
+  // A new search term can shrink the result set; reset to page 1 so we don't
+  // land on a now-out-of-range page. Only fires when the debounced term changes.
+  const prevSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    if (prevSearchRef.current !== debouncedSearch) {
+      prevSearchRef.current = debouncedSearch;
+      setPage(1);
+    }
+  }, [debouncedSearch, setPage]);
+
+  const services = data?.services ?? [];
 
   return (
     <div className="space-y-6">
@@ -56,8 +70,8 @@ export default function CatalogPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search services…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -88,16 +102,17 @@ export default function CatalogPage() {
           ))}
         </div>
       )}
-      {!isLoading && filteredServices.length === 0 && (
+      {!isLoading && isError && <QueryError onRetry={() => void refetch()} />}
+      {!isLoading && !isError && services.length === 0 && (
         <EmptyState
           title="No services found"
           description="Try adjusting your filters or search query"
         />
       )}
-      {!isLoading && filteredServices.length > 0 && (
+      {!isLoading && !isError && services.length > 0 && (
         <>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredServices.map((service) => (
+            {services.map((service) => (
               <Card key={service.id} className="flex flex-col">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-2 mb-1">

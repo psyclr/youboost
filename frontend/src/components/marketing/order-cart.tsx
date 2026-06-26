@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CartItem } from './cart-item';
 import { formatCurrency } from '@/lib/utils';
+import { analytics } from '@/lib/analytics';
 import { isTrustedCheckoutHost } from '@/lib/payments/checkout-host';
 import { checkoutLandingCart } from '@/lib/api/landings';
 import { publicApiErrorMessage } from '@/lib/api/error-messages';
@@ -19,10 +20,11 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (metrikaClientId: string | null) =>
       checkoutLandingCart(slug, {
         email: email.trim(),
         paymentProvider: provider,
+        metrikaClientId: metrikaClientId ?? undefined,
         items: cart.items.map((i) => ({
           tierId: i.tier.id,
           link: i.link.trim(),
@@ -67,9 +69,13 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
     return true;
   };
 
-  const onPay = () => {
+  const onPay = async () => {
     setError(null);
-    if (validate()) mutation.mutate();
+    if (validate()) {
+      analytics.checkoutStarted({ total: cart.total, itemCount: cart.count });
+      const metrikaClientId = await analytics.getClientId();
+      mutation.mutate(metrikaClientId);
+    }
   };
 
   if (cart.count === 0) {
@@ -156,8 +162,8 @@ export function OrderCart({ slug, cart }: { slug: string; cart: UseCart }) {
 
       <Button
         type="button"
-        onClick={onPay}
-        disabled={mutation.isPending}
+        onClick={() => void onPay()}
+        disabled={mutation.isPending || cart.hasBelowMin}
         aria-label={`Pay ${formatCurrency(cart.total)}`}
         className="w-full"
       >

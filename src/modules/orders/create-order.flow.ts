@@ -6,6 +6,9 @@ import type { CouponsService } from '../coupons';
 import type { OrdersRepository } from './orders.repository';
 import type { ServicesRepository } from './service.repository';
 import type { ProviderSelectorPort } from './ports/provider-selector.port';
+import type { ServicePanelReader } from '../providers/service-provider-mapping.repository';
+import type { ProviderOrderAttemptRepository } from '../providers/provider-order-attempt.repository';
+import { submitWithFailover } from './submit-with-failover';
 import {
   calculatePrice,
   validateService,
@@ -26,38 +29,11 @@ export interface CreateOrderFlowDeps {
     releaseFunds(userId: string, amount: number, orderId: string): Promise<void>;
   };
   providerSelector: ProviderSelectorPort;
+  mappingRepo: ServicePanelReader;
+  attemptRepo: ProviderOrderAttemptRepository;
   couponsService: CouponsService;
   outbox: OutboxPort;
   logger: Logger;
-}
-
-async function submitOrderToProvider(
-  providerSelector: ProviderSelectorPort,
-  params: {
-    service: ServiceRecord;
-    input: CreateOrderInput;
-    isDripFeed: boolean;
-    dripFeedRuns: number | undefined;
-  },
-): Promise<{ providerId: string | null; externalOrderId: string }> {
-  const { service, input, isDripFeed, dripFeedRuns } = params;
-
-  if (!service.providerId || !service.externalServiceId) {
-    throw new ValidationError('Service provider info missing', 'SERVICE_PROVIDER_MISSING');
-  }
-
-  const { providerId, client } = await providerSelector.selectProviderById(service.providerId);
-
-  const submitQuantity =
-    isDripFeed && dripFeedRuns ? Math.ceil(input.quantity / dripFeedRuns) : input.quantity;
-
-  const submitResult = await client.submitOrder({
-    serviceId: service.externalServiceId,
-    link: input.link,
-    quantity: submitQuantity,
-  });
-
-  return { providerId, externalOrderId: submitResult.externalOrderId };
 }
 
 async function emitOrderCreatedEvents(
@@ -109,6 +85,8 @@ export async function executeCreateOrder(
     servicesRepo,
     billing,
     providerSelector,
+    mappingRepo,
+    attemptRepo,
     couponsService,
     outbox,
     logger,
@@ -153,18 +131,46 @@ export async function executeCreateOrder(
   try {
     await billing.holdFunds(userId, finalPrice, order.id);
 
-    const { providerId, externalOrderId } = await submitOrderToProvider(providerSelector, {
-      service: validatedService,
-      input,
-      isDripFeed,
-      dripFeedRuns,
-    });
+    const submitQuantity =
+      isDripFeed && dripFeedRuns ? Math.ceil(input.quantity / dripFeedRuns) : input.quantity;
+    const outcome = await submitWithFailover(
+      { providerSelector, mappingRepo, attemptRepo, logger },
+      {
+        orderId: order.id,
+        userId,
+        serviceId: input.serviceId,
+        link: input.link,
+        quantity: submitQuantity,
+      },
+    );
+
+    if (!outcome.ok) {
+      // No panel could fulfil it. Alert the admin; the catch below releases the
+      // wallet hold and marks the order FAILED. Synchronous creation surfaces an
+      // error to the user (their balance is returned).
+      await prisma.$transaction((tx) =>
+        outbox.emit(
+          {
+            type: 'order.fulfilment_exhausted',
+            aggregateType: 'order',
+            aggregateId: order.id,
+            userId,
+            payload: { orderId: order.id, userId, attempts: outcome.attempts },
+          },
+          tx,
+        ),
+      );
+      throw new ValidationError(
+        'Order could not be fulfilled right now. Please try again shortly.',
+        'FULFILMENT_EXHAUSTED',
+      );
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const next = await ordersRepo.updateOrderStatus(order.id, {
         status: 'PROCESSING',
-        externalOrderId,
-        ...(providerId ? { providerId } : {}),
+        externalOrderId: outcome.externalOrderId,
+        providerId: outcome.providerId,
         remains: input.quantity,
       });
 

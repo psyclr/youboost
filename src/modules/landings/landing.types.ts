@@ -147,6 +147,8 @@ export const landingCartCheckoutSchema = z.object({
     .min(1)
     .max(20),
   paymentProvider: z.enum(['stripe', 'cryptomus']).default('stripe'),
+  /** Yandex.Metrika ClientID from the browser, for server-side purchase attribution. */
+  metrikaClientId: z.string().max(64).optional(),
 });
 
 export type LandingCartCheckoutInput = z.infer<typeof landingCartCheckoutSchema>;

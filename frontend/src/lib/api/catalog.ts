@@ -7,6 +7,7 @@ export const getCatalog = (params?: {
   limit?: number;
   platform?: string;
   type?: string;
+  search?: string;
 }) =>
   apiRequest<PaginatedCatalog>(
     `/catalog/services${buildQuery({
@@ -14,6 +15,7 @@ export const getCatalog = (params?: {
       limit: params?.limit || undefined,
       platform: params?.platform,
       type: params?.type,
+      search: params?.search,
     })}`,
   );
 

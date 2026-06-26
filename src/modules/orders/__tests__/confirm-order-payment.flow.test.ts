@@ -3,18 +3,20 @@ import type { PaymentWithOrders } from '../../billing/payment.repository';
 import type { OrderRecord } from '../orders.types';
 import {
   createFakeOrdersRepository,
-  createFakeServicesRepository,
   createFakeProviderSelector,
   createFakeProviderClient,
   createFakeOutbox,
   createFakePrisma,
-  makeServiceRecord,
   makeOrderRecord,
   silentLogger,
 } from './fakes';
 
 interface MakeDepsOptions {
-  payment: PaymentWithOrders | null;
+  payment: Omit<PaymentWithOrders, 'amount' | 'metrikaClientId'> | null;
+  /** Payment amount in the snapshot (defaults to 0). */
+  amount?: number;
+  /** Metrika ClientID captured at checkout (defaults to null). */
+  metrikaClientId?: string | null;
   /**
    * Override the status an order has in the DB (repo), keyed by order id —
    * defaults to the status in the payment snapshot. Use to simulate an order
@@ -36,7 +38,11 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     createPaymentWithOrders: jest.Mock;
     attachSession: jest.Mock;
   };
+  outboxEvents: ReturnType<typeof createFakeOutbox>['events'];
 } {
+  const payment: PaymentWithOrders | null = opts.payment
+    ? { ...opts.payment, amount: opts.amount ?? 0, metrikaClientId: opts.metrikaClientId ?? null }
+    : null;
   const submitOrder = opts.submitOrderError
     ? jest.fn(async () => {
         throw opts.submitOrderError;
@@ -47,10 +53,10 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
 
   // Seed the repo with the payment's orders as they exist in the DB.
   const ordersRepo = createFakeOrdersRepository({
-    orders: (opts.payment?.orders ?? []).map((o) =>
+    orders: (payment?.orders ?? []).map((o) =>
       makeOrderRecord({
         id: o.id,
-        userId: opts.payment?.userId ?? 'u1',
+        userId: payment?.userId ?? 'u1',
         serviceId: o.serviceId,
         link: o.link,
         quantity: o.quantity,
@@ -67,17 +73,20 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     return originalUpdate(orderId, data);
   };
 
-  const servicesRepo = createFakeServicesRepository({
-    services: [
-      makeServiceRecord({ id: 's1', providerId: 'prov-1', externalServiceId: '101' }),
-      makeServiceRecord({ id: 's2', providerId: 'prov-1', externalServiceId: '102' }),
-    ],
-  });
+  // One panel candidate per service — enough to exercise success (panel accepts)
+  // and exhaustion (panel rejects). Multi-panel failover is covered in
+  // submit-with-failover.test.ts.
+  const mappingRepo = {
+    listActiveByServiceId: jest.fn(async (serviceId: string) => [
+      { providerId: 'prov-1', externalServiceId: `ext-${serviceId}`, priority: 0, providerCost: 0 },
+    ]),
+  };
+  const attemptRepo = { record: jest.fn(async () => undefined) };
   const prisma = createFakePrisma();
   const outbox = createFakeOutbox();
 
   const paymentRepo = {
-    findPaymentWithOrders: jest.fn(async () => opts.payment),
+    findPaymentWithOrders: jest.fn(async () => payment),
     claimPaymentForSettlement: jest.fn(async () => true),
     createPaymentWithOrders: jest.fn(),
     attachSession: jest.fn(),
@@ -91,9 +100,11 @@ function makeDeps(opts: MakeDepsOptions): ConfirmOrderPaymentDeps & {
     ordersRepo,
     paymentRepo,
     prisma: prisma.client,
-    servicesRepo,
     providerSelector,
+    mappingRepo,
+    attemptRepo,
     outbox: outbox.port,
+    outboxEvents: outbox.events,
     logger: silentLogger,
   };
 }
@@ -118,6 +129,48 @@ describe('confirmOrderPayment', () => {
     await confirmOrderPayment(deps, 'pay1');
     expect(deps.paymentRepo.claimPaymentForSettlement).toHaveBeenCalledWith('pay1');
     expect(deps.submitted).toEqual(['o1', 'o2']);
+  });
+
+  it('emits payment.confirmed once with amount + ClientID when it wins the settlement claim', async () => {
+    const deps = makeDeps({
+      amount: 24.5,
+      metrikaClientId: 'ym-client-1',
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+        ],
+      },
+    });
+    await confirmOrderPayment(deps, 'pay1');
+    const confirmed = deps.outboxEvents.filter((e) => e.event.type === 'payment.confirmed');
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]?.event.payload).toEqual(
+      expect.objectContaining({
+        paymentId: 'pay1',
+        amount: 24.5,
+        currency: 'USD',
+        metrikaClientId: 'ym-client-1',
+      }),
+    );
+  });
+
+  it('does NOT emit payment.confirmed when it loses the settlement claim (concurrent webhook)', async () => {
+    const deps = makeDeps({
+      payment: {
+        id: 'pay1',
+        userId: 'u1',
+        status: 'PENDING',
+        orders: [
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+        ],
+      },
+    });
+    deps.paymentRepo.claimPaymentForSettlement.mockResolvedValueOnce(false);
+    await confirmOrderPayment(deps, 'pay1');
+    expect(deps.outboxEvents.some((e) => e.event.type === 'payment.confirmed')).toBe(false);
   });
 
   it('already-PAID payment with no pending orders is a no-op', async () => {
@@ -184,22 +237,31 @@ describe('confirmOrderPayment', () => {
     expect(deps.submitted).toEqual(['o2']);
   });
 
-  it('reverts the order to PENDING_PAYMENT and rethrows when the provider submit fails', async () => {
+  it('all panels fail → order FAILED, fulfilment_exhausted emitted, NO refund, NO customer email', async () => {
     const deps = makeDeps({
-      submitOrderError: new Error('provider 503'),
+      amount: 5,
+      submitOrderError: new Error('not enough funds'),
       payment: {
         id: 'pay1',
         userId: 'u1',
         status: 'PENDING',
         orders: [
-          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100 },
+          { id: 'o1', status: 'PENDING_PAYMENT', serviceId: 's1', link: 'l1', quantity: 100, price: 5 },
         ],
       },
     });
-    await expect(confirmOrderPayment(deps, 'pay1')).rejects.toThrow('provider 503');
-    // Order must be released back to PENDING_PAYMENT so a re-delivery can retry.
-    const reverted = await deps.ordersRepo.findOrderById('o1', 'u1');
-    expect(reverted?.status).toBe('PENDING_PAYMENT');
+    // Webhook must NOT throw (stays 200, no retry storm).
+    await expect(confirmOrderPayment(deps, 'pay1')).resolves.toBeUndefined();
+    const failed = await deps.ordersRepo.findOrderById('o1', 'u1');
+    expect(failed?.status).toBe('FAILED');
+    const types = deps.outboxEvents.map((e) => e.event.type);
+    expect(types).toContain('order.fulfilment_exhausted');
+    expect(types).not.toContain('order.failed'); // no customer "failed" email
+    expect(deps.submitted).toEqual([]); // never reached PROCESSING
+    // The failed attempt was recorded for admin/analytics.
+    expect(deps.attemptRepo.record).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: 'o1', outcome: 'FAILED' }),
+    );
   });
 
   it('throws when the payment does not exist', async () => {

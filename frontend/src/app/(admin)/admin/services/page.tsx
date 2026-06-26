@@ -13,6 +13,7 @@ import { getErrorMessage } from '@/lib/api/error-messages';
 import { queryKeys } from '@/lib/query-keys';
 import { usePagination } from '@/hooks/use-pagination';
 import { ServiceTable } from '@/components/admin/service-table';
+import { ServicePanelsDialog } from '@/components/admin/service-panels-dialog';
 import {
   ServiceForm,
   defaultServiceFormValues,
@@ -50,11 +51,12 @@ export default function AdminServicesPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editService, setEditService] = useState<AdminServiceResponse | null>(null);
+  const [panelsService, setPanelsService] = useState<AdminServiceResponse | null>(null);
   // Provider currently selected in whichever dialog is open, used to fetch
   // that provider's services. Each dialog reports its provider up via the form.
   const [activeProviderId, setActiveProviderId] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.adminServices.list({ page }),
     queryFn: () => getAdminServices({ page, limit: 20 }),
   });
@@ -217,6 +219,9 @@ export default function AdminServicesPage() {
         isLoading={isLoading}
         onEdit={openEdit}
         onToggleStatus={(service) => toggleStatusMutation.mutate(service)}
+        onManagePanels={setPanelsService}
+        isError={isError}
+        onRetry={() => void refetch()}
         pagination={
           data
             ? {
@@ -258,6 +263,12 @@ export default function AdminServicesPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ServicePanelsDialog
+        service={panelsService}
+        providers={providersData?.providers ?? []}
+        onClose={() => setPanelsService(null)}
+      />
     </div>
   );
 }

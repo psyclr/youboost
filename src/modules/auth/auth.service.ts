@@ -1,14 +1,10 @@
 import type { Logger } from 'pino';
 import type { PrismaClient } from '../../generated/prisma';
-import {
-  ConflictError,
-  UnauthorizedError,
-  NotFoundError,
-  ValidationError,
-} from '../../shared/errors';
+import { ConflictError, UnauthorizedError } from '../../shared/errors';
 import type { OutboxPort } from '../../shared/outbox';
 import { hashPassword, comparePassword } from './utils/password';
 import { uniqueUsername } from './utils/username';
+import { createAuthProfileService } from './auth-profile.service';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -67,10 +63,24 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     input: RegisterInput,
   ): Promise<{ userId: string; email: string; username: string }> {
     const existingEmail = await userRepo.findByEmail(input.email);
-    const existingUsername = await userRepo.findByUsername(input.username);
-
-    if (existingEmail || existingUsername) {
+    if (existingEmail) {
       throw new ConflictError('Email or username already taken', 'REGISTRATION_CONFLICT');
+    }
+
+    // The fast sign-up form sends only email + password. username is a
+    // soon-to-be-removed display handle (login is by email) — when the form omits
+    // it, derive a short unique one from the email so the column (VarChar(30))
+    // stays satisfied without a migration. See project-remove-username.
+    let username: string;
+    if (input.username) {
+      if (await userRepo.findByUsername(input.username)) {
+        throw new ConflictError('Email or username already taken', 'REGISTRATION_CONFLICT');
+      }
+      username = input.username;
+    } else {
+      username = await uniqueUsername(input.email, async (candidate) =>
+        Boolean(await userRepo.findByUsername(candidate)),
+      );
     }
 
     const passwordHash = await hashPassword(input.password);
@@ -79,7 +89,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       const created = await userRepo.createUser(
         {
           email: input.email,
-          username: input.username,
+          username,
           passwordHash,
         },
         tx,
@@ -228,71 +238,16 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     logger.info({ userId }, 'User logged out');
   }
 
-  async function getMe(userId: string): Promise<UserProfile> {
-    const user = await userRepo.findById(userId);
-    if (!user) {
-      throw new NotFoundError('User not found', 'USER_NOT_FOUND');
-    }
-    return {
-      userId: user.id,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      emailVerified: user.emailVerified,
-      createdAt: user.createdAt,
-    };
-  }
-
-  async function changePassword(args: {
-    userId: string;
-    currentHash: string | null;
-    currentPassword: string;
-    newPassword: string;
-  }): Promise<void> {
-    const valid = args.currentHash
-      ? await comparePassword(args.currentPassword, args.currentHash)
-      : false;
-    if (!valid) {
-      throw new ValidationError('Current password is incorrect', 'INVALID_PASSWORD');
-    }
-    await userRepo.updatePassword(args.userId, await hashPassword(args.newPassword));
-  }
-
-  async function updateProfile(userId: string, input: UpdateProfileInput): Promise<UserProfile> {
-    const user = await userRepo.findById(userId);
-    if (!user) {
-      throw new NotFoundError('User not found', 'USER_NOT_FOUND');
-    }
-
-    const newUsername =
-      input.username && input.username !== user.username ? input.username : undefined;
-    if (newUsername && (await userRepo.findByUsername(newUsername))) {
-      throw new ConflictError('Username already taken', 'USERNAME_TAKEN');
-    }
-
-    if (input.currentPassword && input.newPassword) {
-      await changePassword({
-        userId,
-        currentHash: user.passwordHash,
-        currentPassword: input.currentPassword,
-        newPassword: input.newPassword,
-      });
-    }
-
-    if (newUsername) {
-      await userRepo.updateUsername(userId, newUsername);
-    }
-
-    return getMe(userId);
-  }
+  // Profile read/update lives in its own focused service; delegate to it.
+  const profile = createAuthProfileService({ userRepo });
 
   return {
     register,
     login,
     refresh,
     logout,
-    getMe,
-    updateProfile,
+    getMe: profile.getMe,
+    updateProfile: profile.updateProfile,
     createAutoUser: autoUser.createAutoUser,
     setPasswordViaAutoUserToken: autoUser.setPasswordViaAutoUserToken,
     loginWithGoogle,

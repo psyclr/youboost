@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { createStripeCheckout, createCryptomusCheckout } from '@/lib/api/billing';
+import { analytics } from '@/lib/analytics';
 import { publicApiErrorMessage } from '@/lib/api/error-messages';
 import { isTrustedStripeHost, isTrustedCryptomusHost } from '@/lib/payments/checkout-host';
 import { Button } from '@/components/ui/button';
@@ -41,7 +42,8 @@ export default function DepositPage() {
   });
 
   const stripeMutation = useMutation({
-    mutationFn: (data: DepositForm) => createStripeCheckout(data.amount),
+    mutationFn: async (data: DepositForm) =>
+      createStripeCheckout(data.amount, await analytics.getClientId()),
     onSuccess: (data) => {
       try {
         const url = new URL(data.url);
@@ -60,7 +62,8 @@ export default function DepositPage() {
   });
 
   const cryptoMutation = useMutation({
-    mutationFn: (data: DepositForm) => createCryptomusCheckout(data.amount),
+    mutationFn: async (data: DepositForm) =>
+      createCryptomusCheckout(data.amount, await analytics.getClientId()),
     onSuccess: (data) => {
       try {
         const url = new URL(data.url);

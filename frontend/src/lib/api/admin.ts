@@ -4,6 +4,7 @@ import type {
   AdminDepositResponse,
   AdminServiceCreateInput,
   AdminServiceResponse,
+  AdminServicePanel,
   AdminServiceUpdateInput,
   AdminUserDetailResponse,
   AdminOrderResponse,
@@ -140,6 +141,33 @@ export const updateAdminService = (serviceId: string, data: AdminServiceUpdateIn
     method: 'PATCH',
     body: JSON.stringify(data),
   });
+
+// Service panels (failover providers attached to a service)
+export const getServicePanels = (serviceId: string) =>
+  apiRequest<{ panels: AdminServicePanel[] }>(`/admin/services/${serviceId}/panels`).then(
+    (res) => res.panels,
+  );
+
+export const addServicePanel = (
+  serviceId: string,
+  data: { providerId: string; externalServiceId: string },
+) =>
+  apiRequest<AdminServicePanel>(`/admin/services/${serviceId}/panels`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const updateServicePanel = (
+  mappingId: string,
+  data: { externalServiceId?: string; isActive?: boolean },
+) =>
+  apiRequest<AdminServicePanel>(`/admin/services/panels/${mappingId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+
+export const deleteServicePanel = (mappingId: string) =>
+  apiRequestVoid(`/admin/services/panels/${mappingId}`, { method: 'DELETE' });
 
 // Providers
 export const getProviders = (params?: { page?: number; limit?: number; isActive?: boolean }) =>

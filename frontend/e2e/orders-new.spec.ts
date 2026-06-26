@@ -31,15 +31,8 @@ test.describe.serial('New Order Page', () => {
     await context.close();
   });
 
-  test('should display page heading', async () => {
-    await expect(page.getByRole('heading', { name: 'New Order' })).toBeVisible();
-    await expect(page.getByText('Create a new service order')).toBeVisible();
-  });
-
-  test('should display card title and description', async () => {
-    await expect(page.getByText('Order Details')).toBeVisible();
-    await expect(page.getByText('Fill in the details for your order')).toBeVisible();
-  });
+  // Pure presence (heading / card title) dropped — the functional tests below
+  // navigate and operate this page, which already proves it rendered.
 
   test('should display all form fields', async () => {
     await expect(page.getByText('Service').first()).toBeVisible();
