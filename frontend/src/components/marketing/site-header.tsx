@@ -6,6 +6,7 @@ const navLinks = [
   { label: 'How It Works', href: '#steps' },
   { label: 'Pricing', href: '#services' },
   { label: 'FAQ', href: '#faq' },
+  { label: 'Blog', href: '/blog' },
 ];
 
 export function SiteHeader() {

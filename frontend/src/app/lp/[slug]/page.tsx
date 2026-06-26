@@ -36,7 +36,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: landing.seoTitle,
     description: landing.seoDescription,
+    alternates: { canonical: `/lp/${slug}` },
     openGraph: {
+      type: 'website',
+      title: landing.seoTitle,
+      description: landing.seoDescription,
+      images: landing.seoOgImageUrl ? [landing.seoOgImageUrl] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
       title: landing.seoTitle,
       description: landing.seoDescription,
       images: landing.seoOgImageUrl ? [landing.seoOgImageUrl] : undefined,

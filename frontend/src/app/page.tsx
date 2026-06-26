@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { HomeAuthRedirect } from '@/components/marketing/home-auth-redirect';
 import { LandingPageView } from '@/components/marketing/landing-page-view';
 import type { LandingResponse } from '@/lib/api/types';
+import { organizationJsonLd, websiteJsonLd } from '@/lib/structured-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,25 +35,30 @@ export async function generateMetadata(): Promise<Metadata> {
   const landing = await fetchDefaultLanding();
   if (!landing) {
     return {
-      title: 'youboost - SMM Panel',
+      title: 'YouBoost — SMM Panel',
       description: 'Social media marketing services platform',
-      other: {
-        cryptomus: 'e6db939d',
-      },
+      alternates: { canonical: '/' },
+      other: { cryptomus: 'e6db939d' },
     };
   }
 
   return {
     title: landing.seoTitle,
     description: landing.seoDescription,
+    alternates: { canonical: '/' },
     openGraph: {
+      type: 'website',
       title: landing.seoTitle,
       description: landing.seoDescription,
       images: landing.seoOgImageUrl ? [landing.seoOgImageUrl] : undefined,
     },
-    other: {
-      cryptomus: 'e6db939d',
+    twitter: {
+      card: 'summary_large_image',
+      title: landing.seoTitle,
+      description: landing.seoDescription,
+      images: landing.seoOgImageUrl ? [landing.seoOgImageUrl] : undefined,
     },
+    other: { cryptomus: 'e6db939d' },
   };
 }
 
@@ -60,8 +66,18 @@ export default async function HomePage() {
   const landing = await fetchDefaultLanding();
   if (!landing) notFound();
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://youboost.io';
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd(siteUrl)) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd(siteUrl)) }}
+      />
       <HomeAuthRedirect />
       <LandingPageView landing={landing} />
     </>

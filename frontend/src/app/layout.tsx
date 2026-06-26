@@ -26,8 +26,19 @@ const geologica = Geologica({
 });
 
 export const metadata: Metadata = {
-  title: 'youboost — SMM Panel',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://youboost.io'),
+  title: {
+    default: 'YouBoost — SMM Panel',
+    template: '%s — YouBoost',
+  },
   description: 'Social media marketing services platform',
+  openGraph: {
+    type: 'website',
+    siteName: 'YouBoost',
+  },
+  twitter: {
+    card: 'summary_large_image',
+  },
 };
 
 export default function RootLayout({
