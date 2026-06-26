@@ -1,0 +1,32 @@
+{
+  "name": "blog-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hosted auto-SEO blog SaaS — generates and serves AI blog posts on client domains",
+  "scripts": {
+    "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:migrate": "NODE_OPTIONS=--experimental-require-module npx prisma migrate deploy",
+    "db:generate": "NODE_OPTIONS=--experimental-require-module npx prisma generate",
+    "db:seed": "NODE_OPTIONS=--experimental-require-module ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/cors": "^10.0.2",
+    "@prisma/adapter-pg": "^6.0.0",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/pg": "^8.11.10",
+    "prisma": "^6.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.2"
+  }
+}

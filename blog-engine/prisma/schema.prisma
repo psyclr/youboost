@@ -1,0 +1,125 @@
+// Blog Engine — Prisma schema
+// Separate database: blog_engine_dev (NOT youboost_dev)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model BlogSite {
+  id                  String       @id @default(uuid()) @db.Uuid
+  apiKey              String       @unique @map("api_key") @db.VarChar(64)
+  subdomain           String       @unique @db.VarChar(64)
+  domain              String?      @unique @db.VarChar(255)
+  domainVerified      Boolean      @default(false) @map("domain_verified")
+  verifyToken         String       @map("verify_token") @db.VarChar(64)
+  ownerEmail          String       @map("owner_email") @db.VarChar(255)
+  businessDescription String       @map("business_description") @db.Text
+  targetAudience      String?      @map("target_audience") @db.VarChar(255)
+  tone                BlogTone     @default(PROFESSIONAL)
+  postsPerWeek        Int          @default(3) @map("posts_per_week")
+  defaultLanguage     String       @default("ru") @map("default_language") @db.VarChar(5)
+  topics              String[]
+  claudeModel         String       @default("claude-sonnet-4-6") @map("claude_model") @db.VarChar(64)
+  autoPublish         Boolean      @default(false) @map("auto_publish")
+  branding            Json?
+  unsplashApiKey      String?      @map("unsplash_api_key") @db.Text
+  planTier            BlogPlanTier @default(FREE) @map("plan_tier")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  posts    BlogPost[]
+  keywords BlogKeyword[]
+  usage    BlogUsage[]
+
+  @@index([apiKey])
+  @@index([domain])
+  @@map("blog_sites")
+}
+
+model BlogPost {
+  id                String         @id @default(uuid()) @db.Uuid
+  siteId            String         @map("site_id") @db.Uuid
+  slug              String         @db.VarChar(160)
+  title             String         @db.VarChar(160)
+  description       String         @db.VarChar(320)
+  content           String         @db.Text
+  status            BlogPostStatus @default(DRAFT)
+  targetKeyword     String?        @map("target_keyword") @db.VarChar(255)
+  secondaryKeywords String[]       @map("secondary_keywords")
+  author            String         @db.VarChar(100)
+  coverImageUrl     String?        @map("cover_image_url") @db.VarChar(512)
+  coverImageAlt     String?        @map("cover_image_alt") @db.VarChar(255)
+  publishedAt       DateTime?      @map("published_at") @db.Timestamptz(6)
+  readingTimeMin    Int?           @map("reading_time_min")
+  pageViews         Int            @default(0) @map("page_views")
+  tokensUsed        Int            @default(0) @map("tokens_used")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  site BlogSite @relation(fields: [siteId], references: [id])
+
+  @@unique([siteId, slug])
+  @@index([siteId, status, publishedAt])
+  @@map("blog_posts")
+}
+
+model BlogKeyword {
+  id         String        @id @default(uuid()) @db.Uuid
+  siteId     String        @map("site_id") @db.Uuid
+  keyword    String        @db.VarChar(255)
+  volumeEst  Int?          @map("volume_est")
+  difficulty Int?
+  used       Boolean       @default(false)
+  source     KeywordSource @default(AI)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  site BlogSite @relation(fields: [siteId], references: [id])
+
+  @@unique([siteId, keyword])
+  @@index([siteId, used, difficulty])
+  @@map("blog_keywords")
+}
+
+model BlogUsage {
+  id             String   @id @default(uuid()) @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  month          String   @db.VarChar(7)
+  postsGenerated Int      @default(0) @map("posts_generated")
+  tokensUsed     Int      @default(0) @map("tokens_used")
+
+  site BlogSite @relation(fields: [siteId], references: [id])
+
+  @@unique([siteId, month])
+  @@map("blog_usage")
+}
+
+enum BlogPostStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum BlogTone {
+  PROFESSIONAL
+  CASUAL
+  EXPERT
+}
+
+enum BlogPlanTier {
+  FREE
+  STARTER
+  PRO
+  AGENCY
+}
+
+enum KeywordSource {
+  AI
+  DATAFORSEO
+  MANUAL
+}
