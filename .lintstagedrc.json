@@ -1,5 +1,4 @@
 {
-  "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-  "!(frontend/e2e/**)*.{ts,tsx}": ["jest --bail --findRelatedTests --passWithNoTests"],
-  "*.{json,md}": ["prettier --write"]
+  "*.{ts,tsx,json,md}": ["prettier --write"],
+  "src/**/*.ts": ["eslint --fix", "jest --bail --findRelatedTests --passWithNoTests"]
 }

@@ -1,18 +1,37 @@
-# Abort the commit if ANY check below fails. Without this, a non-zero exit from
-# a check was masked by the trailing echo and the commit went through anyway.
+# Abort the commit if ANY check below fails.
 set -e
 
 echo "Running pre-commit checks..."
 
-echo "Linting..."
+# Format (prettier, shared config) on all staged files + backend eslint/jest on
+# staged backend files. Frontend/blog-engine are linted per-package below.
+echo "Linting staged files..."
 npm run lint-staged
 
-echo "Type checking..."
-npm run typecheck
+STAGED=$(git diff --cached --name-only)
 
-echo "Checking circular dependencies..."
-npx madge --circular --extensions ts src/
+# Backend (repo root) — only when its sources/config changed.
+if echo "$STAGED" | grep -qE '^(src/|tsconfig|prisma/|jest|eslint)'; then
+  echo "Backend: type check + circular deps..."
+  npm run typecheck
+  npx madge --circular --extensions ts src/
+fi
 
+# Frontend workspace.
+if echo "$STAGED" | grep -q '^frontend/'; then
+  echo "Frontend: lint + type check..."
+  npm run -w frontend lint
+  npm run -w frontend typecheck
+fi
+
+# blog-engine workspace.
+if echo "$STAGED" | grep -q '^blog-engine/'; then
+  echo "blog-engine: lint + type check..."
+  npm run -w blog-engine lint
+  npm run -w blog-engine typecheck
+fi
+
+# Unused code across all workspaces.
 echo "Checking for unused code..."
 npm run knip
 
