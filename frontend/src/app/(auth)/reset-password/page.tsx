@@ -49,7 +49,10 @@ function ResetPasswordForm() {
   const token = searchParams.get('token');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [isValidating, setIsValidating] = useState(true);
+  // Start in the "validating" state only when there's a token to validate; with
+  // no token we already know it's invalid (avoids a synchronous setState in the
+  // effect, which react-hooks/set-state-in-effect forbids).
+  const [isValidating, setIsValidating] = useState(() => Boolean(token));
   const [isTokenValid, setIsTokenValid] = useState(false);
 
   const form = useForm<ResetPasswordForm>({
@@ -59,10 +62,7 @@ function ResetPasswordForm() {
 
   // Validate token on mount
   useEffect(() => {
-    if (!token) {
-      setIsValidating(false);
-      return;
-    }
+    if (!token) return;
 
     const validateToken = async () => {
       try {
