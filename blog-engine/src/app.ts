@@ -14,7 +14,9 @@ import type { BlogEngineConfig } from './shared/config';
 const log = createLogger('http');
 
 export async function createApp(prisma: PrismaClient, config: BlogEngineConfig) {
-  const app = Fastify({ logger: log });
+  // Fastify v5 takes an existing pino instance via `loggerInstance` (the `logger`
+  // option only accepts a config object/boolean).
+  const app = Fastify({ loggerInstance: log });
 
   await app.register(cors, { origin: true });
 
@@ -25,7 +27,8 @@ export async function createApp(prisma: PrismaClient, config: BlogEngineConfig) 
     if (err instanceof UnauthorizedError) return reply.status(401).send({ error: err.message });
     if (err instanceof ValidationError) return reply.status(400).send({ error: err.message });
     // Zod validation errors
-    if (err.name === 'ZodError') return reply.status(400).send({ error: 'Validation error', details: err.message });
+    if (err.name === 'ZodError')
+      return reply.status(400).send({ error: 'Validation error', details: err.message });
     log.error({ err }, 'Unhandled error');
     return reply.status(500).send({ error: 'Internal server error' });
   });

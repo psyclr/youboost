@@ -193,6 +193,7 @@ export default [
       '.claude/',
       'docs/',
       'frontend/',
+      'blog-engine/',
     ],
   },
 ];

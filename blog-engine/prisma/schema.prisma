@@ -121,6 +121,11 @@ enum BlogPlanTier {
   AGENCY
 }
 
+enum LlmProvider {
+  ANTHROPIC
+  OPENAI
+}
+
 enum KeywordSource {
   AI
   DATAFORSEO
