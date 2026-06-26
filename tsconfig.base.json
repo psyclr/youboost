@@ -1,0 +1,12 @@
+{
+  "//": "Shared TypeScript options for all workspaces. Each package extends this and",
+  "//2": "adds its own module/target/jsx/paths/outDir. `paths` is intentionally NOT here:",
+  "//3": "extends resolves it relative to this base dir, which would be wrong per-package.",
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

@@ -1,7 +1,8 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    // Максимальная строгость
-    "strict": true,
+    // Максимальная строгость (strict + esModuleInterop + skipLibCheck +
+    // resolveJsonModule come from tsconfig.base.json)
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
@@ -21,7 +22,6 @@
     // Модули
     "module": "commonjs",
     "target": "ES2022",
-    "esModuleInterop": true,
     "moduleResolution": "node",
 
     // Выходные файлы
@@ -34,11 +34,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    },
-
-    // Other
-    "skipLibCheck": true,
-    "resolveJsonModule": true
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
