@@ -16,6 +16,7 @@ export interface BlogEngineConfig {
   databaseUrl: string;
   redisUrl: string;
   anthropicApiKey: string;
+  openaiApiKey: string | null;
   unsplashAccessKey: string | null;
   youboostRevalidateUrl: string | null;
   youboostRevalidateSecret: string | null;
@@ -29,6 +30,7 @@ export function loadConfig(): BlogEngineConfig {
     databaseUrl: required('DATABASE_URL'),
     redisUrl: optional('REDIS_URL', 'redis://localhost:6380'),
     anthropicApiKey: required('ANTHROPIC_API_KEY'),
+    openaiApiKey: process.env.OPENAI_API_KEY ?? null,
     unsplashAccessKey: process.env.UNSPLASH_ACCESS_KEY ?? null,
     youboostRevalidateUrl: process.env.YOUBOOST_REVALIDATE_URL ?? null,
     youboostRevalidateSecret: process.env.YOUBOOST_REVALIDATE_SECRET ?? null,

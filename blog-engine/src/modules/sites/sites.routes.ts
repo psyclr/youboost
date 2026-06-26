@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { SitesService } from './sites.service';
 import {
@@ -5,6 +6,12 @@ import {
   UpdateSiteSchema,
   ConnectDomainSchema,
 } from './sites.types';
+
+const LlmSettingsSchema = z.object({
+  provider: z.enum(['ANTHROPIC', 'OPENAI']),
+  credential: z.string().optional().nullable(),
+  model: z.string().max(64).optional().nullable(),
+});
 
 export function createSitesRoutes(sitesService: SitesService) {
   return async function (app: FastifyInstance) {
@@ -38,6 +45,19 @@ export function createSitesRoutes(sitesService: SitesService) {
       const { id } = req.params as { id: string };
       const status = await sitesService.checkDomainStatus(id);
       return reply.send(status);
+    });
+
+    app.get('/:id/llm', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const settings = await sitesService.getLlmSettings(id);
+      return reply.send(settings);
+    });
+
+    app.patch('/:id/llm', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const input = LlmSettingsSchema.parse(req.body);
+      const settings = await sitesService.updateLlmSettings(id, input);
+      return reply.send(settings);
     });
   };
 }

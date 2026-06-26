@@ -2,6 +2,12 @@ import type { PrismaClient, BlogSite } from '../../generated/prisma';
 import type { CreateSiteInput, UpdateSiteInput } from './sites.types';
 import { randomBytes } from 'crypto';
 
+export type UpdateSiteData = UpdateSiteInput & {
+  llmProvider?: 'ANTHROPIC' | 'OPENAI';
+  llmCredential?: string | null;
+  llmModel?: string | null;
+};
+
 export interface SitesRepository {
   findById(id: string): Promise<BlogSite | null>;
   findByApiKey(apiKey: string): Promise<BlogSite | null>;
@@ -9,7 +15,7 @@ export interface SitesRepository {
   findBySubdomain(subdomain: string): Promise<BlogSite | null>;
   findByDomainOrSubdomain(host: string): Promise<BlogSite | null>;
   create(input: CreateSiteInput): Promise<BlogSite>;
-  update(id: string, input: UpdateSiteInput): Promise<BlogSite>;
+  update(id: string, input: UpdateSiteData): Promise<BlogSite>;
   connectDomain(id: string, domain: string): Promise<BlogSite>;
   verifyDomain(id: string): Promise<BlogSite>;
 }
@@ -74,6 +80,9 @@ export function createSitesRepository(prisma: PrismaClient): SitesRepository {
           ...(input.defaultLanguage !== undefined && { defaultLanguage: input.defaultLanguage }),
           ...(input.topics !== undefined && { topics: input.topics }),
           ...(input.autoPublish !== undefined && { autoPublish: input.autoPublish }),
+          ...(input.llmProvider !== undefined && { llmProvider: input.llmProvider }),
+          ...(input.llmCredential !== undefined && { llmCredential: input.llmCredential }),
+          ...(input.llmModel !== undefined && { llmModel: input.llmModel }),
         },
       });
     },

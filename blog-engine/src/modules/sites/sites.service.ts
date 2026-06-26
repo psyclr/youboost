@@ -1,6 +1,6 @@
 import type { Logger } from 'pino';
 import { ConflictError, NotFoundError } from '../../shared/errors';
-import type { SitesRepository } from './sites.repository';
+import type { SitesRepository, UpdateSiteData } from './sites.repository';
 import type {
   CreateSiteInput,
   UpdateSiteInput,
@@ -40,6 +40,18 @@ export interface SitesServiceDeps {
   skipDomainVerify: boolean;
 }
 
+export interface LlmSettingsInput {
+  provider: 'ANTHROPIC' | 'OPENAI';
+  credential?: string | null;
+  model?: string | null;
+}
+
+export interface LlmSettingsResponse {
+  provider: string;
+  model: string | null;
+  hasCredential: boolean;
+}
+
 export interface SitesService {
   create(input: CreateSiteInput): Promise<SiteResponse>;
   getById(id: string): Promise<SiteResponse>;
@@ -48,6 +60,8 @@ export interface SitesService {
   update(id: string, input: UpdateSiteInput): Promise<SiteResponse>;
   connectDomain(id: string, input: ConnectDomainInput): Promise<SiteResponse>;
   checkDomainStatus(id: string): Promise<{ verified: boolean; instructions: string }>;
+  getLlmSettings(id: string): Promise<LlmSettingsResponse>;
+  updateLlmSettings(id: string, input: LlmSettingsInput): Promise<LlmSettingsResponse>;
 }
 
 export function createSitesService(deps: SitesServiceDeps): SitesService {
@@ -99,6 +113,32 @@ export function createSitesService(deps: SitesServiceDeps): SitesService {
 
       const updated = await sitesRepo.connectDomain(id, input.domain);
       return presentSite(updated, blogBaseUrl);
+    },
+
+    async getLlmSettings(id) {
+      const site = await sitesRepo.findById(id);
+      if (!site) throw new NotFoundError(`Site not found: ${id}`);
+      return {
+        provider: site.llmProvider,
+        model: site.llmModel,
+        hasCredential: !!site.llmCredential,
+      };
+    },
+
+    async updateLlmSettings(id, input) {
+      const site = await sitesRepo.findById(id);
+      if (!site) throw new NotFoundError(`Site not found: ${id}`);
+      const updated = await sitesRepo.update(id, {
+        llmProvider: input.provider,
+        llmCredential: input.credential ?? undefined,
+        llmModel: input.model ?? undefined,
+      });
+      logger.info({ siteId: id, provider: input.provider }, 'LLM settings updated');
+      return {
+        provider: updated.llmProvider,
+        model: updated.llmModel,
+        hasCredential: !!updated.llmCredential,
+      };
     },
 
     async checkDomainStatus(id) {

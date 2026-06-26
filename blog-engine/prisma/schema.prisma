@@ -28,6 +28,9 @@ model BlogSite {
   autoPublish         Boolean      @default(false) @map("auto_publish")
   branding            Json?
   unsplashApiKey      String?      @map("unsplash_api_key") @db.Text
+  llmProvider         LlmProvider  @default(ANTHROPIC) @map("llm_provider")
+  llmCredential       String?      @map("llm_credential") @db.Text
+  llmModel            String?      @map("llm_model") @db.VarChar(64)
   planTier            BlogPlanTier @default(FREE) @map("plan_tier")
   createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
