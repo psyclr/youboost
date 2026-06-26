@@ -21,15 +21,14 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   getAccessToken: () => string | null;
   refreshProfile: () => void;
-  setSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
+  setSession: (tokens: { accessToken: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Accepted risk: the refresh token is persisted in localStorage, so any XSS on
-// the site can read and exfiltrate it. This is tolerated for now and tracked as
-// a separate task to migrate it to an httpOnly, Secure cookie set by the backend.
-export const REFRESH_TOKEN_KEY = 'youboost_refresh_token';
+// Legacy localStorage key from the pre-cookie scheme. Refresh tokens now live in
+// an httpOnly cookie set by the backend; this key is only cleared on bootstrap.
+const LEGACY_REFRESH_TOKEN_KEY = 'youboost_refresh_token';
 
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -38,23 +37,19 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const clearAuth = useCallback(() => {
     accessTokenRef.current = null;
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
     setUser(null);
   }, []);
 
   const doRefresh = useCallback(async (): Promise<string | null> => {
-    const storedRefresh = localStorage.getItem(REFRESH_TOKEN_KEY);
-    if (!storedRefresh) return null;
-
-    try {
-      const tokens = await authApi.refreshToken(storedRefresh);
+    // The httpOnly cookie (if any) drives the refresh; no client-side token to
+    // gate on. A 200 with an access token means we have a live session.
+    const tokens = await authApi.refreshToken();
+    if (tokens) {
       accessTokenRef.current = tokens.accessToken;
-      localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
       return tokens.accessToken;
-    } catch {
-      clearAuth();
-      return null;
     }
+    clearAuth();
+    return null;
   }, [clearAuth]);
 
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
@@ -67,6 +62,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   // Initialize auth on mount
   useEffect(() => {
     const init = async () => {
+      // One-time cleanup of the stale localStorage key from the old scheme.
+      localStorage.removeItem(LEGACY_REFRESH_TOKEN_KEY);
       const token = await doRefresh();
       if (token) {
         try {
@@ -82,9 +79,10 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [doRefresh, clearAuth]);
 
   const login = useCallback(async (email: string, password: string) => {
+    // The backend sets the httpOnly refresh cookie; we only keep the access
+    // token in memory.
     const tokens = await authApi.login({ email, password });
     accessTokenRef.current = tokens.accessToken;
-    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
     const profile = await authApi.getMe();
     setUser(profile);
   }, []);
@@ -98,9 +96,10 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     clearAuth();
   }, [clearAuth]);
 
-  const setSession = useCallback(async (tokens: { accessToken: string; refreshToken: string }) => {
+  const setSession = useCallback(async (tokens: { accessToken: string }) => {
+    // Used by the Google OAuth callback. The refresh cookie is already set by
+    // the backend; only the access token reaches the client.
     accessTokenRef.current = tokens.accessToken;
-    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
     const profile = await authApi.getMe();
     setUser(profile);
   }, []);

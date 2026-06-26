@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { AuthProvider, useAuth, REFRESH_TOKEN_KEY } from '../auth-context';
+import { AuthProvider, useAuth } from '../auth-context';
 
 const mockLogin = jest.fn();
 const mockRefreshToken = jest.fn();
@@ -18,7 +18,19 @@ jest.mock('@/lib/api/client', () => ({
   setAuthHandlers: jest.fn(),
 }));
 
+const mockUser = {
+  userId: 'u1',
+  email: 'test@test.com',
+  username: 'testuser',
+  role: 'USER',
+  emailVerified: true,
+  createdAt: '2024-01-01',
+};
+
 const mockLocalStorage: Record<string, string> = {};
+const removeItemSpy = jest.fn((key: string) => {
+  delete mockLocalStorage[key];
+});
 beforeAll(() => {
   Object.defineProperty(window, 'localStorage', {
     value: {
@@ -26,9 +38,7 @@ beforeAll(() => {
       setItem: (key: string, value: string) => {
         mockLocalStorage[key] = value;
       },
-      removeItem: (key: string) => {
-        delete mockLocalStorage[key];
-      },
+      removeItem: removeItemSpy,
     },
     writable: true,
   });
@@ -54,8 +64,9 @@ describe('AuthContext', () => {
     spy.mockRestore();
   });
 
-  it('should start loading and resolve to no user when no refresh token', async () => {
-    mockRefreshToken.mockRejectedValue(new Error('no token'));
+  it('should resolve to no user when the refresh cookie is absent/invalid', async () => {
+    // No valid cookie -> the refresh endpoint returns null.
+    mockRefreshToken.mockResolvedValue(null);
 
     render(
       <AuthProvider>
@@ -68,19 +79,48 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByText('No user')).toBeInTheDocument();
     });
+
+    expect(mockGetMe).not.toHaveBeenCalled();
   });
 
-  it('should set user after login', async () => {
-    mockRefreshToken.mockRejectedValue(new Error('no token'));
+  it('should restore the session from the refresh cookie on bootstrap', async () => {
+    // A valid cookie -> the refresh endpoint returns an access token.
+    mockRefreshToken.mockResolvedValue({
+      accessToken: 'token',
+      expiresIn: 3600,
+      tokenType: 'Bearer',
+    });
+    mockGetMe.mockResolvedValue(mockUser);
 
-    const mockUser = {
-      userId: 'u1',
-      email: 'test@test.com',
-      username: 'testuser',
-      role: 'USER',
-      emailVerified: true,
-      createdAt: '2024-01-01',
-    };
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('User: testuser')).toBeInTheDocument();
+    });
+  });
+
+  it('should clear any stale legacy refresh token from localStorage on bootstrap', async () => {
+    mockRefreshToken.mockResolvedValue(null);
+
+    render(
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('No user')).toBeInTheDocument();
+    });
+
+    expect(removeItemSpy).toHaveBeenCalledWith('youboost_refresh_token');
+  });
+
+  it('should set user after login without persisting a refresh token', async () => {
+    mockRefreshToken.mockResolvedValue(null);
 
     function LoginConsumer() {
       const { user, isLoading, login } = useAuth();
@@ -93,12 +133,8 @@ describe('AuthContext', () => {
       );
     }
 
-    mockLogin.mockResolvedValue({
-      accessToken: 'token',
-      refreshToken: 'refresh',
-      expiresIn: 3600,
-      tokenType: 'Bearer',
-    });
+    // The login response no longer carries a refresh token (cookie-based now).
+    mockLogin.mockResolvedValue({ accessToken: 'token', expiresIn: 3600, tokenType: 'Bearer' });
     mockGetMe.mockResolvedValue(mockUser);
 
     render(
@@ -118,24 +154,52 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByText('User: testuser')).toBeInTheDocument();
     });
+
+    // No refresh token should be written to localStorage under any key.
+    expect(Object.keys(mockLocalStorage)).toHaveLength(0);
+  });
+
+  it('should establish a session via setSession with only an access token', async () => {
+    mockRefreshToken.mockResolvedValue(null);
+    mockGetMe.mockResolvedValue(mockUser);
+
+    function SessionConsumer() {
+      const { user, isLoading, setSession } = useAuth();
+      if (isLoading) return <div>Loading</div>;
+      return (
+        <div>
+          <span>{user ? `User: ${user.username}` : 'No user'}</span>
+          <button onClick={() => setSession({ accessToken: 'google-token' })}>SetSession</button>
+        </div>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <SessionConsumer />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('No user')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      screen.getByText('SetSession').click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('User: testuser')).toBeInTheDocument();
+    });
   });
 
   it('should clear user after logout', async () => {
-    mockLocalStorage[REFRESH_TOKEN_KEY] = 'stored-refresh';
     mockRefreshToken.mockResolvedValue({
       accessToken: 'token',
-      refreshToken: 'new-refresh',
       expiresIn: 3600,
       tokenType: 'Bearer',
     });
-    mockGetMe.mockResolvedValue({
-      userId: 'u1',
-      email: 'test@test.com',
-      username: 'testuser',
-      role: 'USER',
-      emailVerified: true,
-      createdAt: '2024-01-01',
-    });
+    mockGetMe.mockResolvedValue(mockUser);
     mockLogout.mockResolvedValue(undefined);
 
     function LogoutConsumer() {
@@ -166,5 +230,7 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByText('No user')).toBeInTheDocument();
     });
+
+    expect(mockLogout).toHaveBeenCalled();
   });
 });

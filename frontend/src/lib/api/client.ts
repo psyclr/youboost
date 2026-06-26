@@ -53,9 +53,15 @@ const BASE_URL = '/api';
 async function rawRequest(path: string, options?: RequestInit): Promise<unknown> {
   const doFetch = async (token: string | null) => {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options?.headers as Record<string, string>),
     };
+
+    // Only declare a JSON body when one is actually sent. A bodyless POST (e.g.
+    // /auth/logout) with `Content-Type: application/json` makes Fastify's JSON
+    // parser reject the empty body with FST_ERR_CTP_EMPTY_JSON_BODY (500).
+    if (options?.body != null) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -64,6 +70,8 @@ async function rawRequest(path: string, options?: RequestInit): Promise<unknown>
     const response = await fetch(`${BASE_URL}${path}`, {
       ...options,
       headers,
+      // Send the httpOnly auth cookie along on the same-origin /api proxy.
+      credentials: 'same-origin',
     });
 
     return response;

@@ -40,6 +40,8 @@ export interface RouteRegistrationDeps {
   authGoogleService: AuthGoogleService;
   webUrl: string;
   loginRateLimitMax: number;
+  /** Set the `secure` flag on auth cookies — true only in production. */
+  cookieSecure: boolean;
   billingService: BillingRoutesDeps['service'];
   paymentProviderRegistry: BillingRoutesDeps['providerRegistry'];
   stripePayment: StripeRoutesDeps['service'];
@@ -69,6 +71,7 @@ export async function registerRoutes(deps: RouteRegistrationDeps): Promise<void>
       authenticate,
       webUrl: deps.webUrl,
       loginRateLimitMax: deps.loginRateLimitMax,
+      cookieSecure: deps.cookieSecure,
     }),
     { prefix: '/auth' },
   );

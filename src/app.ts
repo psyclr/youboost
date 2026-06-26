@@ -238,7 +238,8 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     couponsService,
     referralsService,
     emailProvider,
-    metrika: config.analytics.yandexMetrika, adminEmail: config.alerts.adminEmail,
+    metrika: config.analytics.yandexMetrika,
+    adminEmail: config.alerts.adminEmail,
   });
   const outboxWorker = createOutboxWorker({
     outboxRepo,
@@ -247,7 +248,6 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     logger: createServiceLogger('outbox-worker'),
   });
 
-  // Route registration — delegated to registerRoutes to keep this file lean.
   await registerRoutes({
     app,
     authenticate,
@@ -256,6 +256,7 @@ export async function createApp(deps: CreateAppDeps): Promise<CreatedApp> {
     authGoogleService,
     webUrl: config.app.webUrl,
     loginRateLimitMax: config.security.loginRateLimitMax,
+    cookieSecure: config.app.nodeEnv === 'production',
     billingService,
     paymentProviderRegistry,
     stripePayment,

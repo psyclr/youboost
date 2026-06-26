@@ -76,6 +76,7 @@ describe('Auth Routes', () => {
         authenticate,
         webUrl: 'http://web',
         loginRateLimitMax: 10,
+        cookieSecure: false,
       }),
       { prefix: '/auth' },
     );
@@ -117,7 +118,7 @@ describe('Auth Routes', () => {
   });
 
   describe('POST /auth/login', () => {
-    it('should return 200 with token pair', async () => {
+    it('should return 200 with access token in body and refresh token in an httpOnly cookie', async () => {
       mockLogin.mockResolvedValue({
         accessToken: 'at',
         refreshToken: 'rt',
@@ -132,7 +133,20 @@ describe('Auth Routes', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body).accessToken).toBe('at');
+      const body = JSON.parse(res.body);
+      expect(body.accessToken).toBe('at');
+      expect(body.expiresIn).toBe(3600);
+      // The refresh token must NOT appear in the JSON response body.
+      expect(body.refreshToken).toBeUndefined();
+
+      const setCookie = res.headers['set-cookie'];
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+      expect(cookieStr).toContain('youboost_rt=rt');
+      expect(cookieStr).toContain('HttpOnly');
+      expect(cookieStr).toContain('SameSite=Lax');
+      expect(cookieStr).toContain('Path=/');
+      // secure flag disabled in non-production test config.
+      expect(cookieStr).not.toContain('Secure');
     });
 
     it('should return 422 on missing email', async () => {
@@ -147,7 +161,7 @@ describe('Auth Routes', () => {
   });
 
   describe('POST /auth/refresh', () => {
-    it('should return 200 with new access token', async () => {
+    it('should return 200 with a new access token and re-set the rotated cookie', async () => {
       mockRefresh.mockResolvedValue({
         accessToken: 'new-at',
         refreshToken: 'new-rt',
@@ -157,11 +171,30 @@ describe('Auth Routes', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/auth/refresh',
-        payload: { refreshToken: 'old-rt' },
+        cookies: { youboost_rt: 'old-rt' },
       });
 
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body).accessToken).toBe('new-at');
+      const body = JSON.parse(res.body);
+      expect(body.accessToken).toBe('new-at');
+      // Rotated refresh token is delivered via the cookie, not the body.
+      expect(body.refreshToken).toBeUndefined();
+      expect(mockRefresh).toHaveBeenCalledWith('old-rt');
+
+      const setCookie = res.headers['set-cookie'];
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+      expect(cookieStr).toContain('youboost_rt=new-rt');
+      expect(cookieStr).toContain('HttpOnly');
+    });
+
+    it('should return 401 when the refresh cookie is missing', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(mockRefresh).not.toHaveBeenCalled();
     });
   });
 
@@ -178,6 +211,12 @@ describe('Auth Routes', () => {
 
       expect(res.statusCode).toBe(204);
       expect(mockLogout).toHaveBeenCalledWith('u1', 'jti-1');
+
+      // The refresh cookie is cleared (expired) on logout.
+      const setCookie = res.headers['set-cookie'];
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+      expect(cookieStr).toContain('youboost_rt=');
+      expect(cookieStr).toMatch(/Expires=Thu, 01 Jan 1970|Max-Age=0/);
     });
 
     it('should return 401 without token', async () => {

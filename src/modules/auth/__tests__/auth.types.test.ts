@@ -1,7 +1,6 @@
 import {
   registerSchema,
   loginSchema,
-  refreshSchema,
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
@@ -55,16 +54,6 @@ describe('Auth Validation Schemas', () => {
 
     it('should reject empty password', () => {
       expect(() => loginSchema.parse({ email: 'a@b.com', password: '' })).toThrow();
-    });
-  });
-
-  describe('refreshSchema', () => {
-    it('should accept valid token', () => {
-      expect(() => refreshSchema.parse({ refreshToken: 'abc123' })).not.toThrow();
-    });
-
-    it('should reject empty token', () => {
-      expect(() => refreshSchema.parse({ refreshToken: '' })).toThrow();
     });
   });
 

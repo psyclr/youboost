@@ -29,6 +29,7 @@ function buildApp(over: Record<string, unknown> = {}) {
       authenticate: (async () => {}) as never,
       webUrl: 'http://web',
       loginRateLimitMax: 10,
+      cookieSecure: false,
     }),
     { prefix: '/auth' },
   );
@@ -57,7 +58,7 @@ describe('GET /auth/google', () => {
 });
 
 describe('GET /auth/google/callback', () => {
-  it('redirects to web with tokens in the fragment when state+nonce match', async () => {
+  it('sets the refresh cookie and redirects with only the access token in the fragment', async () => {
     const { app, authGoogleService } = buildApp();
     const res = await app.inject({
       method: 'GET',
@@ -65,10 +66,16 @@ describe('GET /auth/google/callback', () => {
       cookies: { oauth_nonce: 'n-1' },
     });
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe(
-      'http://web/auth/google/callback#accessToken=AT&refreshToken=RT',
-    );
+    // Fragment carries the access token but NOT the refresh token.
+    expect(res.headers.location).toBe('http://web/auth/google/callback#accessToken=AT');
+    expect(res.headers.location).not.toContain('refreshToken');
     expect(authGoogleService.consumeState).toHaveBeenCalledWith('st-1', 'n-1');
+
+    const setCookie = res.headers['set-cookie'];
+    const cookieStr = Array.isArray(setCookie) ? setCookie.join(';') : String(setCookie);
+    expect(cookieStr).toContain('youboost_rt=RT');
+    expect(cookieStr).toContain('HttpOnly');
+    expect(cookieStr).toContain('SameSite=Lax');
   });
 
   it('redirects to /login?error=google when the browser nonce cookie is missing (login-CSRF guard)', async () => {

@@ -16,7 +16,7 @@ describe('apiRequest', () => {
     setAuthHandlers(mockGetToken, mockRefreshToken, mockOnFailure);
   });
 
-  it('should make GET request to /api + path', async () => {
+  it('should make GET request to /api + path without a JSON content-type (no body)', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -25,14 +25,24 @@ describe('apiRequest', () => {
 
     await apiRequest('/users');
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/users',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json',
-        }),
-      }),
-    );
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('/api/users');
+    // A bodyless request must NOT declare a JSON content-type, or Fastify's
+    // parser rejects the empty body (FST_ERR_CTP_EMPTY_JSON_BODY).
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
+  it('should set JSON content-type when a body is sent', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    });
+
+    await apiRequest('/users', { method: 'POST', body: JSON.stringify({ a: 1 }) });
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.headers['Content-Type']).toBe('application/json');
   });
 
   it('should attach Authorization header when token is available', async () => {
@@ -182,7 +192,9 @@ describe('apiRequestVoid', () => {
   it('should resolve to undefined for 204 responses', async () => {
     mockFetch.mockResolvedValue({ ok: true, status: 204 });
 
-    await expect(apiRequestVoid('/admin/coupons/c1', { method: 'DELETE' })).resolves.toBeUndefined();
+    await expect(
+      apiRequestVoid('/admin/coupons/c1', { method: 'DELETE' }),
+    ).resolves.toBeUndefined();
   });
 
   it('should throw ApiError on non-ok response', async () => {

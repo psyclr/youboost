@@ -15,13 +15,17 @@ import type { AuthenticatedUser } from './auth.types';
 import {
   registerSchema,
   loginSchema,
-  refreshSchema,
   verifyEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   setPasswordSchema,
   updateProfileSchema,
 } from './auth.types';
+
+/** Name of the httpOnly cookie carrying the rotating refresh token. */
+const REFRESH_COOKIE_NAME = 'youboost_rt';
+/** Refresh token lifetime in seconds (mirrors JWT_REFRESH_EXPIRES_IN default '30d'). */
+const REFRESH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export interface AuthRoutesDeps {
   authService: AuthService;
@@ -31,6 +35,8 @@ export interface AuthRoutesDeps {
   webUrl: string;
   /** Max POST /login attempts per 15-min window (env-configurable; high in dev). */
   loginRateLimitMax: number;
+  /** Set the `secure` flag on auth cookies — true only in production (https). */
+  cookieSecure: boolean;
 }
 
 function validateBody<T>(
@@ -55,8 +61,26 @@ function getAuthUser(request: FastifyRequest): AuthenticatedUser {
 }
 
 export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
-  const { authService, authEmailService, authGoogleService, authenticate, webUrl, loginRateLimitMax } =
-    deps;
+  const {
+    authService,
+    authEmailService,
+    authGoogleService,
+    authenticate,
+    webUrl,
+    loginRateLimitMax,
+    cookieSecure,
+  } = deps;
+
+  // Options for the httpOnly refresh-token cookie. Path "/" because the browser
+  // reaches the API through the frontend /api proxy (same as oauth_nonce).
+  // `secure` only in production — dev is plain http://localhost.
+  const refreshCookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: cookieSecure,
+    path: '/',
+    maxAge: REFRESH_COOKIE_MAX_AGE_SECONDS,
+  } as const;
 
   return async (app) => {
     // Register rate limit plugin
@@ -95,15 +119,22 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       },
       async (request: FastifyRequest, reply: FastifyReply) => {
         const input = validateBody(loginSchema, request.body);
-        const result = await authService.login(input);
-        return reply.status(StatusCodes.OK).send(result);
+        const { refreshToken, ...body } = await authService.login(input);
+        // Deliver the refresh token as an httpOnly cookie, not in the JSON body.
+        reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions);
+        return reply.status(StatusCodes.OK).send(body);
       },
     );
 
     app.post('/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
-      const input = validateBody(refreshSchema, request.body);
-      const result = await authService.refresh(input.refreshToken);
-      return reply.status(StatusCodes.OK).send(result);
+      const token = request.cookies[REFRESH_COOKIE_NAME];
+      if (!token) {
+        throw new UnauthorizedError('Refresh token cookie missing', 'MISSING_REFRESH_TOKEN');
+      }
+      const { refreshToken, ...body } = await authService.refresh(token);
+      // Re-set the rotated refresh token cookie.
+      reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions);
+      return reply.status(StatusCodes.OK).send(body);
     });
 
     app.get(
@@ -149,7 +180,10 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
           }
           const profile = await authGoogleService.exchangeCode(code);
           const tokens = await authService.loginWithGoogle(profile);
-          const fragment = `accessToken=${encodeURIComponent(tokens.accessToken)}&refreshToken=${encodeURIComponent(tokens.refreshToken)}`;
+          // Refresh token goes into the httpOnly cookie; the redirect fragment
+          // carries only the short-lived access token.
+          reply.setCookie(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions);
+          const fragment = `accessToken=${encodeURIComponent(tokens.accessToken)}`;
           return reply.redirect(`${webUrl}/auth/google/callback#${fragment}`);
         } catch {
           return reply.redirect(`${webUrl}/login?error=google`);
@@ -163,6 +197,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): FastifyPluginAsync {
       async (request: FastifyRequest, reply: FastifyReply) => {
         const user = getAuthUser(request);
         await authService.logout(user.userId, user.jti);
+        reply.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
         return reply.status(StatusCodes.NO_CONTENT).send();
       },
     );
