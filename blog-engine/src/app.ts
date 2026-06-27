@@ -9,6 +9,8 @@ import { createPostsRepository } from './modules/posts/posts.repository';
 import { createPostsService } from './modules/posts/posts.service';
 import { createSitesRoutes } from './modules/sites/sites.routes';
 import { createPublicPostsRoutes, createAdminPostsRoutes } from './modules/posts/posts.routes';
+import { createGenerateService } from './modules/generate/generate.service';
+import { createGenerateRoutes } from './modules/generate/generate.routes';
 import type { BlogEngineConfig } from './shared/config';
 
 const log = createLogger('http');
@@ -56,11 +58,19 @@ export async function createApp(prisma: PrismaClient, config: BlogEngineConfig) 
   // Public API routes
   await app.register(createPublicPostsRoutes(postsService, sitesService), { prefix: '/v1/posts' });
 
+  const generateService = createGenerateService({
+    sitesRepo,
+    postsRepo,
+    postsService,
+    logger: createLogger('generate'),
+  });
+
   // Admin API routes (no auth for MVP — protected by API key per request)
   await app.register(createSitesRoutes(sitesService), { prefix: '/sites' });
   await app.register(createAdminPostsRoutes(postsService), {
     prefix: '/sites/:siteId/posts',
   });
+  await app.register(createGenerateRoutes(generateService), { prefix: '/sites' });
 
   return app;
 }
